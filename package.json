@@ -24,10 +24,12 @@
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
     "@tailwindcss/vite": "^4.1.11",
+    "@types/adm-zip": "^0.5.7",
     "adm-zip": "^0.5.16",
     "electron-updater": "^6.3.9",
     "fabric": "^6.7.0",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "^4.1.11",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
@@ -35,6 +37,7 @@
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@types/node": "^22.14.1",
+    "@types/uuid": "^10.0.0",
     "electron": "^35.1.5",
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.1.0",
