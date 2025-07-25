@@ -28,6 +28,7 @@
     "adm-zip": "^0.5.16",
     "electron-updater": "^6.3.9",
     "fabric": "^6.7.0",
+    "runed": "^0.31.1",
     "tailwindcss": "^4.1.11",
     "uuid": "^11.1.0"
   },
