@@ -44,6 +44,32 @@
 
     presentation.slides[0].elements.push(newRect)
   }
+  async function handleSave() {
+    // Convert the reactive state to a plain JavaScript object
+    const presentationData = { ...presentation };
+    const jsonString = JSON.stringify(presentationData, null, 2); // Pretty print JSON
+    const result = await window.api.saveDeck(jsonString);
+    if (result.success) {
+      console.log('File saved to:', result.path);
+    } else {
+      console.error('Save failed:', result.error);
+    }
+  }
+
+  async function handleOpen() {
+    const result = await window.api.openDeck();
+    if (result.success && result.data) {
+      try {
+        const openedPresentation = JSON.parse(result.data);
+        // Replace the entire state with the loaded data
+        presentation.slides = openedPresentation.slides || [];
+      } catch (error) {
+        console.error('Failed to parse presentation data:', error)
+      }
+    } else if (result.error) {
+      console.error('Open failed:', result.error);
+    }
+  }
 </script>
 
 <div class="flex flex-col h-screen font-sans">
@@ -53,6 +79,12 @@
       class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
     >
       Add Shape
+    </button>
+    <button onclick={handleSave} class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+      Save
+    </button>
+    <button onclick={handleOpen} class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+      Open
     </button>
   </div>
   <div class="flex flex-1 overflow-hidden">
