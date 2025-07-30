@@ -5,8 +5,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
   saveDeck: (presentationJSON: string, filePath: string) =>
     ipcRenderer.invoke('save-deck', presentationJSON, filePath),
-  saveAsDeck: (presentationJSON: string) =>
-    ipcRenderer.invoke('save-as-deck', presentationJSON),
+  saveAsDeck: (presentationJSON: string) => ipcRenderer.invoke('save-as-deck', presentationJSON),
   openDeck: () => ipcRenderer.invoke('open-deck')
 }
 

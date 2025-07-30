@@ -9,7 +9,7 @@ declare global {
         filePath: string
       ) => Promise<{ success: boolean; path?: string; error?: string }>
       saveAsDeck: (
-        presentationJSON: string,
+        presentationJSON: string
       ) => Promise<{ success: boolean; path?: string; error?: string }>
       openDeck: () => Promise<{ success: boolean; data?: string; error?: string; path?: string }>
     }

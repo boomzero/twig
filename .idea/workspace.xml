@@ -4,8 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="Fix: Update saveAsDeck to use correct IPC method">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="Update state from canvas events">
       <change beforePath="$PROJECT_DIR$/src/renderer/src/App.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/App.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -159,7 +158,7 @@
       <workItem from="1753575641234" duration="149000" />
       <workItem from="1753668565816" duration="5007000" />
       <workItem from="1753856315060" duration="565000" />
-      <workItem from="1753867037184" duration="6882000" />
+      <workItem from="1753867037184" duration="7083000" />
     </task>
     <task id="LOCAL-00001" summary="init">
       <option name="closed" value="true" />
@@ -233,7 +232,15 @@
       <option name="project" value="LOCAL" />
       <updated>1753872983411</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="Update state from canvas events">
+      <option name="closed" value="true" />
+      <created>1753885000739</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1753885000739</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -260,6 +267,7 @@
     <MESSAGE value="Save as" />
     <MESSAGE value="minor tweaks" />
     <MESSAGE value="Fix: Update saveAsDeck to use correct IPC method" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fix: Update saveAsDeck to use correct IPC method" />
+    <MESSAGE value="Update state from canvas events" />
+    <option name="LAST_COMMIT_MESSAGE" value="Update state from canvas events" />
   </component>
 </project>
