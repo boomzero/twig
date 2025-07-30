@@ -3,7 +3,10 @@ import { electronAPI } from '@electron-toolkit/preload'
 
 // Custom APIs for renderer
 const api = {
-  saveDeck: (presentationJSON: string) => ipcRenderer.invoke('save-deck', presentationJSON),
+  saveDeck: (presentationJSON: string, filePath: string) =>
+    ipcRenderer.invoke('save-deck', presentationJSON, filePath),
+  saveAsDeck: (presentationJSON: string) =>
+    ipcRenderer.invoke('save-deck', presentationJSON),
   openDeck: () => ipcRenderer.invoke('open-deck')
 }
 

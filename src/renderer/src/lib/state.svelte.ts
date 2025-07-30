@@ -16,12 +16,20 @@ export interface Slide {
   elements: DeckElement[];
 }
 
+// Define the overall structure of your presentation
+export interface Presentation {
+  slides: Slide[];
+}
+
 // Use $state to create a reactive object for our presentation
-export const presentation = $state({
-  slides: [
-    {
-      id: 'slide1',
-      elements: []
-    }
-  ] as Slide[]
+export const appState = $state({
+  presentation: {
+    slides: [
+      {
+        id: 'slide1',
+        elements: []
+      }
+    ]
+  } as Presentation,
+  currentFilePath: null as string | null
 });

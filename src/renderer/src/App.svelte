@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Canvas, Rect } from 'fabric'
-  import { presentation } from './lib/state.svelte'
+  import { appState } from './lib/state.svelte'
   import type { DeckElement } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
 
@@ -12,7 +12,7 @@
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
     }
-    const currentSlide = presentation.slides[0]
+    const currentSlide = appState.presentation.slides[0]
     if (currentSlide) {
       fabCanvas.clear()
       currentSlide.elements.forEach((element) => {
@@ -42,32 +42,51 @@
       fill: 'purple'
     }
 
-    presentation.slides[0].elements.push(newRect)
+    appState.presentation.slides[0].elements.push(newRect)
   }
+
   async function handleSave() {
     // Convert the reactive state to a plain JavaScript object
-    const presentationData = { ...presentation };
-    const jsonString = JSON.stringify(presentationData, null, 2); // Pretty print JSON
-    const result = await window.api.saveDeck(jsonString);
-    if (result.success) {
-      console.log('File saved to:', result.path);
+    if (appState.currentFilePath) {
+      const presentationData = { ...appState.presentation }
+      const jsonString = JSON.stringify(presentationData, null, 2)
+      const result = await window.api.saveDeck(jsonString, appState.currentFilePath)
+      if (result.success) {
+        console.log('File saved to:', result.path)
+      } else {
+        console.error('Save failed:', result.error)
+      }
     } else {
-      console.error('Save failed:', result.error);
+      console.error('No file path specified. Please open a file first.')
+    }
+  }
+  async function handleSaveAs() {
+    // Convert the reactive state to a plain JavaScript object
+    const presentationData = { ...appState.presentation }
+    const jsonString = JSON.stringify(presentationData, null, 2) // Pretty print JSON
+    const result = await window.api.saveAsDeck(jsonString)
+    if (result.success) {
+      console.log('File saved to:', result.path)
+    } else {
+      console.error('Save failed:', result.error)
     }
   }
 
   async function handleOpen() {
-    const result = await window.api.openDeck();
+    const result = await window.api.openDeck()
     if (result.success && result.data) {
       try {
-        const openedPresentation = JSON.parse(result.data);
+        const openedPresentation = JSON.parse(result.data)
         // Replace the entire state with the loaded data
-        presentation.slides = openedPresentation.slides || [];
+        appState.presentation.slides = openedPresentation.slides || []
+        if (result.path) {
+          appState.currentFilePath = result.path
+        }
       } catch (error) {
         console.error('Failed to parse presentation data:', error)
       }
     } else if (result.error) {
-      console.error('Open failed:', result.error);
+      console.error('Open failed:', result.error)
     }
   }
 </script>
@@ -80,10 +99,23 @@
     >
       Add Shape
     </button>
-    <button onclick={handleSave} class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+    <button
+      onclick={handleSave}
+      disabled={!appState.currentFilePath}
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+    >
       Save
     </button>
-    <button onclick={handleOpen} class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+    <button
+      onclick={handleSaveAs}
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+    >
+      Save As
+    </button>
+    <button
+      onclick={handleOpen}
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+    >
       Open
     </button>
   </div>

@@ -5,9 +5,13 @@ declare global {
     electron: ElectronAPI
     api: {
       saveDeck: (
-        presentationJSON: string
+        presentationJSON: string,
+        filePath: string
       ) => Promise<{ success: boolean; path?: string; error?: string }>
-      openDeck: () => Promise<{ success: boolean; data?: string; error?: string }>
+      saveAsDeck: (
+        presentationJSON: string,
+      ) => Promise<{ success: boolean; path?: string; error?: string }>
+      openDeck: () => Promise<{ success: boolean; data?: string; error?: string; path?: string }>
     }
   }
 }

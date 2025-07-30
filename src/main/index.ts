@@ -74,14 +74,34 @@ app.on('window-all-closed', () => {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 
-// Handler to save a .deck file
-ipcMain.handle('save-deck', async (_event, presentationJSON: string) => {
+// Handler to save a .deck file and the user gets to choose the path
+ipcMain.handle('save-as-deck', async (_event, presentationJSON: string) => {
   const { filePath } = await dialog.showSaveDialog({
     title: 'Save Deckhand Presentation',
     defaultPath: 'presentation.deck',
     filters: [{ name: 'Deckhand Files', extensions: ['deck'] }]
   })
+  // noinspection DuplicatedCode
+  if (filePath) {
+    try {
+      const zip = new AdmZip()
+      // Add the presentation.json file to the root of the zip
+      zip.addFile('presentation.json', Buffer.from(presentationJSON))
+      // In the future, you would also add fonts and images here
+      zip.writeZip(filePath)
+      return { success: true, path: filePath }
+    } catch (error) {
+      console.error('Failed to save deck file:', error)
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+      return { success: false, error: errorMessage }
+    }
+  }
+  return { success: false, error: 'Save was cancelled.' }
+})
 
+// Handler to save a .deck file, but we choose the path
+ipcMain.handle('save-deck', async (_event, presentationJSON: string, filePath: string) => {
+  // noinspection DuplicatedCode
   if (filePath) {
     try {
       const zip = new AdmZip()
@@ -114,7 +134,7 @@ ipcMain.handle('open-deck', async () => {
       const zipEntry = zip.getEntry('presentation.json')
       if (zipEntry) {
         const presentationJSON = zipEntry.getData().toString('utf8')
-        return { success: true, data: presentationJSON }
+        return { success: true, data: presentationJSON, path: filePath }
       } else {
         // noinspection ExceptionCaughtLocallyJS
         throw new Error('presentation.json not found in the .deck file.')
