@@ -57,7 +57,7 @@
         console.error('Save failed:', result.error)
       }
     } else {
-      console.error('No file path specified. Please open a file first.')
+      await handleSaveAs();
     }
   }
   async function handleSaveAs() {
@@ -67,6 +67,7 @@
     const result = await window.api.saveAsDeck(jsonString)
     if (result.success) {
       console.log('File saved to:', result.path)
+      appState.currentFilePath = result.path
     } else {
       console.error('Save failed:', result.error)
     }
@@ -101,8 +102,7 @@
     </button>
     <button
       onclick={handleSave}
-      disabled={!appState.currentFilePath}
-      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
     >
       Save
     </button>
