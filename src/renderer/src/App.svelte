@@ -26,6 +26,7 @@
             top: element.y,
             width: element.width,
             height: element.height,
+            angle: element.angle,
             fill: element.fill,
             id: element.id
           })
@@ -54,6 +55,7 @@
       elementInState.y = modifiedObject.top ?? 0
       elementInState.width = modifiedObject.getScaledWidth()
       elementInState.height = modifiedObject.getScaledHeight()
+      elementInState.angle = modifiedObject.angle ?? 0;
       console.log('State updated from canvas:', elementInState)
     }
   }
@@ -73,7 +75,8 @@
       y: 50,
       width: 150,
       height: 100,
-      fill: 'purple'
+      angle: 0,
+      fill: '#FF6F61'
     }
 
     appState.presentation.slides[0].elements.push(newRect)

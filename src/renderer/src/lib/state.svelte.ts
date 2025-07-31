@@ -6,6 +6,7 @@ export interface DeckElement {
   y: number;
   width: number;
   height: number;
+  angle: number;
   fill?: string;
   text?: string;
 }
