@@ -1,11 +1,19 @@
 <script lang="ts">
-  import { Canvas, type FabricObject, Rect } from 'fabric'
+  import { Canvas, type FabricObject, Rect, ActiveSelection,  util, BaseFabricObject} from 'fabric'
   import { appState } from './lib/state.svelte'
   import type { DeckElement } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
+  import PropertiesPanel from './components/PropertiesPanel.svelte'
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
+
+  type DeckFabricObject = FabricObject & { id?: string }
+
+  //Set the default origin for all Fabric objects to center
+  //Ref https://github.com/fabricjs/fabric.js/discussions/9736
+  BaseFabricObject.ownDefaults.originY = 'center'
+  BaseFabricObject.ownDefaults.originX = 'center'
 
   // This function renders our state to the canvas
   function renderCanvasFromState() {
@@ -14,7 +22,10 @@
 
     // Temporarily disable event listeners while we re-render from state
     // to prevent infinite loops.
-    fabCanvas.off('object:modified', handleCanvasObjectModified)
+    fabCanvas.off('object:modified', handleObjectModified)
+    fabCanvas.off('selection:created', handleSelection)
+    fabCanvas.off('selection:updated', handleSelection)
+    fabCanvas.off('selection:cleared', handleSelectionCleared)
 
     fabCanvas.clear()
     if (currentSlide) {
@@ -39,28 +50,64 @@
     fabCanvas.renderAll()
 
     // Re-enable the event listener after rendering is complete
-    fabCanvas.on('object:modified', handleCanvasObjectModified)
+    fabCanvas.on('object:modified', handleObjectModified)
+    fabCanvas.on('selection:created', handleSelection)
+    fabCanvas.on('selection:updated', handleSelection)
+    fabCanvas.on('selection:cleared', handleSelectionCleared)
   }
 
-  function handleCanvasObjectModified(event: { target?: FabricObject & { id?: string } }) {
-    const modifiedObject = event.target
-    if (!modifiedObject || !modifiedObject.id) return
-
-    const elementInState = appState.presentation.slides[0]?.elements.find(
-      (el) => el.id === modifiedObject.id
-    )
-
-    if (elementInState) {
-      elementInState.x = modifiedObject.left ?? 0
-      elementInState.y = modifiedObject.top ?? 0
-      elementInState.width = modifiedObject.getScaledWidth()
-      elementInState.height = modifiedObject.getScaledHeight()
-      elementInState.angle = modifiedObject.angle ?? 0;
-      console.log('State updated from canvas:', elementInState)
+  function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }) {
+    const target = event.target
+    if (!target) return
+    //Check if the modified object is a group selection
+    if (target.type === 'activeselection') {
+      const selection = target as ActiveSelection
+      // Iterate over each object in the group
+      selection.getObjects().forEach(obj => {
+        const modifiedObject = obj as DeckFabricObject
+        console.log(modifiedObject)
+        updateStateFromObject(modifiedObject)
+      })
+    } else {
+      // Otherwise, it's a single object
+      updateStateFromObject(target as DeckFabricObject)
     }
   }
 
+  function updateStateFromObject(obj: DeckFabricObject) {
+    if (!obj.id || !obj.width) return; // Guard against objects without id or width
+
+    const elementInState = appState.presentation.slides[0]?.elements.find(el => el.id === obj.id);
+    if (!elementInState) return;
+
+    // Use matrix decomposition to get absolute, final values
+    const transform = util.qrDecompose(obj.calcTransformMatrix());
+
+    // Update state with the decomposed values
+    elementInState.x = transform.translateX;
+    elementInState.y = transform.translateY;
+    elementInState.angle = transform.angle;
+    // The original width/height must be multiplied by the new scale
+    elementInState.width = obj.width * transform.scaleX;
+    elementInState.height = obj.height * transform.scaleY;
+  }
+
+
+  function handleSelection(event: { selected?: DeckFabricObject[] }) {
+    //Only show properties if exactly ONE object is selected
+    if (event.selected && event.selected.length === 1) {
+      appState.selectedObjectId = event.selected[0].id || null
+    } else {
+      appState.selectedObjectId = null
+    }
+  }
+
+  function handleSelectionCleared() {
+    appState.selectedObjectId = null
+  }
+
   $effect(() => {
+    $inspect(appState)
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
     }
@@ -172,5 +219,6 @@
         </div>
       </div>
     </div>
+    <PropertiesPanel />
   </div>
 </div>

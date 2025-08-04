@@ -1,25 +1,26 @@
 // Define the structure for an element on a slide
+
 export interface DeckElement {
-  type: 'rect' | 'text';
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  angle: number;
-  fill?: string;
-  text?: string;
+  type: 'rect' | 'text'
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  angle: number
+  fill?: string
+  text?: string
 }
 
 // Define the structure for a single slide
 export interface Slide {
-  id: string;
-  elements: DeckElement[];
+  id: string
+  elements: DeckElement[]
 }
 
 // Define the overall structure of your presentation
 export interface Presentation {
-  slides: Slide[];
+  slides: Slide[]
 }
 
 // Use $state to create a reactive object for our presentation
@@ -32,5 +33,6 @@ export const appState = $state({
       }
     ]
   } as Presentation,
-  currentFilePath: null as string | null
-});
+  currentFilePath: null as string | null,
+  selectedObjectId: null as string | null
+})
