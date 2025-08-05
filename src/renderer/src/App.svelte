@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { Canvas, type FabricObject, Rect, ActiveSelection,  util, BaseFabricObject} from 'fabric'
+  import {
+    Canvas,
+    type FabricObject,
+    IText,
+    Rect,
+    ActiveSelection,
+    util,
+    BaseFabricObject
+  } from 'fabric'
   import { appState } from './lib/state.svelte'
   import type { DeckElement } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
@@ -7,6 +15,8 @@
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
+  let activeTextObject: IText | null = $state(null)
+  let isSelectionBold = $state(false)
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -41,6 +51,17 @@
             fill: element.fill,
             id: element.id
           })
+        } else if (element.type === 'text') {
+          fabObj = new IText(element.text || 'Hello', {
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            id: element.id,
+            fill: element.fill, // Default fill color
+            fontFamily: element.fontFamily,
+            fontSize: element.fontSize,
+            styles: element.styles || {} // Apply the rich text styles object
+          })
         }
         if (fabObj) {
           fabCanvas.add(fabObj)
@@ -63,7 +84,7 @@
     if (target.type === 'activeselection') {
       const selection = target as ActiveSelection
       // Iterate over each object in the group
-      selection.getObjects().forEach(obj => {
+      selection.getObjects().forEach((obj) => {
         const modifiedObject = obj as DeckFabricObject
         console.log(modifiedObject)
         updateStateFromObject(modifiedObject)
@@ -75,23 +96,28 @@
   }
 
   function updateStateFromObject(obj: DeckFabricObject) {
-    if (!obj.id || !obj.width) return; // Guard against objects without id or width
+    if (!obj.id || !obj.width) return // Guard against objects without id or width
 
-    const elementInState = appState.presentation.slides[0]?.elements.find(el => el.id === obj.id);
-    if (!elementInState) return;
+    const elementInState = appState.presentation.slides[0]?.elements.find((el) => el.id === obj.id)
+    if (!elementInState) return
 
     // Use matrix decomposition to get absolute, final values
-    const transform = util.qrDecompose(obj.calcTransformMatrix());
+    const transform = util.qrDecompose(obj.calcTransformMatrix())
 
     // Update state with the decomposed values
-    elementInState.x = transform.translateX;
-    elementInState.y = transform.translateY;
-    elementInState.angle = transform.angle;
+    elementInState.x = transform.translateX
+    elementInState.y = transform.translateY
+    elementInState.angle = transform.angle
     // The original width/height must be multiplied by the new scale
-    elementInState.width = obj.width * transform.scaleX;
-    elementInState.height = obj.height * transform.scaleY;
+    elementInState.width = obj.width * transform.scaleX
+    elementInState.height = obj.height * transform.scaleY
+    if (elementInState.type === 'text' && obj instanceof IText) {
+      elementInState.text = obj.text
+      elementInState.fontSize = obj.fontSize
+      elementInState.fontFamily = obj.fontFamily
+      elementInState.styles = obj.styles
+    }
   }
-
 
   function handleSelection(event: { selected?: DeckFabricObject[] }) {
     //Only show properties if exactly ONE object is selected
@@ -100,10 +126,23 @@
     } else {
       appState.selectedObjectId = null
     }
+    activeTextObject?.off('selection:changed', handleTextSelectionChange)
+    const selection = event.selected?.[0]
+    if (selection instanceof IText) {
+      activeTextObject = selection
+      activeTextObject.on('selection:changed', handleTextSelectionChange)
+      handleTextSelectionChange()
+    } else {
+      activeTextObject = null
+      isSelectionBold = false
+    }
   }
 
   function handleSelectionCleared() {
-    appState.selectedObjectId = null
+    activeTextObject?.off('selection:changed', handleTextSelectionChange);
+    appState.selectedObjectId = null;
+    activeTextObject = null;
+    isSelectionBold = false;
   }
 
   $effect(() => {
@@ -113,6 +152,50 @@
     }
     renderCanvasFromState()
   })
+
+  function applyStyleToSelection(style: any) {
+    if (activeTextObject) {
+      activeTextObject.setSelectionStyles(style);
+      // After applying, immediately re-check the selection state
+      handleTextSelectionChange();
+      fabCanvas?.renderAll();
+      updateStateFromObject(activeTextObject);
+    }
+  }
+  function toggleBold() {
+    //The logic is now simpler: just toggle based on our reactive state variable
+    applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' });
+  }
+
+
+  function changeSelectionColor(event: Event) {
+    const color = (event.target as HTMLInputElement).value
+    applyStyleToSelection({ fill: color })
+  }
+
+  function handleTextSelectionChange() {
+    if (activeTextObject) {
+      const styles = activeTextObject.getSelectionStyles()
+      // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
+      // Fabric returns an empty object for a simple cursor, so we default to false.
+      isSelectionBold = styles.length > 0 && styles.some(style => style.fontWeight === 'bold');
+    }
+  }
+
+  function addText() {
+    const newText: DeckElement = {
+      type: 'text',
+      id: `text_${uuid_v4()}`,
+      x: 250, y: 150,
+      width: 200, height: 50, // Note: width/height for text is auto-managed
+      angle: 0,
+      text: 'Double-click to edit',
+      fontSize: 40,
+      fontFamily: 'Inter',
+      fill: '#333333'
+    }
+    appState.presentation.slides[0].elements.push(newText)
+  }
 
   function addRectangle() {
     const newRect: DeckElement = {
@@ -186,6 +269,12 @@
       Add Shape
     </button>
     <button
+      onclick={addText}
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+    >
+      Add Text
+    </button>
+    <button
       onclick={handleSave}
       class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
     >
@@ -203,6 +292,16 @@
     >
       Open
     </button>
+    {#if activeTextObject}
+      <div class="h-6 w-px bg-gray-300 mx-2"></div>
+      <button
+        onclick={toggleBold}
+        class="px-3 py-1 font-bold text-sm rounded-md border border-gray-300"
+        class:bg-indigo-200={isSelectionBold}
+        class:text-white={isSelectionBold}
+      >B</button>
+      <input type="color" oninput={changeSelectionColor} class="w-8 h-8 p-0 border-none bg-transparent" />
+    {/if}
   </div>
   <div class="flex flex-1 overflow-hidden">
     <div class="w-48 p-2 overflow-y-auto bg-gray-50 border-r border-gray-300">
