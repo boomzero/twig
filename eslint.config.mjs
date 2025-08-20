@@ -15,6 +15,12 @@ export default tseslint.config(
     }
   },
   {
+    files: ['**/*.svelte.ts'],
+    languageOptions: {
+      parser: tseslint.parser
+    }
+  },
+  {
     files: ['**/*.{tsx,svelte}'],
     rules: {
       'svelte/no-unused-svelte-ignore': 'off'
