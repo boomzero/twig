@@ -37,5 +37,6 @@ export let appState = $state({
     ]
   } as Presentation,
   currentFilePath: null as string | null,
-  selectedObjectId: null as string | null
+  selectedObjectId: null as string | null,
+  selectedText: null as { start: number; end: number; isEditing: boolean } | null
 })

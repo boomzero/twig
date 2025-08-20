@@ -70,6 +70,28 @@
     }
     fabCanvas.renderAll()
 
+    // Restore the user's previous selection if it still exists
+    const selectedId = appState.selectedObjectId
+    const textSelection = appState.selectedText
+    if (selectedId) {
+      const objToSelect = fabCanvas
+        .getObjects()
+        .find((o: any) => o.id === selectedId) as DeckFabricObject | undefined
+      if (objToSelect) {
+        fabCanvas.setActiveObject(objToSelect)
+        if (textSelection && objToSelect instanceof IText) {
+          if (textSelection.isEditing) {
+            objToSelect.enterEditing()
+          }
+          objToSelect.selectionStart = textSelection.start
+          objToSelect.selectionEnd = textSelection.end
+          ;(objToSelect as any).hiddenTextarea?.focus()
+        }
+        handleSelection({ selected: [objToSelect] })
+        fabCanvas.renderAll()
+      }
+    }
+
     // Re-enable the event listener after rendering is complete
     fabCanvas.on('object:modified', handleObjectModified)
     fabCanvas.on('selection:created', handleSelection)
@@ -125,6 +147,7 @@
       appState.selectedObjectId = event.selected[0].id || null
     } else {
       appState.selectedObjectId = null
+      appState.selectedText = null
     }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     const selection = event.selected?.[0]
@@ -135,12 +158,14 @@
     } else {
       activeTextObject = null
       isSelectionBold = false
+      appState.selectedText = null
     }
   }
 
   function handleSelectionCleared() {
     activeTextObject?.off('selection:changed', handleTextSelectionChange);
     appState.selectedObjectId = null;
+    appState.selectedText = null;
     activeTextObject = null;
     isSelectionBold = false;
   }
@@ -179,6 +204,13 @@
       // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
       // Fabric returns an empty object for a simple cursor, so we default to false.
       isSelectionBold = styles.length > 0 && styles.some(style => style.fontWeight === 'bold');
+      appState.selectedText = {
+        start: activeTextObject.selectionStart ?? 0,
+        end: activeTextObject.selectionEnd ?? 0,
+        isEditing: activeTextObject.isEditing
+      }
+    } else {
+      appState.selectedText = null
     }
   }
 
