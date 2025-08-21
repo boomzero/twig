@@ -4,10 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="feat: rich text">
-      <change afterPath="$PROJECT_DIR$/AGENTS.md" afterDir="false" />
+    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="PropertiesPanel! And some bug fixes">
       <change beforePath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/build/icon.png" beforeDir="false" afterPath="$PROJECT_DIR$/build/icon.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/App.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/App.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/components/PropertiesPanel.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/components/PropertiesPanel.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/lib/state.svelte.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/lib/state.svelte.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,7 +58,6 @@
     &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
     &quot;git-widget-placeholder&quot;: &quot;main&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
@@ -160,7 +162,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-WS-252.23892.411" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-WS-251.27812.50" />
       </set>
     </attachedChunks>
   </component>
@@ -204,14 +206,6 @@
       <workItem from="1754313158044" duration="46000" />
       <workItem from="1754313213538" duration="200000" />
       <workItem from="1754374979300" duration="4668000" />
-      <workItem from="1754385160296" duration="17000" />
-      <workItem from="1754385186540" duration="115000" />
-      <workItem from="1754385309145" duration="45000" />
-      <workItem from="1754385364639" duration="40000" />
-      <workItem from="1754385412692" duration="12000" />
-      <workItem from="1755749433689" duration="1134000" />
-      <workItem from="1755767397084" duration="1516000" />
-      <workItem from="1755783968236" duration="1299000" />
     </task>
     <task id="LOCAL-00001" summary="init">
       <option name="closed" value="true" />
@@ -349,16 +343,5 @@
     <MESSAGE value="feat: store rotation" />
     <MESSAGE value="PropertiesPanel! And some bug fixes" />
     <option name="LAST_COMMIT_MESSAGE" value="PropertiesPanel! And some bug fixes" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/renderer/src/App.svelte</url>
-          <line>152</line>
-          <option name="timeStamp" value="1" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
 </project>
