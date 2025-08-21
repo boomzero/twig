@@ -30,6 +30,17 @@
     if (!fabCanvas) return
     const currentSlide = appState.presentation.slides[0]
 
+    // Preserve current selection and text editing state before re-rendering
+    const previousSelectedId = appState.selectedObjectId
+    const previousTextSelection =
+      activeTextObject && previousSelectedId === activeTextObject.id
+        ? {
+            start: activeTextObject.selectionStart,
+            end: activeTextObject.selectionEnd,
+            isEditing: activeTextObject.isEditing
+          }
+        : null
+
     // Temporarily disable event listeners while we re-render from state
     // to prevent infinite loops.
     fabCanvas.off('object:modified', handleObjectModified)
@@ -75,6 +86,28 @@
     fabCanvas.on('selection:created', handleSelection)
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
+
+    // Restore previous selection if possible
+    if (previousSelectedId) {
+      const obj = fabCanvas
+        .getObjects()
+        .find((o) => (o as DeckFabricObject).id === previousSelectedId) as DeckFabricObject | undefined
+      if (obj) {
+        fabCanvas.setActiveObject(obj)
+        if (previousTextSelection && obj instanceof IText && previousTextSelection.isEditing) {
+          obj.enterEditing()
+          if (
+            typeof previousTextSelection.start === 'number' &&
+            typeof previousTextSelection.end === 'number'
+          ) {
+            obj.setSelectionStart(previousTextSelection.start)
+            obj.setSelectionEnd(previousTextSelection.end)
+          }
+        }
+        handleSelection({ selected: [obj] })
+        fabCanvas.requestRenderAll()
+      }
+    }
   }
 
   function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }) {
