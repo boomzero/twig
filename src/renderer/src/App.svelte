@@ -104,7 +104,6 @@
             obj.setSelectionEnd(previousTextSelection.end)
           }
         }
-        handleSelection({ selected: [obj] })
         fabCanvas.requestRenderAll()
       }
     }
@@ -179,7 +178,8 @@
   }
 
   $effect(() => {
-    $inspect(appState)
+    // Only react to presentation changes to avoid rerendering on selection updates
+    $inspect(appState.presentation)
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
     }
