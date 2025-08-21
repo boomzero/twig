@@ -32,14 +32,17 @@
 
     // Preserve current selection and text editing state before re-rendering
     const previousSelectedId = appState.selectedObjectId
-    const previousTextSelection =
-      activeTextObject && previousSelectedId === activeTextObject.id
-        ? {
-            start: activeTextObject.selectionStart,
-            end: activeTextObject.selectionEnd,
-            isEditing: activeTextObject.isEditing
-          }
-        : null
+    const wasEditing =
+      activeTextObject &&
+      previousSelectedId === activeTextObject.id &&
+      activeTextObject.isEditing
+    const previousTextSelection = wasEditing
+      ? {
+          start: activeTextObject.selectionStart,
+          end: activeTextObject.selectionEnd,
+          isEditing: true
+        }
+      : null
 
     // Temporarily disable event listeners while we re-render from state
     // to prevent infinite loops.
@@ -47,6 +50,11 @@
     fabCanvas.off('selection:created', handleSelection)
     fabCanvas.off('selection:updated', handleSelection)
     fabCanvas.off('selection:cleared', handleSelectionCleared)
+
+    if (wasEditing) {
+      // Ensure the text object's hidden textarea is cleaned up before clearing
+      activeTextObject?.exitEditing()
+    }
 
     fabCanvas.clear()
     if (currentSlide) {
