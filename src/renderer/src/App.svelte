@@ -228,11 +228,14 @@
   }
 
   function addText() {
+    activeTextObject?.exitEditing()
     const newText: DeckElement = {
       type: 'text',
       id: `text_${uuid_v4()}`,
-      x: 250, y: 150,
-      width: 200, height: 50, // Note: width/height for text is auto-managed
+      x: 250,
+      y: 150,
+      width: 200,
+      height: 50, // Note: width/height for text is auto-managed
       angle: 0,
       text: 'Double-click to edit',
       fontSize: 40,
@@ -240,9 +243,11 @@
       fill: '#333333'
     }
     appState.presentation.slides[0].elements.push(newText)
+    appState.selectedObjectId = newText.id
   }
 
   function addRectangle() {
+    activeTextObject?.exitEditing()
     const newRect: DeckElement = {
       type: 'rect',
       id: `rect_${uuid_v4()}`,
@@ -255,6 +260,7 @@
     }
 
     appState.presentation.slides[0].elements.push(newRect)
+    appState.selectedObjectId = newRect.id
   }
 
   async function handleSave() {
