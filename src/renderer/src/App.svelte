@@ -190,6 +190,10 @@
     $inspect(appState.presentation)
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
+      fabCanvas.on('text:editing:entered', (e) => {
+        const target = e.target as IText
+        target.hiddenTextarea && (target.hiddenTextarea.style.pointerEvents = 'none')
+      })
     }
     renderCanvasFromState()
   })
