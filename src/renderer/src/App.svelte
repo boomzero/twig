@@ -167,10 +167,16 @@
       appState.selectedObjectId = null
     }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
+    // Restore pointer events on the previously active text's hidden textarea
+    activeTextObject?.hiddenTextarea &&
+      (activeTextObject.hiddenTextarea.style.pointerEvents = '')
+
     const selection = event.selected?.[0]
     if (selection instanceof IText) {
       activeTextObject = selection
       activeTextObject.on('selection:changed', handleTextSelectionChange)
+      activeTextObject.hiddenTextarea &&
+        (activeTextObject.hiddenTextarea.style.pointerEvents = 'none')
       handleTextSelectionChange()
     } else {
       activeTextObject = null
@@ -179,10 +185,12 @@
   }
 
   function handleSelectionCleared() {
-    activeTextObject?.off('selection:changed', handleTextSelectionChange);
-    appState.selectedObjectId = null;
-    activeTextObject = null;
-    isSelectionBold = false;
+    activeTextObject?.off('selection:changed', handleTextSelectionChange)
+    activeTextObject?.hiddenTextarea &&
+      (activeTextObject.hiddenTextarea.style.pointerEvents = '')
+    appState.selectedObjectId = null
+    activeTextObject = null
+    isSelectionBold = false
   }
 
   $effect(() => {
