@@ -8,16 +8,17 @@
     util,
     BaseFabricObject
   } from 'fabric'
-  import { appState } from './lib/state'
-  import type { DeckElement, SelectionState } from './lib/state'
+  import { appState } from './lib/state.svelte'
+  import type { DeckElement, SelectionState } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
 
   let canvasEl: HTMLCanvasElement
-  let selectionStateToRestore: SelectionState | null = null
   let fabCanvas: Canvas | undefined
   let activeTextObject: IText | null = $state(null)
   let isSelectionBold = $state(false)
+  let selectionStateToRestore: SelectionState | null = null
+  let isRestoringSelection = false
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -121,6 +122,7 @@
   }
 
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
+    if (isRestoringSelection) return
     //Only show properties if exactly ONE object is selected
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
@@ -186,7 +188,10 @@
         } else {
           selection = new ActiveSelection(objectsToSelect, { canvas: fabCanvas })
         }
+
+        isRestoringSelection = true
         fabCanvas.setActiveObject(selection)
+        isRestoringSelection = false
 
         if (
           selection instanceof IText &&
