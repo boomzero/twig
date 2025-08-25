@@ -27,7 +27,7 @@
   BaseFabricObject.ownDefaults.originX = 'center'
 
   // This function renders our state to the canvas
-  function renderCanvasFromState(): void {
+  function renderCanvasFromState() {
     if (!fabCanvas) return
     const currentSlide = appState.presentation.slides[0]
 
@@ -41,7 +41,7 @@
     fabCanvas.clear()
     if (currentSlide) {
       currentSlide.elements.forEach((element) => {
-        let fabObj: FabricObject | undefined
+        let fabObj: any
         if (element.type === 'rect') {
           fabObj = new Rect({
             left: element.x,
@@ -78,7 +78,7 @@
     fabCanvas.on('selection:cleared', handleSelectionCleared)
   }
 
-  function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }): void {
+  function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }) {
     const target = event.target
     if (!target) return
     //Check if the modified object is a group selection
@@ -96,7 +96,7 @@
     }
   }
 
-  function updateStateFromObject(obj: DeckFabricObject): void {
+  function updateStateFromObject(obj: DeckFabricObject) {
     if (!obj.id || !obj.width) return // Guard against objects without id or width
 
     const elementInState = appState.presentation.slides[0]?.elements.find((el) => el.id === obj.id)
@@ -120,7 +120,7 @@
     }
   }
 
-  function handleSelection(event: { selected?: DeckFabricObject[] }): void {
+  function handleSelection(event: { selected?: DeckFabricObject[] }) {
     //Only show properties if exactly ONE object is selected
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
@@ -143,7 +143,7 @@
     }
   }
 
-  function handleSelectionCleared(): void {
+  function handleSelectionCleared() {
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
     activeTextObject = null
@@ -170,9 +170,11 @@
           selectionStateToRestore.selectionStart = activeObject.selectionStart
           selectionStateToRestore.selectionEnd = activeObject.selectionEnd
         }
+        console.log('Saving selection state:', selectionStateToRestore)
       }
     }
 
+    $inspect(appState)
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
     }
@@ -180,6 +182,7 @@
 
     // Restore selection
     if (selectionStateToRestore && fabCanvas) {
+      console.log('Restoring selection state:', selectionStateToRestore)
       const objectsToSelect = fabCanvas
         .getObjects()
         .filter((o) => selectionStateToRestore!.selectedObjectIds.includes(o.id!))
@@ -206,43 +209,41 @@
     }
   })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function applyStyleToSelection(style: Record<string, any>): void {
+  function applyStyleToSelection(style: any) {
     if (activeTextObject) {
-      activeTextObject.setSelectionStyles(style)
+      activeTextObject.setSelectionStyles(style);
       // After applying, immediately re-check the selection state
-      handleTextSelectionChange()
-      fabCanvas?.renderAll()
-      updateStateFromObject(activeTextObject)
+      handleTextSelectionChange();
+      fabCanvas?.renderAll();
+      updateStateFromObject(activeTextObject);
     }
   }
-  function toggleBold(): void {
+  function toggleBold() {
     //The logic is now simpler: just toggle based on our reactive state variable
-    applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' })
+    applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' });
   }
 
-  function changeSelectionColor(event: Event): void {
+
+  function changeSelectionColor(event: Event) {
     const color = (event.target as HTMLInputElement).value
     applyStyleToSelection({ fill: color })
   }
 
-  function handleTextSelectionChange(): void {
+  function handleTextSelectionChange() {
     if (activeTextObject) {
       const styles = activeTextObject.getSelectionStyles()
       // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
       // Fabric returns an empty object for a simple cursor, so we default to false.
-      isSelectionBold = styles.length > 0 && styles.some((style) => style.fontWeight === 'bold')
+      isSelectionBold = styles.length > 0 && styles.some(style => style.fontWeight === 'bold');
     }
   }
 
-  function addText(): void {
+  function addText() {
     const newText: DeckElement = {
       type: 'text',
       id: `text_${uuid_v4()}`,
-      x: 250,
-      y: 150,
-      width: 200,
-      height: 50, // Note: width/height for text is auto-managed
+      x: 250, y: 150,
+      width: 200, height: 50, // Note: width/height for text is auto-managed
       angle: 0,
       text: 'Double-click to edit',
       fontSize: 40,
@@ -252,7 +253,7 @@
     appState.presentation.slides[0].elements.push(newText)
   }
 
-  function addRectangle(): void {
+  function addRectangle() {
     const newRect: DeckElement = {
       type: 'rect',
       id: `rect_${uuid_v4()}`,
@@ -267,7 +268,7 @@
     appState.presentation.slides[0].elements.push(newRect)
   }
 
-  async function handleSave(): Promise<void> {
+  async function handleSave() {
     // Convert the reactive state to a plain JavaScript object
     if (appState.currentFilePath) {
       const presentationData = { ...appState.presentation }
@@ -283,7 +284,7 @@
     }
   }
 
-  async function handleSaveAs(): Promise<void> {
+  async function handleSaveAs() {
     // Convert the reactive state to a plain JavaScript object
     const presentationData = { ...appState.presentation }
     const jsonString = JSON.stringify(presentationData, null, 2) // Pretty print JSON
@@ -296,7 +297,7 @@
     }
   }
 
-  async function handleOpen(): Promise<void> {
+  async function handleOpen() {
     const result = await window.api.openDeck()
     if (result.success && result.data) {
       try {
@@ -353,13 +354,9 @@
         onclick={toggleBold}
         class="px-3 py-1 font-bold text-sm rounded-md border border-gray-300"
         class:bg-indigo-200={isSelectionBold}
-        class:text-white={isSelectionBold}>B</button
-      >
-      <input
-        type="color"
-        oninput={changeSelectionColor}
-        class="w-8 h-8 p-0 border-none bg-transparent"
-      />
+        class:text-white={isSelectionBold}
+      >B</button>
+      <input type="color" oninput={changeSelectionColor} class="w-8 h-8 p-0 border-none bg-transparent" />
     {/if}
   </div>
   <div class="flex flex-1 overflow-hidden">

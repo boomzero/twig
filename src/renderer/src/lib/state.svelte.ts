@@ -1,4 +1,5 @@
 // Define the structure for an element on a slide
+import { StateHistory } from "runed";
 export interface DeckElement {
   type: 'rect' | 'text'
   id: string
@@ -11,8 +12,7 @@ export interface DeckElement {
   text?: string
   fontSize?: number
   fontFamily?: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  styles?: Record<string, any>
+  styles?: any
 }
 
 // Define the structure for a single slide
@@ -33,7 +33,7 @@ export interface SelectionState {
 }
 
 // Use $state to create a reactive object for our presentation
-export const appState = $state({
+export let appState = $state({
   presentation: {
     slides: [
       {
