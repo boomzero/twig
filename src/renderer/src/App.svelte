@@ -18,6 +18,7 @@
   let activeTextObject: IText | null = null
   let showRichTextControls = $state(false)
   let isSelectionBold = $state(false)
+  let selectionRangeToRestore: { start: number; end: number } | null = null
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -27,7 +28,7 @@
   BaseFabricObject.ownDefaults.originX = 'center'
 
   // This function renders our state to the canvas
-  function renderCanvasFromState() {
+  function renderCanvasFromState(): void {
     if (!fabCanvas) return
     const currentSlide = appState.presentation.slides[0]
 
@@ -41,7 +42,7 @@
     fabCanvas.clear()
     if (currentSlide) {
       currentSlide.elements.forEach((element) => {
-        let fabObj: any
+        let fabObj: FabricObject | undefined
         if (element.type === 'rect') {
           fabObj = new Rect({
             left: element.x,
@@ -78,7 +79,7 @@
     fabCanvas.on('selection:cleared', handleSelectionCleared)
   }
 
-  function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }) {
+  function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }): void {
     const target = event.target
     if (!target) return
     //Check if the modified object is a group selection
@@ -96,7 +97,7 @@
     }
   }
 
-  function updateStateFromObject(obj: DeckFabricObject) {
+  function updateStateFromObject(obj: DeckFabricObject): void {
     if (!obj.id || !obj.width) return // Guard against objects without id or width
 
     const elementInState = appState.presentation.slides[0]?.elements.find((el) => el.id === obj.id)
@@ -120,7 +121,7 @@
     }
   }
 
-  function handleSelection(event: { selected?: DeckFabricObject[] }) {
+  function handleSelection(event: { selected?: DeckFabricObject[] }): void {
     //Only show properties if exactly ONE object is selected
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
@@ -136,6 +137,12 @@
       showRichTextControls = true
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
+      if (selectionRangeToRestore) {
+        activeTextObject.setSelectionStart(selectionRangeToRestore.start)
+        activeTextObject.setSelectionEnd(selectionRangeToRestore.end)
+        selectionRangeToRestore = null
+        fabCanvas?.renderAll()
+      }
     } else {
       activeTextObject = null
       showRichTextControls = false
@@ -143,7 +150,7 @@
     }
   }
 
-  function handleSelectionCleared() {
+  function handleSelectionCleared(): void {
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
     activeTextObject = null
@@ -167,14 +174,14 @@
         }
 
         if (activeObject instanceof IText) {
-          selectionStateToRestore.selectionStart = activeObject.selectionStart
-          selectionStateToRestore.selectionEnd = activeObject.selectionEnd
+          selectionRangeToRestore = {
+            start: activeObject.selectionStart!,
+            end: activeObject.selectionEnd!
+          }
         }
-        console.log('Saving selection state:', selectionStateToRestore)
       }
     }
 
-    $inspect(appState)
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
     }
@@ -182,7 +189,6 @@
 
     // Restore selection
     if (selectionStateToRestore && fabCanvas) {
-      console.log('Restoring selection state:', selectionStateToRestore)
       const objectsToSelect = fabCanvas
         .getObjects()
         .filter((o) => selectionStateToRestore!.selectedObjectIds.includes(o.id!))
@@ -195,55 +201,48 @@
           selection = new ActiveSelection(objectsToSelect, { canvas: fabCanvas })
         }
         fabCanvas.setActiveObject(selection)
-
-        if (
-          selection instanceof IText &&
-          selectionStateToRestore.selectionStart !== undefined &&
-          selectionStateToRestore.selectionEnd !== undefined
-        ) {
-          selection.setSelectionStart(selectionStateToRestore.selectionStart)
-          selection.setSelectionEnd(selectionStateToRestore.selectionEnd)
-        }
         fabCanvas.renderAll()
       }
     }
   })
 
-  function applyStyleToSelection(style: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyStyleToSelection(style: Record<string, any>): void {
     if (activeTextObject) {
-      activeTextObject.setSelectionStyles(style);
+      activeTextObject.setSelectionStyles(style)
       // After applying, immediately re-check the selection state
-      handleTextSelectionChange();
-      fabCanvas?.renderAll();
-      updateStateFromObject(activeTextObject);
+      handleTextSelectionChange()
+      fabCanvas?.renderAll()
+      updateStateFromObject(activeTextObject)
     }
   }
-  function toggleBold() {
+  function toggleBold(): void {
     //The logic is now simpler: just toggle based on our reactive state variable
-    applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' });
+    applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' })
   }
 
-
-  function changeSelectionColor(event: Event) {
+  function changeSelectionColor(event: Event): void {
     const color = (event.target as HTMLInputElement).value
     applyStyleToSelection({ fill: color })
   }
 
-  function handleTextSelectionChange() {
+  function handleTextSelectionChange(): void {
     if (activeTextObject) {
       const styles = activeTextObject.getSelectionStyles()
       // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
       // Fabric returns an empty object for a simple cursor, so we default to false.
-      isSelectionBold = styles.length > 0 && styles.some(style => style.fontWeight === 'bold');
+      isSelectionBold = styles.length > 0 && styles.some((style) => style.fontWeight === 'bold')
     }
   }
 
-  function addText() {
+  function addText(): void {
     const newText: DeckElement = {
       type: 'text',
       id: `text_${uuid_v4()}`,
-      x: 250, y: 150,
-      width: 200, height: 50, // Note: width/height for text is auto-managed
+      x: 250,
+      y: 150,
+      width: 200,
+      height: 50, // Note: width/height for text is auto-managed
       angle: 0,
       text: 'Double-click to edit',
       fontSize: 40,
@@ -253,7 +252,7 @@
     appState.presentation.slides[0].elements.push(newText)
   }
 
-  function addRectangle() {
+  function addRectangle(): void {
     const newRect: DeckElement = {
       type: 'rect',
       id: `rect_${uuid_v4()}`,
@@ -268,7 +267,7 @@
     appState.presentation.slides[0].elements.push(newRect)
   }
 
-  async function handleSave() {
+  async function handleSave(): Promise<void> {
     // Convert the reactive state to a plain JavaScript object
     if (appState.currentFilePath) {
       const presentationData = { ...appState.presentation }
@@ -284,7 +283,7 @@
     }
   }
 
-  async function handleSaveAs() {
+  async function handleSaveAs(): Promise<void> {
     // Convert the reactive state to a plain JavaScript object
     const presentationData = { ...appState.presentation }
     const jsonString = JSON.stringify(presentationData, null, 2) // Pretty print JSON
@@ -297,7 +296,7 @@
     }
   }
 
-  async function handleOpen() {
+  async function handleOpen(): Promise<void> {
     const result = await window.api.openDeck()
     if (result.success && result.data) {
       try {
@@ -354,9 +353,13 @@
         onclick={toggleBold}
         class="px-3 py-1 font-bold text-sm rounded-md border border-gray-300"
         class:bg-indigo-200={isSelectionBold}
-        class:text-white={isSelectionBold}
-      >B</button>
-      <input type="color" oninput={changeSelectionColor} class="w-8 h-8 p-0 border-none bg-transparent" />
+        class:text-white={isSelectionBold}>B</button
+      >
+      <input
+        type="color"
+        oninput={changeSelectionColor}
+        class="w-8 h-8 p-0 border-none bg-transparent"
+      />
     {/if}
   </div>
   <div class="flex flex-1 overflow-hidden">
