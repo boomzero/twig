@@ -15,10 +15,16 @@
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
-  let activeTextObject: IText | null = $state(null)
+  let activeTextObjectId: string | null = $state(null)
+  let activeTextObject: IText | null = $derived.by(() => {
+    if (!fabCanvas || !activeTextObjectId) return null
+    const obj = fabCanvas.getObjects().find((o) => o.id === activeTextObjectId)
+    if (obj instanceof IText) {
+      return obj
+    }
+    return null
+  })
   let isSelectionBold = $state(false)
-  let selectionStateToRestore: SelectionState | null = null
-  let isRestoringSelection = false
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -122,57 +128,70 @@
   }
 
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
-    if (isRestoringSelection) return
     //Only show properties if exactly ONE object is selected
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
     } else {
       appState.selectedObjectId = null
     }
-    activeTextObject?.off('selection:changed', handleTextSelectionChange)
     const selection = event.selected?.[0]
     if (selection instanceof IText) {
-      activeTextObject = selection
-      activeTextObject.on('selection:changed', handleTextSelectionChange)
-      handleTextSelectionChange()
+      activeTextObjectId = selection.id!
     } else {
-      activeTextObject = null
-      isSelectionBold = false
+      activeTextObjectId = null
     }
   }
 
   function handleSelectionCleared(): void {
-    activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
-    activeTextObject = null
-    isSelectionBold = false
+    activeTextObjectId = null
   }
 
+  let prevActiveTextObject: IText | null = null
   $effect(() => {
+    // This effect manages the event listener for the active text object.
+    // It runs whenever the derived activeTextObject changes.
+
+    // Clean up old listener
+    prevActiveTextObject?.off('selection:changed', handleTextSelectionChange)
+
+    // Add new listener
+    if (activeTextObject) {
+      activeTextObject.on('selection:changed', handleTextSelectionChange)
+      handleTextSelectionChange() // Initial check
+    } else {
+      isSelectionBold = false
+    }
+
+    // Update previous value for next run
+    prevActiveTextObject = activeTextObject
+  })
+
+  $effect(() => {
+    let selectionStateToRestore: SelectionState | null = null
+    // Save selection
+    if (fabCanvas) {
+      const activeObject = fabCanvas.getActiveObject()
+      if (activeObject) {
+        const selectedObjectIds =
+          activeObject.type === 'activeselection'
+            ? (activeObject as ActiveSelection).getObjects().map((o) => o.id!)
+            : [activeObject.id!]
+
+        selectionStateToRestore = {
+          selectedObjectIds: selectedObjectIds
+        }
+
+        if (activeObject instanceof IText) {
+          selectionStateToRestore.selectionStart = activeObject.selectionStart
+          selectionStateToRestore.selectionEnd = activeObject.selectionEnd
+        }
+      }
+    }
+
     if (!fabCanvas) {
       fabCanvas = new Canvas(canvasEl)
     }
-
-    // Save selection
-    const activeObject = fabCanvas.getActiveObject()
-    if (activeObject) {
-      const selectedObjectIds =
-        activeObject.type === 'activeselection'
-          ? (activeObject as ActiveSelection).getObjects().map((o) => o.id!)
-          : [activeObject.id!]
-
-      selectionStateToRestore = {
-        selectedObjectIds: selectedObjectIds
-      }
-
-      if (activeObject instanceof IText) {
-        selectionStateToRestore.selectionStart = activeObject.selectionStart
-        selectionStateToRestore.selectionEnd = activeObject.selectionEnd
-      }
-    } else {
-      selectionStateToRestore = null
-    }
-
     renderCanvasFromState()
 
     // Restore selection
@@ -188,10 +207,7 @@
         } else {
           selection = new ActiveSelection(objectsToSelect, { canvas: fabCanvas })
         }
-
-        isRestoringSelection = true
         fabCanvas.setActiveObject(selection)
-        isRestoringSelection = false
 
         if (
           selection instanceof IText &&
@@ -201,10 +217,9 @@
           selection.setSelectionStart(selectionStateToRestore.selectionStart)
           selection.setSelectionEnd(selectionStateToRestore.selectionEnd)
         }
+        fabCanvas.renderAll()
       }
     }
-    selectionStateToRestore = null
-    fabCanvas?.renderAll()
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
