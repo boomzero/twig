@@ -15,15 +15,8 @@
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
-  let activeTextObjectId: string | null = $state(null)
-  let activeTextObject: IText | null = $derived.by(() => {
-    if (!fabCanvas || !activeTextObjectId) return null
-    const obj = fabCanvas.getObjects().find((o) => o.id === activeTextObjectId)
-    if (obj instanceof IText) {
-      return obj
-    }
-    return null
-  })
+  let activeTextObject: IText | null = null
+  let showRichTextControls = $state(false)
   let isSelectionBold = $state(false)
 
   type DeckFabricObject = FabricObject & { id?: string }
@@ -134,38 +127,29 @@
     } else {
       appState.selectedObjectId = null
     }
+
+    activeTextObject?.off('selection:changed', handleTextSelectionChange)
+
     const selection = event.selected?.[0]
     if (selection instanceof IText) {
-      activeTextObjectId = selection.id!
+      activeTextObject = selection
+      showRichTextControls = true
+      activeTextObject.on('selection:changed', handleTextSelectionChange)
+      handleTextSelectionChange()
     } else {
-      activeTextObjectId = null
+      activeTextObject = null
+      showRichTextControls = false
+      isSelectionBold = false
     }
   }
 
   function handleSelectionCleared(): void {
+    activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
-    activeTextObjectId = null
+    activeTextObject = null
+    showRichTextControls = false
+    isSelectionBold = false
   }
-
-  let prevActiveTextObject: IText | null = null
-  $effect(() => {
-    // This effect manages the event listener for the active text object.
-    // It runs whenever the derived activeTextObject changes.
-
-    // Clean up old listener
-    prevActiveTextObject?.off('selection:changed', handleTextSelectionChange)
-
-    // Add new listener
-    if (activeTextObject) {
-      activeTextObject.on('selection:changed', handleTextSelectionChange)
-      handleTextSelectionChange() // Initial check
-    } else {
-      isSelectionBold = false
-    }
-
-    // Update previous value for next run
-    prevActiveTextObject = activeTextObject
-  })
 
   $effect(() => {
     let selectionStateToRestore: SelectionState | null = null
@@ -363,7 +347,7 @@
     >
       Open
     </button>
-    {#if activeTextObject}
+    {#if showRichTextControls}
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
         onclick={toggleBold}
