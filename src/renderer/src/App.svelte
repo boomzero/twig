@@ -19,6 +19,7 @@
   let showRichTextControls = $state(false)
   let isSelectionBold = $state(false)
   let selectionRangeToRestore: { start: number; end: number } | null = null
+  let wasEditing = false
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -136,6 +137,10 @@
     if (selection instanceof IText) {
       activeTextObject = selection
       showRichTextControls = true
+      if (wasEditing) {
+        activeTextObject.enterEditing()
+        wasEditing = false // Reset the flag
+      }
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
       if (selectionRangeToRestore) {
@@ -153,6 +158,7 @@
       activeTextObject = null
       showRichTextControls = false
       isSelectionBold = false
+      wasEditing = false
     }
   }
 
@@ -162,6 +168,7 @@
     activeTextObject = null
     showRichTextControls = false
     isSelectionBold = false
+    wasEditing = false
   }
 
   $effect(() => {
@@ -185,6 +192,7 @@
             start: activeObject.selectionStart!,
             end: activeObject.selectionEnd!
           }
+          wasEditing = activeObject.isEditing
         }
       }
     }
