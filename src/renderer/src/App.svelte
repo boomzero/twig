@@ -139,10 +139,15 @@
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
       if (selectionRangeToRestore) {
-        activeTextObject.setSelectionStart(selectionRangeToRestore.start)
-        activeTextObject.setSelectionEnd(selectionRangeToRestore.end)
+        const range = { ...selectionRangeToRestore }
         selectionRangeToRestore = null
-        fabCanvas?.renderAll()
+        setTimeout(() => {
+          if (activeTextObject) {
+            activeTextObject.setSelectionStart(range.start)
+            activeTextObject.setSelectionEnd(range.end)
+            fabCanvas?.requestRenderAll()
+          }
+        }, 10)
       }
     } else {
       activeTextObject = null
