@@ -18,6 +18,8 @@
   let activeTextObject: IText | null = null
   let showRichTextControls = $state(false)
   let isSelectionBold = $state(false)
+  let isSelectionItalic = $state(false)
+  let isSelectionUnderlined = $state(false)
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
 
@@ -159,6 +161,8 @@
       activeTextObject = null
       showRichTextControls = false
       isSelectionBold = false
+      isSelectionItalic = false
+      isSelectionUnderlined = false
       wasEditing = false
     }
   }
@@ -169,6 +173,8 @@
     activeTextObject = null
     showRichTextControls = false
     isSelectionBold = false
+    isSelectionItalic = false
+    isSelectionUnderlined = false
     wasEditing = false
   }
 
@@ -239,6 +245,14 @@
     applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' })
   }
 
+  function toggleItalic(): void {
+    applyStyleToSelection({ fontStyle: isSelectionItalic ? 'normal' : 'italic' })
+  }
+
+  function toggleUnderline(): void {
+    applyStyleToSelection({ underline: !isSelectionUnderlined })
+  }
+
   function changeSelectionColor(event: Event): void {
     const color = (event.target as HTMLInputElement).value
     applyStyleToSelection({ fill: color })
@@ -255,6 +269,8 @@
       // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
       // Fabric returns an empty object for a simple cursor, so we default to false.
       isSelectionBold = styles.length > 0 && styles.some((style) => style.fontWeight === 'bold')
+      isSelectionItalic = styles.length > 0 && styles.some((style) => style.fontStyle === 'italic')
+      isSelectionUnderlined = styles.length > 0 && styles.some((style) => style.underline === true)
     }
   }
 
@@ -374,9 +390,21 @@
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
         onclick={toggleBold}
-        class="px-3 py-1 font-bold text-sm rounded-md border border-gray-300"
+        class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionBold}
         class:text-white={isSelectionBold}>B</button
+      >
+      <button
+        onclick={toggleItalic}
+        class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md border border-gray-300 mr-1"
+        class:bg-indigo-200={isSelectionItalic}
+        class:text-white={isSelectionItalic}>I</button
+      >
+      <button
+        onclick={toggleUnderline}
+        class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md border border-gray-300 mr-1"
+        class:bg-indigo-200={isSelectionUnderlined}
+        class:text-white={isSelectionUnderlined}>U</button
       >
       <input
         type="color"
