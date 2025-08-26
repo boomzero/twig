@@ -151,6 +151,7 @@
             activeTextObject.setSelectionStart(range.start)
             activeTextObject.setSelectionEnd(range.end)
             fabCanvas?.requestRenderAll()
+            handleTextSelectionChange()
           }
         }, 10)
       }
