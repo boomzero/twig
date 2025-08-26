@@ -122,6 +122,7 @@
   }
 
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
+    console.log('handleSelection. selectionRangeToRestore:', selectionRangeToRestore)
     //Only show properties if exactly ONE object is selected
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
@@ -159,6 +160,7 @@
   }
 
   $effect(() => {
+    console.log('$effect running. selectionRangeToRestore:', selectionRangeToRestore)
     let selectionStateToRestore: SelectionState | null = null
     // Save selection
     if (fabCanvas) {
@@ -208,6 +210,7 @@
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function applyStyleToSelection(style: Record<string, any>): void {
+    console.log('applyStyleToSelection called with', style)
     if (activeTextObject) {
       activeTextObject.setSelectionStyles(style)
       // After applying, immediately re-check the selection state
@@ -217,6 +220,7 @@
     }
   }
   function toggleBold(): void {
+    console.log('toggleBold called')
     //The logic is now simpler: just toggle based on our reactive state variable
     applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' })
   }
@@ -228,6 +232,11 @@
 
   function handleTextSelectionChange(): void {
     if (activeTextObject) {
+      console.log(
+        'handleTextSelectionChange. Selection:',
+        activeTextObject?.selectionStart,
+        activeTextObject?.selectionEnd
+      )
       const styles = activeTextObject.getSelectionStyles()
       // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
       // Fabric returns an empty object for a simple cursor, so we default to false.
