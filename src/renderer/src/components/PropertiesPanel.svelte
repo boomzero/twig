@@ -6,7 +6,7 @@
   )
 </script>
 
-<div class="p-4 bg-gray-50 border-l border-gray-300 w-64">
+<div class="p-4 bg-gray-50 border-l border-gray-300 basis-64">
   <h3 class="text-lg font-semibold mb-4">Properties</h3>
 
   {#if selectedObject}
