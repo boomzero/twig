@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { appState} from '../lib/state.svelte'
+  import { appState } from '../lib/state.svelte'
 
   const selectedObject = $derived(
     appState.presentation.slides[0]?.elements.find((el) => el.id === appState.selectedObjectId)
