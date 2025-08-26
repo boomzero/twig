@@ -19,6 +19,7 @@
   let showRichTextControls = $state(false)
   let isSelectionBold = $state(false)
   let selectionRangeToRestore: { start: number; end: number } | null = null
+  let wasEditing = false
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -122,6 +123,7 @@
   }
 
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
+    console.log('handleSelection. selectionRangeToRestore:', selectionRangeToRestore)
     //Only show properties if exactly ONE object is selected
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
@@ -135,18 +137,29 @@
     if (selection instanceof IText) {
       activeTextObject = selection
       showRichTextControls = true
+      if (wasEditing) {
+        activeTextObject.enterEditing()
+        wasEditing = false // Reset the flag
+      }
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
       if (selectionRangeToRestore) {
-        activeTextObject.setSelectionStart(selectionRangeToRestore.start)
-        activeTextObject.setSelectionEnd(selectionRangeToRestore.end)
+        const range = { ...selectionRangeToRestore }
         selectionRangeToRestore = null
-        fabCanvas?.renderAll()
+        setTimeout(() => {
+          if (activeTextObject) {
+            activeTextObject.setSelectionStart(range.start)
+            activeTextObject.setSelectionEnd(range.end)
+            fabCanvas?.requestRenderAll()
+            handleTextSelectionChange()
+          }
+        }, 10)
       }
     } else {
       activeTextObject = null
       showRichTextControls = false
       isSelectionBold = false
+      wasEditing = false
     }
   }
 
@@ -156,9 +169,11 @@
     activeTextObject = null
     showRichTextControls = false
     isSelectionBold = false
+    wasEditing = false
   }
 
   $effect(() => {
+    console.log('$effect running. selectionRangeToRestore:', selectionRangeToRestore)
     let selectionStateToRestore: SelectionState | null = null
     // Save selection
     if (fabCanvas) {
@@ -178,6 +193,7 @@
             start: activeObject.selectionStart!,
             end: activeObject.selectionEnd!
           }
+          wasEditing = activeObject.isEditing
         }
       }
     }
@@ -208,6 +224,7 @@
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function applyStyleToSelection(style: Record<string, any>): void {
+    console.log('applyStyleToSelection called with', style)
     if (activeTextObject) {
       activeTextObject.setSelectionStyles(style)
       // After applying, immediately re-check the selection state
@@ -217,6 +234,7 @@
     }
   }
   function toggleBold(): void {
+    console.log('toggleBold called')
     //The logic is now simpler: just toggle based on our reactive state variable
     applyStyleToSelection({ fontWeight: isSelectionBold ? 'normal' : 'bold' })
   }
@@ -228,6 +246,11 @@
 
   function handleTextSelectionChange(): void {
     if (activeTextObject) {
+      console.log(
+        'handleTextSelectionChange. Selection:',
+        activeTextObject?.selectionStart,
+        activeTextObject?.selectionEnd
+      )
       const styles = activeTextObject.getSelectionStyles()
       // Check if fontWeight is bold. If multiple styles are selected, it might be partially bold.
       // Fabric returns an empty object for a simple cursor, so we default to false.
