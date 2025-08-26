@@ -390,19 +390,19 @@
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
         onclick={toggleBold}
-        class="px-3 py-1 font-bold text-sm rounded-md border border-gray-300"
+        class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionBold}
         class:text-white={isSelectionBold}>B</button
       >
       <button
         onclick={toggleItalic}
-        class="px-3 py-1 italic text-sm rounded-md border border-gray-300"
+        class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionItalic}
         class:text-white={isSelectionItalic}>I</button
       >
       <button
         onclick={toggleUnderline}
-        class="px-3 py-1 underline text-sm rounded-md border border-gray-300"
+        class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionUnderlined}
         class:text-white={isSelectionUnderlined}>U</button
       >
