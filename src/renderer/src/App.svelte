@@ -414,16 +414,18 @@
     {/if}
   </div>
   <div class="flex flex-1 overflow-hidden">
-    <div class="w-48 p-2 overflow-y-auto bg-gray-50 border-r border-gray-300">
+    <!--  Slide list panel -->
+    <div class="w-48 flex-shrink-0 p-2 overflow-y-auto bg-gray-50 border-r border-gray-300">
       <div
         class="p-2 mb-2 text-sm text-center bg-white border border-gray-400 rounded-md shadow-md cursor-pointer hover:border-indigo-500"
       >
         Slide 1
       </div>
     </div>
-    <div class="flex-1 p-4 bg-gray-200">
+    <!-- Main canvas area -->
+    <div class="flex-1 p-4 bg-gray-200 min-w-0">
       <div class="flex items-center justify-center h-full">
-        <div class="bg-white shadow-lg">
+        <div class="bg-white shadow-lg overflow-auto">
           <canvas bind:this={canvasEl} width="800" height="600"></canvas>
         </div>
       </div>
