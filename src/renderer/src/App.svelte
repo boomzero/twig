@@ -401,14 +401,14 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeyDown} on:click={hideContextMenu} />
+<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
 
-<div class="flex flex-col h-screen font-sans" on:contextmenu={handleContextMenu}>
+<div class="flex flex-col h-screen font-sans" oncontextmenu={handleContextMenu}>
   {#if contextMenuVisible}
     <ContextMenu
       x={contextMenuPosition.x}
       y={contextMenuPosition.y}
-      on:delete={() => {
+      onDelete={() => {
         deleteSelectedObject()
         hideContextMenu()
       }}
