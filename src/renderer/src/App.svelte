@@ -104,7 +104,6 @@
       // Otherwise, it's a single object
       updateStateFromObject(target as DeckFabricObject)
     }
-    history.log()
   }
 
   function updateStateFromObject(obj: DeckFabricObject): void {
@@ -246,7 +245,6 @@
       handleTextSelectionChange()
       fabCanvas?.renderAll()
       updateStateFromObject(activeTextObject)
-      history.log()
     }
   }
 
@@ -300,7 +298,6 @@
       fill: '#333333'
     }
     appState.presentation.slides[0].elements.push(newText)
-    history.log()
   }
 
   function addRectangle(): void {
@@ -316,7 +313,6 @@
     }
 
     appState.presentation.slides[0].elements.push(newRect)
-    history.log()
   }
 
   function deleteSelectedObject(): void {
@@ -332,7 +328,6 @@
       currentSlide.elements = currentSlide.elements.filter((el) => !idsToDelete.includes(el.id))
       fabCanvas.discardActiveObject()
       // The reactive state change will trigger a re-render via the $effect
-      history.log()
     }
   }
 
@@ -379,7 +374,6 @@
         if (result.path) {
           appState.currentFilePath = result.path
         }
-        history.log()
       } catch (error) {
         console.error('Failed to parse presentation data:', error)
       }
@@ -519,21 +513,21 @@
         class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionBold}
         class:text-white={isSelectionBold}
-      >B
+        >B
       </button>
       <button
         onclick={toggleItalic}
         class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionItalic}
         class:text-white={isSelectionItalic}
-      >I
+        >I
       </button>
       <button
         onclick={toggleUnderline}
         class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionUnderlined}
         class:text-white={isSelectionUnderlined}
-      >U
+        >U
       </button>
       <input
         type="color"
