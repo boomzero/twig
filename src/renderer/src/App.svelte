@@ -191,8 +191,10 @@
       if (activeObject) {
         const selectedObjectIds =
           activeObject.type === 'activeselection'
-            ? (activeObject as ActiveSelection).getObjects().map((o) => o.id!)
-            : [activeObject.id!]
+            ? (activeObject as ActiveSelection)
+                .getObjects()
+                .map((o) => (o as DeckFabricObject).id!)
+            : [(activeObject as DeckFabricObject).id!]
 
         selectionStateToRestore = {
           selectedObjectIds: selectedObjectIds
@@ -217,7 +219,9 @@
     if (selectionStateToRestore && fabCanvas) {
       const objectsToSelect = fabCanvas
         .getObjects()
-        .filter((o) => selectionStateToRestore!.selectedObjectIds.includes(o.id!))
+        .filter((o) =>
+          selectionStateToRestore!.selectedObjectIds.includes((o as DeckFabricObject).id!)
+        )
 
       if (objectsToSelect.length > 0) {
         let selection
