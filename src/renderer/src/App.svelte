@@ -12,6 +12,7 @@
   import type { DeckElement, SelectionState } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
+  import ContextMenu from './components/ContextMenu.svelte'
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
@@ -22,6 +23,9 @@
   let isSelectionUnderlined = $state(false)
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
+
+  let contextMenuVisible = $state(false)
+  let contextMenuPosition = $state({ x: 0, y: 0 })
 
   type DeckFabricObject = FabricObject & { id?: string }
 
@@ -306,6 +310,22 @@
     appState.presentation.slides[0].elements.push(newRect)
   }
 
+  function deleteSelectedObject(): void {
+    if (!fabCanvas) return
+
+    const activeObjects = fabCanvas.getActiveObjects()
+    if (activeObjects.length === 0) return
+
+    const idsToDelete = activeObjects.map((obj) => (obj as DeckFabricObject).id).filter((id) => id)
+
+    if (idsToDelete.length > 0) {
+      const currentSlide = appState.presentation.slides[0]
+      currentSlide.elements = currentSlide.elements.filter((el) => !idsToDelete.includes(el.id))
+      fabCanvas.discardActiveObject()
+      // The reactive state change will trigger a re-render via the $effect
+    }
+  }
+
   async function handleSave(): Promise<void> {
     // Convert the reactive state to a plain JavaScript object
     if (appState.currentFilePath) {
@@ -352,9 +372,59 @@
       console.error('Open failed:', result.error)
     }
   }
+
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Check if we're currently editing a text object. If so, don't delete the object.
+      if (activeTextObject && activeTextObject.isEditing) {
+        return
+      }
+      event.preventDefault()
+      deleteSelectedObject()
+    }
+  }
+
+  function handleContextMenu(event: MouseEvent): void {
+    event.preventDefault()
+    if (!fabCanvas) return // Ensure canvas is available
+
+    const target = fabCanvas.findTarget(event)
+    if (target) {
+      // If the right-clicked object is not already part of the active selection,
+      // clear the current selection and select the new target.
+      if (!fabCanvas.getActiveObjects().includes(target)) {
+        fabCanvas.discardActiveObject()
+        fabCanvas.setActiveObject(target)
+        fabCanvas.requestRenderAll()
+      }
+      contextMenuPosition = { x: event.clientX, y: event.clientY }
+      contextMenuVisible = true
+    } else {
+      // If right-clicking on the empty canvas, clear selection and hide menu
+      fabCanvas.discardActiveObject()
+      fabCanvas.requestRenderAll()
+      contextMenuVisible = false
+    }
+  }
+
+  function hideContextMenu(): void {
+    contextMenuVisible = false
+  }
 </script>
 
-<div class="flex flex-col h-screen font-sans">
+<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
+
+<div class="flex flex-col h-screen font-sans" oncontextmenu={handleContextMenu} role="application">
+  {#if contextMenuVisible}
+    <ContextMenu
+      x={contextMenuPosition.x}
+      y={contextMenuPosition.y}
+      onDelete={() => {
+        deleteSelectedObject()
+        hideContextMenu()
+      }}
+    />
+  {/if}
   <div class="flex items-center p-2 bg-gray-100 border-b border-gray-300 shadow-sm">
     <button
       onclick={addRectangle}

@@ -2,7 +2,6 @@
 
 # Start of Svelte documentation
 
-
 # Overview
 
 Svelte is a framework for building user interfaces on the web. It uses a compiler to turn declarative components written in HTML, CSS and JavaScript...
@@ -10,17 +9,17 @@ Svelte is a framework for building user interfaces on the web. It uses a compile
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	function greet() {
-		alert('Welcome to Svelte!');
-	}
+  function greet() {
+    alert('Welcome to Svelte!')
+  }
 </script>
 
 <button onclick={greet}>click me</button>
 
 <style>
-	button {
-		font-size: 2em;
-	}
+  button {
+    font-size: 2em;
+  }
 </style>
 ```
 
@@ -49,7 +48,7 @@ Don't worry if you don't know Svelte yet! You can ignore all the nice features S
 
 You can also use Svelte directly with Vite by running `npm create vite@latest` and selecting the `svelte` option. With this, `npm run build` will generate HTML, JS, and CSS files inside the `dist` directory using [vite-plugin-svelte](https://github.com/sveltejs/vite-plugin-svelte). In most cases, you will probably need to [choose a routing library](faq#Is-there-a-router) as well.
 
->[!NOTE] Vite is often used in standalone mode to build [single page apps (SPAs)](../kit/glossary#SPA), which you can also [build with SvelteKit](../kit/single-page-apps).
+> [!NOTE] Vite is often used in standalone mode to build [single page apps (SPAs)](../kit/glossary#SPA), which you can also [build with SvelteKit](../kit/single-page-apps).
 
 There are also plugins for [Rollup](https://github.com/sveltejs/rollup-plugin-svelte), [Webpack](https://github.com/sveltejs/svelte-loader) [and a few others](https://sveltesociety.dev/packages?category=build-plugins), but we recommend Vite.
 
@@ -102,12 +101,12 @@ A `<script>` tag with a `module` attribute runs once when the module first evalu
 
 ```svelte
 <script module>
-	let total = 0;
+  let total = 0
 </script>
 
 <script>
-	total += 1;
-	console.log(`instantiated ${total} times`);
+  total += 1
+  console.log(`instantiated ${total} times`)
 </script>
 ```
 
@@ -124,10 +123,10 @@ CSS inside a `<style>` block will be scoped to that component.
 
 ```svelte
 <style>
-	p {
-		/* this will only affect <p> elements in this component */
-		color: burlywood;
-	}
+  p {
+    /* this will only affect <p> elements in this component */
+    color: burlywood;
+  }
 </style>
 ```
 
@@ -153,7 +152,7 @@ Runes are symbols that you use in `.svelte` and `.svelte.js`/`.svelte.ts` files 
 Runes have a `$` prefix and look like functions:
 
 ```js
-let message = $state('hello');
+let message = $state('hello')
 ```
 
 They differ from normal JavaScript functions in important ways, however:
@@ -171,11 +170,11 @@ The `$state` rune allows you to create _reactive state_, which means that your U
 
 ```svelte
 <script>
-	let count = $state(0);
+  let count = $state(0)
 </script>
 
 <button onclick={() => count++}>
-	clicks: {count}
+  clicks: {count}
 </button>
 ```
 
@@ -189,30 +188,30 @@ State is proxified recursively until Svelte finds something other than an array 
 
 ```js
 let todos = $state([
-	{
-		done: false,
-		text: 'add more todos'
-	}
-]);
+  {
+    done: false,
+    text: 'add more todos'
+  }
+])
 ```
 
 ...modifying an individual todo's property will trigger updates to anything in your UI that depends on that specific property:
 
 ```js
-let todos = [{ done: false, text: 'add more todos' }];
+let todos = [{ done: false, text: 'add more todos' }]
 // ---cut---
-todos[0].done = !todos[0].done;
+todos[0].done = !todos[0].done
 ```
 
 If you push a new object to the array, it will also be proxified:
 
 ```js
-let todos = [{ done: false, text: 'add more todos' }];
+let todos = [{ done: false, text: 'add more todos' }]
 // ---cut---
 todos.push({
-	done: false,
-	text: 'eat lunch'
-});
+  done: false,
+  text: 'eat lunch'
+})
 ```
 
 > [!NOTE] When you update properties of proxies, the original object is _not_ mutated. If you need to use your own proxy handlers in a state proxy, [you should wrap the object _after_ wrapping it in `$state`](https://svelte.dev/playground/hello-world?version=latest#H4sIAAAAAAAACpWR3WoDIRCFX2UqhWyIJL3erAulL9C7XnQLMe5ksbUqOpsfln33YuyGFNJC8UKdc2bOhw7Myk9kJXsJ0nttO9jcR5KEG9AWJDwHdzwxznbaYGTl68Do5JM_FRifuh-9X8Y9Gkq1rYx4q66cJbQUWcmqqIL2VDe2IYMEbvuOikBADi-GJDSkXG-phId0G-frye2DO2psQYDFQ0Ys8gQO350dUkEydEg82T0GOs0nsSG9g2IqgxACZueo2ZUlpdvoDC6N64qsg1QKY8T2bpZp8gpIfbCQ85Zn50Ud82HkeY83uDjspenxv3jXcSDyjPWf9L1vJf0GH666J-jLu1ery4dV257IWXBWGa0-xFDMQdTTn2ScxWKsn86ROsLwQxqrVR5QM84Ij8TKFD2-cUZSm4O2LSt30kQcvwCgCmfZnAIAAA==).
@@ -220,12 +219,12 @@ todos.push({
 Note that if you destructure a reactive value, the references are not reactive — as in normal JavaScript, they are evaluated at the point of destructuring:
 
 ```js
-let todos = [{ done: false, text: 'add more todos' }];
+let todos = [{ done: false, text: 'add more todos' }]
 // ---cut---
-let { done, text } = todos[0];
+let { done, text } = todos[0]
 
 // this will not affect the value of `done`
-todos[0].done = !todos[0].done;
+todos[0].done = !todos[0].done
 ```
 
 ### Classes
@@ -235,16 +234,16 @@ Class instances are not proxied. Instead, you can use `$state` in class fields (
 ```js
 // @errors: 7006 2554
 class Todo {
-	done = $state(false);
+  done = $state(false)
 
-	constructor(text) {
-		this.text = $state(text);
-	}
+  constructor(text) {
+    this.text = $state(text)
+  }
 
-	reset() {
-		this.text = '';
-		this.done = false;
-	}
+  reset() {
+    this.text = ''
+    this.done = false
+  }
 }
 ```
 
@@ -253,17 +252,13 @@ class Todo {
 When calling methods in JavaScript, the value of [`this`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this) matters. This won't work, because `this` inside the `reset` method will be the `<button>` rather than the `Todo`:
 
 ```svelte
-<button onclick={todo.reset}>
-	reset
-</button>
+<button onclick={todo.reset}> reset </button>
 ```
 
 You can either use an inline function...
 
 ```svelte
-<button onclick=+++{() => todo.reset()}>+++
-	reset
-</button>
+<button onclick="+++{() => todo.reset()}">+++ reset </button>
 ```
 
 ...or use an arrow function in the class definition:
@@ -296,18 +291,18 @@ State declared with `$state.raw` cannot be mutated; it can only be _reassigned_.
 
 ```js
 let person = $state.raw({
-	name: 'Heraclitus',
-	age: 49
-});
+  name: 'Heraclitus',
+  age: 49
+})
 
 // this will have no effect
-person.age += 1;
+person.age += 1
 
 // this will work, because we're creating a new person
 person = {
-	name: 'Heraclitus',
-	age: 50
-};
+  name: 'Heraclitus',
+  age: 50
+}
 ```
 
 This can improve performance with large arrays and objects that you weren't planning to mutate anyway, since it avoids the cost of making them reactive. Note that raw state can _contain_ reactive state (for example, a raw array of reactive objects).
@@ -320,12 +315,12 @@ To take a static snapshot of a deeply reactive `$state` proxy, use `$state.snaps
 
 ```svelte
 <script>
-	let counter = $state({ count: 0 });
+  let counter = $state({ count: 0 })
 
-	function onclick() {
-		// Will log `{ count: ... }` rather than `Proxy { ... }`
-		console.log($state.snapshot(counter));
-	}
+  function onclick() {
+    // Will log `{ count: ... }` rather than `Proxy { ... }`
+    console.log($state.snapshot(counter))
+  }
 </script>
 ```
 
@@ -344,17 +339,17 @@ JavaScript is a _pass-by-value_ language — when you call a function, the argum
  * @param {number} b
  */
 function add(a, b) {
-	return a + b;
+  return a + b
 }
 
-let a = 1;
-let b = 2;
-let total = add(a, b);
-console.log(total); // 3
+let a = 1
+let b = 2
+let total = add(a, b)
+console.log(total) // 3
 
-a = 3;
-b = 4;
-console.log(total); // still 3!
+a = 3
+b = 4
+console.log(total) // still 3!
 ```
 
 If `add` wanted to have access to the _current_ values of `a` and `b`, and to return the current `total` value, you would need to use functions instead:
@@ -400,20 +395,20 @@ Note that 'functions' is broad — it encompasses properties of proxies and [`g
  * @param {{ a: number, b: number }} input
  */
 function add(input) {
-	return {
-		get value() {
-			return input.a + input.b;
-		}
-	};
+  return {
+    get value() {
+      return input.a + input.b
+    }
+  }
 }
 
-let input = $state({ a: 1, b: 2 });
-let total = add(input);
-console.log(total.value); // 3
+let input = $state({ a: 1, b: 2 })
+let total = add(input)
+console.log(total.value) // 3
 
-input.a = 3;
-input.b = 4;
-console.log(total.value); // 7
+input.a = 3
+input.b = 4
+console.log(total.value) // 7
 ```
 
 ...though if you find yourself writing code like that, consider using [classes](#Classes) instead.
@@ -424,10 +419,10 @@ You can declare state in `.svelte.js` and `.svelte.ts` files, but you can only _
 
 ```js
 /// file: state.svelte.js
-export let count = $state(0);
+export let count = $state(0)
 
 export function increment() {
-	count += 1;
+  count += 1
 }
 ```
 
@@ -460,13 +455,13 @@ Since the compiler only operates on one file at a time, if another file imports 
 
 ```js
 // @filename: state.svelte.js
-export let count = 0;
+export let count = 0
 
 // @filename: index.js
 // ---cut---
-import { count } from './state.svelte.js';
+import { count } from './state.svelte.js'
 
-console.log(typeof count); // 'object', not 'number'
+console.log(typeof count) // 'object', not 'number'
 ```
 
 This leaves you with two options for sharing state between modules — either don't reassign it...
@@ -476,25 +471,25 @@ This leaves you with two options for sharing state between modules — either do
 // `counter.count` rather than `counter`,
 // Svelte doesn't wrap it in `$.state`
 export const counter = $state({
-	count: 0
-});
+  count: 0
+})
 
 export function increment() {
-	counter.count += 1;
+  counter.count += 1
 }
 ```
 
 ...or don't directly export it:
 
 ```js
-let count = $state(0);
+let count = $state(0)
 
 export function getCount() {
-	return count;
+  return count
 }
 
 export function increment() {
-	count += 1;
+  count += 1
 }
 ```
 
@@ -504,12 +499,12 @@ Derived state is declared with the `$derived` rune:
 
 ```svelte
 <script>
-	let count = $state(0);
-	let doubled = $derived(count * 2);
+  let count = $state(0)
+  let doubled = $derived(count * 2)
 </script>
 
 <button onclick={() => count++}>
-	{doubled}
+  {doubled}
 </button>
 
 <p>{count} doubled is {doubled}</p>
@@ -527,18 +522,18 @@ Sometimes you need to create complex derivations that don't fit inside a short e
 
 ```svelte
 <script>
-	let numbers = $state([1, 2, 3]);
-	let total = $derived.by(() => {
-		let total = 0;
-		for (const n of numbers) {
-			total += n;
-		}
-		return total;
-	});
+  let numbers = $state([1, 2, 3])
+  let total = $derived.by(() => {
+    let total = 0
+    for (const n of numbers) {
+      total += n
+    }
+    return total
+  })
 </script>
 
 <button onclick={() => numbers.push(numbers.length + 1)}>
-	{numbers.join(' + ')} = {total}
+  {numbers.join(' + ')} = {total}
 </button>
 ```
 
@@ -556,22 +551,22 @@ Derived expressions are recalculated when their dependencies change, but you can
 
 ```svelte
 <script>
-	let { post, like } = $props();
+  let { post, like } = $props()
 
-	let likes = $derived(post.likes);
+  let likes = $derived(post.likes)
 
-	async function onclick() {
-		// increment the `likes` count immediately...
-		likes += 1;
+  async function onclick() {
+    // increment the `likes` count immediately...
+    likes += 1
 
-		// and tell the server, which will eventually update `post`
-		try {
-			await like();
-		} catch {
-			// failed! roll back the change
-			likes -= 1;
-		}
-	}
+    // and tell the server, which will eventually update `post`
+    try {
+      await like()
+    } catch {
+      // failed! roll back the change
+      likes -= 1
+    }
+  }
 </script>
 
 <button {onclick}>🧡 {likes}</button>
@@ -584,10 +579,7 @@ Derived expressions are recalculated when their dependencies change, but you can
 Unlike `$state`, which converts objects and arrays to [deeply reactive proxies]($state#Deep-state), `$derived` values are left as-is. For example, [in a case like this](/playground/untitled#H4sIAAAAAAAAE4VU22rjMBD9lUHd3aaQi9PdstS1A3t5XvpQ2Ic4D7I1iUUV2UjjNMX431eS7TRdSosxgjMzZ45mjt0yzffIYibvy0ojFJWqDKCQVBk2ZVup0LJ43TJ6rn2aBxw-FP2o67k9oCKP5dziW3hRaUJNjoYltjCyplWmM1JIIAn3FlL4ZIkTTtYez6jtj4w8WwyXv9GiIXiQxLVs9pfTMR7EuoSLIuLFbX7Z4930bZo_nBrD1bs834tlfvsBz9_SyX6PZXu9XaL4gOWn4sXjeyzftv4ZWfyxubpzxzg6LfD4MrooxELEosKCUPigQCMPKCZh0OtQE1iSxcsmdHuBvCiHZXALLXiN08EL3RRkaJ_kDVGle0HcSD5TPEeVtj67O4Nrg9aiSNtBY5oODJkrL5QsHtN2cgXp6nSJMWzpWWGasdlsGEMbzi5jPr5KFr0Ep7pdeM2-TCelCddIhDxAobi1jqF3cMaC1RKp64bAW9iFAmXGIHfd4wNXDabtOLN53w8W53VvJoZLh7xk4Rr3CoL-UNoLhWHrT1JQGcM17u96oES5K-kc2XOzkzqGCKL5De79OUTyyrg1zgwXsrEx3ESfx4Bz0M5UjVMHB24mw9SuXtXFoN13fYKOM1tyUT3FbvbWmSWCZX2Er-41u5xPoml45svRahl9Wb9aasbINJixDZwcPTbyTLZSUsAvrg_cPuCR7s782_WU8343Y72Qtlb8OYatwuOQvuN13M_hJKNfxann1v1U_B1KZ_D_mzhzhz24fw85CSz2irtN9w9HshBK7AQAAA==)...
 
 ```svelte
-let items = $state([...]);
-
-let index = $state(0);
-let selected = $derived(items[index]);
+let items = $state([...]); let index = $state(0); let selected = $derived(items[index]);
 ```
 
 ...you can change (or `bind:` to) properties of `selected` and it will affect the underlying `items` array. If `items` was _not_ deeply reactive, mutating `selected` would have no effect.
@@ -597,20 +589,24 @@ let selected = $derived(items[index]);
 If you use destructuring with a `$derived` declaration, the resulting variables will all be reactive — this...
 
 ```js
-function stuff() { return { a: 1, b: 2, c: 3 } }
+function stuff() {
+  return { a: 1, b: 2, c: 3 }
+}
 // ---cut---
-let { a, b, c } = $derived(stuff());
+let { a, b, c } = $derived(stuff())
 ```
 
 ...is roughly equivalent to this:
 
 ```js
-function stuff() { return { a: 1, b: 2, c: 3 } }
+function stuff() {
+  return { a: 1, b: 2, c: 3 }
+}
 // ---cut---
-let _stuff = $derived(stuff());
-let a = $derived(_stuff.a);
-let b = $derived(_stuff.b);
-let c = $derived(_stuff.c);
+let _stuff = $derived(stuff())
+let a = $derived(_stuff.a)
+let b = $derived(_stuff.b)
+let c = $derived(_stuff.c)
 ```
 
 ## Update propagation
@@ -621,12 +617,12 @@ If the new value of a derived is referentially identical to its previous value, 
 
 ```svelte
 <script>
-	let count = $state(0);
-	let large = $derived(count > 10);
+  let count = $state(0)
+  let large = $derived(count > 10)
 </script>
 
 <button onclick={() => count++}>
-	{large}
+  {large}
 </button>
 ```
 
@@ -640,19 +636,19 @@ You can create an effect with the `$effect` rune ([demo](/playground/untitled#H4
 
 ```svelte
 <script>
-	let size = $state(50);
-	let color = $state('#ff3e00');
+  let size = $state(50)
+  let color = $state('#ff3e00')
 
-	let canvas;
+  let canvas
 
-	$effect(() => {
-		const context = canvas.getContext('2d');
-		context.clearRect(0, 0, canvas.width, canvas.height);
+  $effect(() => {
+    const context = canvas.getContext('2d')
+    context.clearRect(0, 0, canvas.width, canvas.height)
 
-		// this will re-run whenever `color` or `size` change
-		context.fillStyle = color;
-		context.fillRect(0, 0, size, size);
-	});
+    // this will re-run whenever `color` or `size` change
+    context.fillStyle = color
+    context.fillRect(0, 0, size, size)
+  })
 </script>
 
 <canvas bind:this={canvas} width="100" height="100"></canvas>
@@ -674,22 +670,22 @@ An effect can return a _teardown function_ which will run immediately before the
 
 ```svelte
 <script>
-	let count = $state(0);
-	let milliseconds = $state(1000);
+  let count = $state(0)
+  let milliseconds = $state(1000)
 
-	$effect(() => {
-		// This will be recreated whenever `milliseconds` changes
-		const interval = setInterval(() => {
-			count += 1;
-		}, milliseconds);
+  $effect(() => {
+    // This will be recreated whenever `milliseconds` changes
+    const interval = setInterval(() => {
+      count += 1
+    }, milliseconds)
 
-		return () => {
-			// if a teardown function is provided, it will run
-			// a) immediately before the effect re-runs
-			// b) when the component is destroyed
-			clearInterval(interval);
-		};
-	});
+    return () => {
+      // if a teardown function is provided, it will run
+      // a) immediately before the effect re-runs
+      // b) when the component is destroyed
+      clearInterval(interval)
+    }
+  })
 </script>
 
 <h1>{count}</h1>
@@ -711,53 +707,53 @@ Values that are read _asynchronously_ — after an `await` or inside a `setTimeo
 ```ts
 // @filename: index.ts
 declare let canvas: {
-	width: number;
-	height: number;
-	getContext(type: '2d', options?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D;
-};
-declare let color: string;
-declare let size: number;
+  width: number
+  height: number
+  getContext(type: '2d', options?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D
+}
+declare let color: string
+declare let size: number
 
 // ---cut---
 $effect(() => {
-	const context = canvas.getContext('2d');
-	context.clearRect(0, 0, canvas.width, canvas.height);
+  const context = canvas.getContext('2d')
+  context.clearRect(0, 0, canvas.width, canvas.height)
 
-	// this will re-run whenever `color` changes...
-	context.fillStyle = color;
+  // this will re-run whenever `color` changes...
+  context.fillStyle = color
 
-	setTimeout(() => {
-		// ...but not when `size` changes
-		context.fillRect(0, 0, size, size);
-	}, 0);
-});
+  setTimeout(() => {
+    // ...but not when `size` changes
+    context.fillRect(0, 0, size, size)
+  }, 0)
+})
 ```
 
 An effect only reruns when the object it reads changes, not when a property inside it changes. (If you want to observe changes _inside_ an object at dev time, you can use [`$inspect`]($inspect).)
 
 ```svelte
 <script>
-	let state = $state({ value: 0 });
-	let derived = $derived({ value: state.value * 2 });
+  let state = $state({ value: 0 })
+  let derived = $derived({ value: state.value * 2 })
 
-	// this will run once, because `state` is never reassigned (only mutated)
-	$effect(() => {
-		state;
-	});
+  // this will run once, because `state` is never reassigned (only mutated)
+  $effect(() => {
+    state
+  })
 
-	// this will run whenever `state.value` changes...
-	$effect(() => {
-		state.value;
-	});
+  // this will run whenever `state.value` changes...
+  $effect(() => {
+    state.value
+  })
 
-	// ...and so will this, because `derived` is a new object each time
-	$effect(() => {
-		derived;
-	});
+  // ...and so will this, because `derived` is a new object each time
+  $effect(() => {
+    derived
+  })
 </script>
 
 <button onclick={() => (state.value += 1)}>
-	{state.value}
+  {state.value}
 </button>
 
 <p>{state.value} doubled is {derived.value}</p>
@@ -772,28 +768,28 @@ Conversely, if `condition` is `false`, `color` will not be evaluated, and the ef
 ```ts
 // @filename: ambient.d.ts
 declare module 'canvas-confetti' {
-	interface ConfettiOptions {
-		colors: string[];
-	}
+  interface ConfettiOptions {
+    colors: string[]
+  }
 
-	function confetti(opts?: ConfettiOptions): void;
-	export default confetti;
+  function confetti(opts?: ConfettiOptions): void
+  export default confetti
 }
 
 // @filename: index.js
 // ---cut---
-import confetti from 'canvas-confetti';
+import confetti from 'canvas-confetti'
 
-let condition = $state(true);
-let color = $state('#ff3e00');
+let condition = $state(true)
+let color = $state('#ff3e00')
 
 $effect(() => {
-	if (condition) {
-		confetti({ colors: [color] });
-	} else {
-		confetti();
-	}
-});
+  if (condition) {
+    confetti({ colors: [color] })
+  } else {
+    confetti()
+  }
+})
 ```
 
 ## `$effect.pre`
@@ -802,32 +798,32 @@ In rare cases, you may need to run code _before_ the DOM updates. For this we ca
 
 ```svelte
 <script>
-	import { tick } from 'svelte';
+  import { tick } from 'svelte'
 
-	let div = $state();
-	let messages = $state([]);
+  let div = $state()
+  let messages = $state([])
 
-	// ...
+  // ...
 
-	$effect.pre(() => {
-		if (!div) return; // not yet mounted
+  $effect.pre(() => {
+    if (!div) return // not yet mounted
 
-		// reference `messages` array length so that this code re-runs whenever it changes
-		messages.length;
+    // reference `messages` array length so that this code re-runs whenever it changes
+    messages.length
 
-		// autoscroll when new messages are added
-		if (div.offsetHeight + div.scrollTop > div.scrollHeight - 20) {
-			tick().then(() => {
-				div.scrollTo(0, div.scrollHeight);
-			});
-		}
-	});
+    // autoscroll when new messages are added
+    if (div.offsetHeight + div.scrollTop > div.scrollHeight - 20) {
+      tick().then(() => {
+        div.scrollTo(0, div.scrollHeight)
+      })
+    }
+  })
 </script>
 
 <div bind:this={div}>
-	{#each messages as message}
-		<p>{message}</p>
-	{/each}
+  {#each messages as message}
+    <p>{message}</p>
+  {/each}
 </div>
 ```
 
@@ -839,11 +835,11 @@ The `$effect.tracking` rune is an advanced feature that tells you whether or not
 
 ```svelte
 <script>
-	console.log('in component setup:', $effect.tracking()); // false
+  console.log('in component setup:', $effect.tracking()) // false
 
-	$effect(() => {
-		console.log('in effect:', $effect.tracking()); // true
-	});
+  $effect(() => {
+    console.log('in effect:', $effect.tracking()) // true
+  })
 </script>
 
 <p>in template: {$effect.tracking()}</p> <!-- true -->
@@ -862,7 +858,7 @@ When using [`await`](await-expressions) in components, the `$effect.pending()` r
 <p>{a} + {b} = {await add(a, b)}</p>
 
 {#if $effect.pending()}
-	<p>pending promises: {$effect.pending()}</p>
+  <p>pending promises: {$effect.pending()}</p>
 {/if}
 ```
 
@@ -872,17 +868,17 @@ The `$effect.root` rune is an advanced feature that creates a non-tracked scope 
 
 ```js
 const destroy = $effect.root(() => {
-	$effect(() => {
-		// setup
-	});
+  $effect(() => {
+    // setup
+  })
 
-	return () => {
-		// cleanup
-	};
-});
+  return () => {
+    // cleanup
+  }
+})
 
 // later...
-destroy();
+destroy()
 ```
 
 ## When not to use `$effect`
@@ -891,13 +887,13 @@ In general, `$effect` is best considered something of an escape hatch — useful
 
 ```svelte
 <script>
-	let count = $state(0);
-	let doubled = $state();
+  let count = $state(0)
+  let doubled = $state()
 
-	// don't do this!
-	$effect(() => {
-		doubled = count * 2;
-	});
+  // don't do this!
+  $effect(() => {
+    doubled = count * 2
+  })
 </script>
 ```
 
@@ -905,8 +901,8 @@ In general, `$effect` is best considered something of an escape hatch — useful
 
 ```svelte
 <script>
-	let count = $state(0);
-	let doubled = $derived(count * 2);
+  let count = $state(0)
+  let doubled = $derived(count * 2)
 </script>
 ```
 
@@ -918,27 +914,27 @@ You might be tempted to do something convoluted with effects to link one value t
 
 ```svelte
 <script>
-	const total = 100;
-	let spent = $state(0);
-	let left = $state(total);
+  const total = 100
+  let spent = $state(0)
+  let left = $state(total)
 
-	$effect(() => {
-		left = total - spent;
-	});
+  $effect(() => {
+    left = total - spent
+  })
 
-	$effect(() => {
-		spent = total - left;
-	});
+  $effect(() => {
+    spent = total - left
+  })
 </script>
 
 <label>
-	<input type="range" bind:value={spent} max={total} />
-	{spent}/{total} spent
+  <input type="range" bind:value={spent} max={total} />
+  {spent}/{total} spent
 </label>
 
 <label>
-	<input type="range" bind:value={left} max={total} />
-	{left}/{total} left
+  <input type="range" bind:value={left} max={total} />
+  {left}/{total} left
 </label>
 ```
 
@@ -956,13 +952,13 @@ Instead, use `oninput` callbacks or — better still — [function bindings](bin
 </script>
 
 <label>
-	<input type="range" bind:value={spent} max={total} />
-	{spent}/{total} spent
+  <input type="range" bind:value={spent} max={total} />
+  {spent}/{total} spent
 </label>
 
 <label>
-	<input type="range" +++bind:value={() => left, updateLeft}+++ max={total} />
-	{left}/{total} left
+  <input type="range" +++bind:value="{(() => left, updateLeft)}+++" max={total} />
+  {left}/{total} left
 </label>
 ```
 
@@ -975,7 +971,7 @@ The inputs to a component are referred to as _props_, which is short for _proper
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import MyComponent from './MyComponent.svelte';
+  import MyComponent from './MyComponent.svelte'
 </script>
 
 <MyComponent adjective="cool" />
@@ -986,7 +982,7 @@ On the other side, inside `MyComponent.svelte`, we can receive props with the `$
 ```svelte
 <!--- file: MyComponent.svelte --->
 <script>
-	let props = $props();
+  let props = $props()
 </script>
 
 <p>this component is {props.adjective}</p>
@@ -1008,7 +1004,7 @@ On the other side, inside `MyComponent.svelte`, we can receive props with the `$
 Destructuring allows us to declare fallback values, which are used if the parent component does not set a given prop (or the value is `undefined`):
 
 ```js
-let { adjective = 'happy' } = $props();
+let { adjective = 'happy' } = $props()
 ```
 
 > [!NOTE] Fallback values are not turned into reactive state proxies (see [Updating props](#Updating-props) for more info)
@@ -1018,7 +1014,7 @@ let { adjective = 'happy' } = $props();
 We can also use the destructuring assignment to rename props, which is necessary if they're invalid identifiers, or a JavaScript keyword like `super`:
 
 ```js
-let { super: trouper = 'lights are gonna find me' } = $props();
+let { super: trouper = 'lights are gonna find me' } = $props()
 ```
 
 ## Rest props
@@ -1026,7 +1022,7 @@ let { super: trouper = 'lights are gonna find me' } = $props();
 Finally, we can use a _rest property_ to get, well, the rest of the props:
 
 ```js
-let { a, b, c, ...others } = $props();
+let { a, b, c, ...others } = $props()
 ```
 
 ## Updating props
@@ -1036,13 +1032,13 @@ References to a prop inside a component update when the prop itself updates — 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Child from './Child.svelte';
+  import Child from './Child.svelte'
 
-	let count = $state(0);
+  let count = $state(0)
 </script>
 
 <button onclick={() => (count += 1)}>
-	clicks (parent): {count}
+  clicks (parent): {count}
 </button>
 
 <Child {count} />
@@ -1051,11 +1047,11 @@ References to a prop inside a component update when the prop itself updates — 
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	let { count } = $props();
+  let { count } = $props()
 </script>
 
 <button onclick={() => (count += 1)}>
-	clicks (child): {count}
+  clicks (child): {count}
 </button>
 ```
 
@@ -1066,7 +1062,7 @@ If the prop is a regular object, the mutation will have no effect ([demo](/playg
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Child from './Child.svelte';
+  import Child from './Child.svelte'
 </script>
 
 <Child object={{ count: 0 }} />
@@ -1075,14 +1071,16 @@ If the prop is a regular object, the mutation will have no effect ([demo](/playg
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	let { object } = $props();
+  let { object } = $props()
 </script>
 
-<button onclick={() => {
-	// has no effect
-	object.count += 1
-}}>
-	clicks: {object.count}
+<button
+  onclick={() => {
+    // has no effect
+    object.count += 1
+  }}
+>
+  clicks: {object.count}
 </button>
 ```
 
@@ -1091,9 +1089,9 @@ If the prop is a reactive state proxy, however, then mutations _will_ have an ef
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Child from './Child.svelte';
+  import Child from './Child.svelte'
 
-	let object = $state({count: 0});
+  let object = $state({ count: 0 })
 </script>
 
 <Child {object} />
@@ -1102,16 +1100,18 @@ If the prop is a reactive state proxy, however, then mutations _will_ have an ef
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	let { object } = $props();
+  let { object } = $props()
 </script>
 
-<button onclick={() => {
-	// will cause the count below to update,
-	// but with a warning. Don't mutate
-	// objects you don't own!
-	object.count += 1
-}}>
-	clicks: {object.count}
+<button
+  onclick={() => {
+    // will cause the count below to update,
+    // but with a warning. Don't mutate
+    // objects you don't own!
+    object.count += 1
+  }}
+>
+  clicks: {object.count}
 </button>
 ```
 
@@ -1120,14 +1120,16 @@ The fallback value of a prop not declared with `$bindable` is left untouched —
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	let { object = { count: 0 } } = $props();
+  let { object = { count: 0 } } = $props()
 </script>
 
-<button onclick={() => {
-	// has no effect if the fallback value is used
-	object.count += 1
-}}>
-	clicks: {object.count}
+<button
+  onclick={() => {
+    // has no effect if the fallback value is used
+    object.count += 1
+  }}
+>
+  clicks: {object.count}
 </button>
 ```
 
@@ -1139,7 +1141,7 @@ You can add type safety to your components by annotating your props, as you woul
 
 ```svelte
 <script lang="ts">
-	let { adjective }: { adjective: string } = $props();
+  let { adjective }: { adjective: string } = $props()
 </script>
 ```
 
@@ -1147,8 +1149,8 @@ You can add type safety to your components by annotating your props, as you woul
 
 ```svelte
 <script>
-	/** @type {{ adjective: string }} */
-	let { adjective } = $props();
+  /** @type {{ adjective: string }} */
+  let { adjective } = $props()
 </script>
 ```
 
@@ -1156,18 +1158,17 @@ You can, of course, separate the type declaration from the annotation:
 
 ```svelte
 <script lang="ts">
-	interface Props {
-		adjective: string;
-	}
+  interface Props {
+    adjective: string
+  }
 
-	let { adjective }: Props = $props();
+  let { adjective }: Props = $props()
 </script>
 ```
 
 > [!NOTE] Interfaces for native DOM elements are provided in the `svelte/elements` module (see [Typing wrapper components](typescript#Typing-wrapper-components))
 
 Adding types is recommended, as it ensures that people using your component can easily discover which props they should provide.
-
 
 ## `$props.id()`
 
@@ -1177,15 +1178,15 @@ This is useful for linking elements via attributes like `for` and `aria-labelled
 
 ```svelte
 <script>
-	const uid = $props.id();
+  const uid = $props.id()
 </script>
 
 <form>
-	<label for="{uid}-firstname">First Name: </label>
-	<input id="{uid}-firstname" type="text" />
+  <label for="{uid}-firstname">First Name: </label>
+  <input id="{uid}-firstname" type="text" />
 
-	<label for="{uid}-lastname">Last Name: </label>
-	<input id="{uid}-lastname" type="text" />
+  <label for="{uid}-lastname">Last Name: </label>
+  <input id="{uid}-lastname" type="text" />
 </form>
 ```
 
@@ -1239,7 +1240,7 @@ In this case, you can specify a fallback value for when no prop is passed at all
 
 ```js
 /// file: FancyInput.svelte
-let { value = $bindable('fallback'), ...props } = $props();
+let { value = $bindable('fallback'), ...props } = $props()
 ```
 
 # $inspect
@@ -1250,10 +1251,10 @@ The `$inspect` rune is roughly equivalent to `console.log`, with the exception t
 
 ```svelte
 <script>
-	let count = $state(0);
-	let message = $state('hello');
+  let count = $state(0)
+  let message = $state('hello')
 
-	$inspect(count, message); // will console.log when `count` or `message` change
+  $inspect(count, message) // will console.log when `count` or `message` change
 </script>
 
 <button onclick={() => count++}>Increment</button>
@@ -1266,13 +1267,13 @@ The `$inspect` rune is roughly equivalent to `console.log`, with the exception t
 
 ```svelte
 <script>
-	let count = $state(0);
+  let count = $state(0)
 
-	$inspect(count).with((type, count) => {
-		if (type === 'update') {
-			debugger; // or `console.trace`, or whatever you want
-		}
-	});
+  $inspect(count).with((type, count) => {
+    if (type === 'update') {
+      debugger // or `console.trace`, or whatever you want
+    }
+  })
 </script>
 
 <button onclick={() => count++}>Increment</button>
@@ -1282,7 +1283,7 @@ A convenient way to find the origin of some change is to pass `console.trace` to
 
 ```js
 // @errors: 2304
-$inspect(stuff).with(console.trace);
+$inspect(stuff).with(console.trace)
 ```
 
 ## $inspect.trace(...)
@@ -1349,11 +1350,11 @@ A lowercase tag, like `<div>`, denotes a regular HTML element. A capitalised tag
 
 ```svelte
 <script>
-	import Widget from './Widget.svelte';
+  import Widget from './Widget.svelte'
 </script>
 
 <div>
-	<Widget />
+  <Widget />
 </div>
 ```
 
@@ -1363,7 +1364,7 @@ By default, attributes work exactly like their HTML counterparts.
 
 ```svelte
 <div class="foo">
-	<button disabled>can't touch this</button>
+  <button disabled>can't touch this</button>
 </div>
 ```
 
@@ -1545,13 +1546,13 @@ You can add a special comment starting with `@component` that will show up when 
   ```
 -->
 <script>
-	let { name } = $props();
+  let { name } = $props()
 </script>
 
 <main>
-	<h1>
-		Hello, {name}
-	</h1>
+  <h1>
+    Hello, {name}
+  </h1>
 </main>
 ````
 
@@ -1576,7 +1577,7 @@ Content that is conditionally rendered can be wrapped in an if block.
 
 ```svelte
 {#if answer === 42}
-	<p>what was the question?</p>
+  <p>what was the question?</p>
 {/if}
 ```
 
@@ -1584,11 +1585,11 @@ Additional conditions can be added with `{:else if expression}`, optionally endi
 
 ```svelte
 {#if porridge.temperature > 100}
-	<p>too hot!</p>
+  <p>too hot!</p>
 {:else if 80 > porridge.temperature}
-	<p>too cold!</p>
+  <p>too cold!</p>
 {:else}
-	<p>just right!</p>
+  <p>just right!</p>
 {/if}
 ```
 
@@ -1611,9 +1612,9 @@ Iterating over values can be done with an each block. The values in question can
 ```svelte
 <h1>Shopping list</h1>
 <ul>
-	{#each items as item}
-		<li>{item.name} x {item.qty}</li>
-	{/each}
+  {#each items as item}
+    <li>{item.name} x {item.qty}</li>
+  {/each}
 </ul>
 ```
 
@@ -1621,7 +1622,7 @@ An each block can also specify an _index_, equivalent to the second argument in 
 
 ```svelte
 {#each items as item, i}
-	<li>{i + 1}: {item.name} x {item.qty}</li>
+  <li>{i + 1}: {item.name} x {item.qty}</li>
 {/each}
 ```
 
@@ -1643,12 +1644,12 @@ The key can be any object, but strings and numbers are recommended since they al
 
 ```svelte
 {#each items as item (item.id)}
-	<li>{item.name} x {item.qty}</li>
+  <li>{item.name} x {item.qty}</li>
 {/each}
 
 <!-- or with additional index value -->
 {#each items as item, i (item.id)}
-	<li>{i + 1}: {item.name} x {item.qty}</li>
+  <li>{i + 1}: {item.name} x {item.qty}</li>
 {/each}
 ```
 
@@ -1656,15 +1657,15 @@ You can freely use destructuring and rest patterns in each blocks.
 
 ```svelte
 {#each items as { id, name, qty }, i (id)}
-	<li>{i + 1}: {name} x {qty}</li>
+  <li>{i + 1}: {name} x {qty}</li>
 {/each}
 
 {#each objects as { id, ...rest }}
-	<li><span>{id}</span><MyComponent {...rest} /></li>
+  <li><span>{id}</span><MyComponent {...rest} /></li>
 {/each}
 
 {#each items as [id, ...rest]}
-	<li><span>{id}</span><MyComponent values={rest} /></li>
+  <li><span>{id}</span><MyComponent values={rest} /></li>
 {/each}
 ```
 
@@ -1684,11 +1685,11 @@ In case you just want to render something `n` times, you can omit the `as` part 
 
 ```svelte
 <div class="chess-board">
-	{#each { length: 8 }, rank}
-		{#each { length: 8 }, file}
-			<div class:black={(rank + file) % 2 === 1}></div>
-		{/each}
-	{/each}
+  {#each { length: 8 }, rank}
+    {#each { length: 8 }, file}
+      <div class:black={(rank + file) % 2 === 1}></div>
+    {/each}
+  {/each}
 </div>
 ```
 
@@ -1703,9 +1704,9 @@ An each block can also have an `{:else}` clause, which is rendered if the list i
 
 ```svelte
 {#each todos as todo}
-	<p>{todo.text}</p>
+  <p>{todo.text}</p>
 {:else}
-	<p>No tasks today!</p>
+  <p>No tasks today!</p>
 {/each}
 ```
 
@@ -1720,7 +1721,7 @@ Key blocks destroy and recreate their contents when the value of an expression c
 
 ```svelte
 {#key value}
-	<Component />
+  <Component />
 {/key}
 ```
 
@@ -1728,7 +1729,7 @@ It's also useful if you want a transition to play whenever a value changes:
 
 ```svelte
 {#key value}
-	<div transition:fade>{value}</div>
+  <div transition:fade>{value}</div>
 {/key}
 ```
 
@@ -1758,14 +1759,14 @@ Await blocks allow you to branch on the three possible states of a [`Promise`](h
 
 ```svelte
 {#await promise}
-	<!-- promise is pending -->
-	<p>waiting for the promise to resolve...</p>
+  <!-- promise is pending -->
+  <p>waiting for the promise to resolve...</p>
 {:then value}
-	<!-- promise was fulfilled or not a Promise -->
-	<p>The value is {value}</p>
+  <!-- promise was fulfilled or not a Promise -->
+  <p>The value is {value}</p>
 {:catch error}
-	<!-- promise was rejected -->
-	<p>Something went wrong: {error.message}</p>
+  <!-- promise was rejected -->
+  <p>Something went wrong: {error.message}</p>
 {/await}
 ```
 
@@ -1777,11 +1778,11 @@ The `catch` block can be omitted if you don't need to render anything when the p
 
 ```svelte
 {#await promise}
-	<!-- promise is pending -->
-	<p>waiting for the promise to resolve...</p>
+  <!-- promise is pending -->
+  <p>waiting for the promise to resolve...</p>
 {:then value}
-	<!-- promise was fulfilled -->
-	<p>The value is {value}</p>
+  <!-- promise was fulfilled -->
+  <p>The value is {value}</p>
 {/await}
 ```
 
@@ -1789,7 +1790,7 @@ If you don't care about the pending state, you can also omit the initial block.
 
 ```svelte
 {#await promise then value}
-	<p>The value is {value}</p>
+  <p>The value is {value}</p>
 {/await}
 ```
 
@@ -1797,7 +1798,7 @@ Similarly, if you only want to show the error state, you can omit the `then` blo
 
 ```svelte
 {#await promise catch error}
-	<p>The error is {error}</p>
+  <p>The error is {error}</p>
 {/await}
 ```
 
@@ -1805,7 +1806,7 @@ Similarly, if you only want to show the error state, you can omit the `then` blo
 >
 > ```svelte
 > {#await import('./Component.svelte') then { default: Component }}
-> 	<Component />
+>   <Component />
 > {/await}
 > ```
 
@@ -1825,19 +1826,19 @@ Snippets, and [render tags](@render), are a way to create reusable chunks of mar
 
 ```svelte
 {#each images as image}
-	{#if image.href}
-		<a href={image.href}>
-			<figure>
-				<img src={image.src} alt={image.caption} width={image.width} height={image.height} />
-				<figcaption>{image.caption}</figcaption>
-			</figure>
-		</a>
-	{:else}
-		<figure>
-			<img src={image.src} alt={image.caption} width={image.width} height={image.height} />
-			<figcaption>{image.caption}</figcaption>
-		</figure>
-	{/if}
+  {#if image.href}
+    <a href={image.href}>
+      <figure>
+        <img src={image.src} alt={image.caption} width={image.width} height={image.height} />
+        <figcaption>{image.caption}</figcaption>
+      </figure>
+    </a>
+  {:else}
+    <figure>
+      <img src={image.src} alt={image.caption} width={image.width} height={image.height} />
+      <figcaption>{image.caption}</figcaption>
+    </figure>
+  {/if}
 {/each}
 ```
 
@@ -1845,20 +1846,20 @@ Snippets, and [render tags](@render), are a way to create reusable chunks of mar
 
 ```svelte
 {#snippet figure(image)}
-	<figure>
-		<img src={image.src} alt={image.caption} width={image.width} height={image.height} />
-		<figcaption>{image.caption}</figcaption>
-	</figure>
+  <figure>
+    <img src={image.src} alt={image.caption} width={image.width} height={image.height} />
+    <figcaption>{image.caption}</figcaption>
+  </figure>
 {/snippet}
 
 {#each images as image}
-	{#if image.href}
-		<a href={image.href}>
-			{@render figure(image)}
-		</a>
-	{:else}
-		{@render figure(image)}
-	{/if}
+  {#if image.href}
+    <a href={image.href}>
+      {@render figure(image)}
+    </a>
+  {:else}
+    {@render figure(image)}
+  {/if}
 {/each}
 ```
 
@@ -1870,11 +1871,11 @@ Snippets can be declared anywhere inside your component. They can reference valu
 
 ```svelte
 <script>
-	let { message = `it's great to see you!` } = $props();
+  let { message = `it's great to see you!` } = $props()
 </script>
 
 {#snippet hello(name)}
-	<p>hello {name}! {message}!</p>
+  <p>hello {name}! {message}!</p>
 {/snippet}
 
 {@render hello('alice')}
@@ -1885,15 +1886,15 @@ Snippets can be declared anywhere inside your component. They can reference valu
 
 ```svelte
 <div>
-	{#snippet x()}
-		{#snippet y()}...{/snippet}
+  {#snippet x()}
+    {#snippet y()}...{/snippet}
 
-		<!-- this is fine -->
-		{@render y()}
-	{/snippet}
+    <!-- this is fine -->
+    {@render y()}
+  {/snippet}
 
-	<!-- this will error, as `y` is not in scope -->
-	{@render y()}
+  <!-- this will error, as `y` is not in scope -->
+  {@render y()}
 </div>
 
 <!-- this will also error, as `x` is not in scope -->
@@ -1904,16 +1905,16 @@ Snippets can reference themselves and each other ([demo](/playground/untitled#H4
 
 ```svelte
 {#snippet blastoff()}
-	<span>🚀</span>
+  <span>🚀</span>
 {/snippet}
 
 {#snippet countdown(n)}
-	{#if n > 0}
-		<span>{n}...</span>
-		{@render countdown(n - 1)}
-	{:else}
-		{@render blastoff()}
-	{/if}
+  {#if n > 0}
+    <span>{n}...</span>
+    {@render countdown(n - 1)}
+  {:else}
+    {@render blastoff()}
+  {/if}
 {/snippet}
 
 {@render countdown(10)}
@@ -1927,27 +1928,27 @@ Within the template, snippets are values just like any other. As such, they can 
 
 ```svelte
 <script>
-	import Table from './Table.svelte';
+  import Table from './Table.svelte'
 
-	const fruits = [
-		{ name: 'apples', qty: 5, price: 2 },
-		{ name: 'bananas', qty: 10, price: 1 },
-		{ name: 'cherries', qty: 20, price: 0.5 }
-	];
+  const fruits = [
+    { name: 'apples', qty: 5, price: 2 },
+    { name: 'bananas', qty: 10, price: 1 },
+    { name: 'cherries', qty: 20, price: 0.5 }
+  ]
 </script>
 
 {#snippet header()}
-	<th>fruit</th>
-	<th>qty</th>
-	<th>price</th>
-	<th>total</th>
+  <th>fruit</th>
+  <th>qty</th>
+  <th>price</th>
+  <th>total</th>
 {/snippet}
 
 {#snippet row(d)}
-	<td>{d.name}</td>
-	<td>{d.qty}</td>
-	<td>{d.price}</td>
-	<td>{d.qty * d.price}</td>
+  <td>{d.name}</td>
+  <td>{d.qty}</td>
+  <td>{d.price}</td>
+  <td>{d.qty * d.price}</td>
 {/snippet}
 
 <Table data={fruits} {header} {row} />
@@ -1962,19 +1963,19 @@ As an authoring convenience, snippets declared directly _inside_ a component imp
 ```svelte
 <!-- this is semantically the same as the above -->
 <Table data={fruits}>
-	{#snippet header()}
-		<th>fruit</th>
-		<th>qty</th>
-		<th>price</th>
-		<th>total</th>
-	{/snippet}
+  {#snippet header()}
+    <th>fruit</th>
+    <th>qty</th>
+    <th>price</th>
+    <th>total</th>
+  {/snippet}
 
-	{#snippet row(d)}
-		<td>{d.name}</td>
-		<td>{d.qty}</td>
-		<td>{d.price}</td>
-		<td>{d.qty * d.price}</td>
-	{/snippet}
+  {#snippet row(d)}
+    <td>{d.name}</td>
+    <td>{d.qty}</td>
+    <td>{d.price}</td>
+    <td>{d.qty * d.price}</td>
+  {/snippet}
 </Table>
 ```
 
@@ -1990,7 +1991,7 @@ Any content inside the component tags that is _not_ a snippet declaration implic
 ```svelte
 <!--- file: Button.svelte --->
 <script>
-	let { children } = $props();
+  let { children } = $props()
 </script>
 
 <!-- result will be <button>click me</button> -->
@@ -2005,7 +2006,7 @@ You can declare snippet props as being optional. You can either use optional cha
 
 ```svelte
 <script>
-    let { children } = $props();
+  let { children } = $props()
 </script>
 
 {@render children?.()}
@@ -2015,13 +2016,13 @@ You can declare snippet props as being optional. You can either use optional cha
 
 ```svelte
 <script>
-    let { children } = $props();
+  let { children } = $props()
 </script>
 
 {#if children}
-    {@render children()}
+  {@render children()}
 {:else}
-    fallback content
+  fallback content
 {/if}
 ```
 
@@ -2031,15 +2032,15 @@ Snippets implement the `Snippet` interface imported from `'svelte'`:
 
 ```svelte
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+  import type { Snippet } from 'svelte'
 
-	interface Props {
-		data: any[];
-		children: Snippet;
-		row: Snippet<[any]>;
-	}
+  interface Props {
+    data: any[]
+    children: Snippet
+    row: Snippet<[any]>
+  }
 
-	let { data, children, row }: Props = $props();
+  let { data, children, row }: Props = $props()
 </script>
 ```
 
@@ -2049,17 +2050,17 @@ We can tighten things up further by declaring a generic, so that `data` and `row
 
 ```svelte
 <script lang="ts" generics="T">
-	import type { Snippet } from 'svelte';
+  import type { Snippet } from 'svelte'
 
-	let {
-		data,
-		children,
-		row
-	}: {
-		data: T[];
-		children: Snippet;
-		row: Snippet<[T]>;
-	} = $props();
+  let {
+    data,
+    children,
+    row
+  }: {
+    data: T[]
+    children: Snippet
+    row: Snippet<[T]>
+  } = $props()
 </script>
 ```
 
@@ -2069,11 +2070,11 @@ Snippets declared at the top level of a `.svelte` file can be exported from a `<
 
 ```svelte
 <script module>
-	export { add };
+  export { add }
 </script>
 
 {#snippet add(a, b)}
-	{a} + {b} = {a + b}
+  {a} + {b} = {a + b}
 {/snippet}
 ```
 
@@ -2094,7 +2095,7 @@ To render a [snippet](snippet), use a `{@render ...}` tag.
 
 ```svelte
 {#snippet sum(a, b)}
-	<p>{a} + {b} = {a + b}</p>
+  <p>{a} + {b} = {a + b}</p>
 {/snippet}
 
 {@render sum(1, 2)}
@@ -2120,9 +2121,9 @@ Alternatively, use an [`{#if ...}`](if) block with an `:else` clause to render f
 
 ```svelte
 {#if children}
-	{@render children()}
+  {@render children()}
 {:else}
-	<p>fallback content</p>
+  <p>fallback content</p>
 {/if}
 ```
 
@@ -2132,7 +2133,7 @@ To inject raw HTML into your component, use the `{@html ...}` tag:
 
 ```svelte
 <article>
-	{@html content}
+  {@html content}
 </article>
 ```
 
@@ -2188,14 +2189,14 @@ Optionally, they can return a function that is called before the attachment re-r
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	/** @type {import('svelte/attachments').Attachment} */
-	function myAttachment(element) {
-		console.log(element.nodeName); // 'DIV'
+  /** @type {import('svelte/attachments').Attachment} */
+  function myAttachment(element) {
+    console.log(element.nodeName) // 'DIV'
 
-		return () => {
-			console.log('cleaning up');
-		};
-	}
+    return () => {
+      console.log('cleaning up')
+    }
+  }
 </script>
 
 <div {@attach myAttachment}>...</div>
@@ -2210,27 +2211,25 @@ A useful pattern is for a function, such as `tooltip` in this example, to _retur
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import tippy from 'tippy.js';
+  import tippy from 'tippy.js'
 
-	let content = $state('Hello!');
+  let content = $state('Hello!')
 
-	/**
-	 * @param {string} content
-	 * @returns {import('svelte/attachments').Attachment}
-	 */
-	function tooltip(content) {
-		return (element) => {
-			const tooltip = tippy(element, { content });
-			return tooltip.destroy;
-		};
-	}
+  /**
+   * @param {string} content
+   * @returns {import('svelte/attachments').Attachment}
+   */
+  function tooltip(content) {
+    return (element) => {
+      const tooltip = tippy(element, { content })
+      return tooltip.destroy
+    }
+  }
 </script>
 
 <input bind:value={content} />
 
-<button {@attach tooltip(content)}>
-	Hover me
-</button>
+<button {@attach tooltip(content)}> Hover me </button>
 ```
 
 Since the `tooltip(content)` expression runs inside an [effect]($effect), the attachment will be destroyed and recreated whenever `content` changes. The same thing would happen for any state read _inside_ the attachment function when it first runs. (If this isn't what you want, see [Controlling when attachments re-run](#Controlling-when-attachments-re-run).)
@@ -2242,16 +2241,16 @@ Attachments can also be created inline ([demo](/playground/untitled#H4sIAAAAAAAA
 ```svelte
 <!--- file: App.svelte --->
 <canvas
-	width={32}
-	height={32}
-	{@attach (canvas) => {
-		const context = canvas.getContext('2d');
+  width={32}
+  height={32}
+  {@attach (canvas) => {
+    const context = canvas.getContext('2d')
 
-		$effect(() => {
-			context.fillStyle = color;
-			context.fillRect(0, 0, canvas.width, canvas.height);
-		});
-	}}
+    $effect(() => {
+      context.fillStyle = color
+      context.fillRect(0, 0, canvas.width, canvas.height)
+    })
+  }}
 ></canvas>
 ```
 
@@ -2267,41 +2266,39 @@ This allows you to create _wrapper components_ that augment elements ([demo](/pl
 ```svelte
 <!--- file: Button.svelte --->
 <script>
-	/** @type {import('svelte/elements').HTMLButtonAttributes} */
-	let { children, ...props } = $props();
+  /** @type {import('svelte/elements').HTMLButtonAttributes} */
+  let { children, ...props } = $props()
 </script>
 
 <!-- `props` includes attachments -->
 <button {...props}>
-	{@render children?.()}
+  {@render children?.()}
 </button>
 ```
 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import tippy from 'tippy.js';
-	import Button from './Button.svelte';
+  import tippy from 'tippy.js'
+  import Button from './Button.svelte'
 
-	let content = $state('Hello!');
+  let content = $state('Hello!')
 
-	/**
-	 * @param {string} content
-	 * @returns {import('svelte/attachments').Attachment}
-	 */
-	function tooltip(content) {
-		return (element) => {
-			const tooltip = tippy(element, { content });
-			return tooltip.destroy;
-		};
-	}
+  /**
+   * @param {string} content
+   * @returns {import('svelte/attachments').Attachment}
+   */
+  function tooltip(content) {
+    return (element) => {
+      const tooltip = tippy(element, { content })
+      return tooltip.destroy
+    }
+  }
 </script>
 
 <input bind:value={content} />
 
-<Button {@attach tooltip(content)}>
-	Hover me
-</Button>
+<Button {@attach tooltip(content)}>Hover me</Button>
 ```
 
 ## Controlling when attachments re-run
@@ -2311,10 +2308,10 @@ Attachments, unlike [actions](use), are fully reactive: `{@attach foo(bar)}` wil
 ```js
 // @errors: 7006 2304 2552
 function foo(bar) {
-	return (node) => {
-		veryExpensiveSetupWork(node);
-		update(node, bar);
-	};
+  return (node) => {
+    veryExpensiveSetupWork(node)
+    update(node, bar)
+  }
 }
 ```
 
@@ -2347,8 +2344,8 @@ The `{@const ...}` tag defines a local constant.
 
 ```svelte
 {#each boxes as box}
-	{@const area = box.width * box.height}
-	{box.width} * {box.height} = {area}
+  {@const area = box.width * box.height}
+  {box.width} * {box.height} = {area}
 {/each}
 ```
 
@@ -2360,10 +2357,10 @@ The `{@debug ...}` tag offers an alternative to `console.log(...)`. It logs the 
 
 ```svelte
 <script>
-	let user = {
-		firstname: 'Ada',
-		lastname: 'Lovelace'
-	};
+  let user = {
+    firstname: 'Ada',
+    lastname: 'Lovelace'
+  }
 </script>
 
 {@debug user}
@@ -2399,7 +2396,6 @@ The general syntax is `bind:property={expression}`, where `expression` is an [_l
 <input bind:value />
 ```
 
-
 Svelte creates an event listener that updates the bound value. If an element already has a listener for the same event, that listener will be fired before the bound value is updated.
 
 Most bindings are _two-way_, meaning that changes to the value will affect the element and vice versa. A few bindings are _readonly_, meaning that changing their value will have no effect on the element.
@@ -2409,19 +2405,13 @@ Most bindings are _two-way_, meaning that changes to the value will affect the e
 You can also use `bind:property={get, set}`, where `get` and `set` are functions, allowing you to perform validation and transformation:
 
 ```svelte
-<input bind:value={
-	() => value,
-	(v) => value = v.toLowerCase()}
-/>
+<input bind:value={() => value, (v) => (value = v.toLowerCase())} />
 ```
 
 In the case of readonly bindings like [dimension bindings](#Dimensions), the `get` value should be `null`:
 
 ```svelte
-<div
-	bind:clientWidth={null, redraw}
-	bind:clientHeight={null, redraw}
->...</div>
+<div bind:clientWidth={null, redraw} bind:clientHeight={null, redraw}>...</div>
 ```
 
 > [!NOTE]
@@ -2445,18 +2435,18 @@ In the case of a numeric input (`type="number"` or `type="range"`), the value wi
 
 ```svelte
 <script>
-	let a = $state(1);
-	let b = $state(2);
+  let a = $state(1)
+  let b = $state(2)
 </script>
 
 <label>
-	<input type="number" bind:value={a} min="0" max="10" />
-	<input type="range" bind:value={a} min="0" max="10" />
+  <input type="number" bind:value={a} min="0" max="10" />
+  <input type="range" bind:value={a} min="0" max="10" />
 </label>
 
 <label>
-	<input type="number" bind:value={b} min="0" max="10" />
-	<input type="range" bind:value={b} min="0" max="10" />
+  <input type="number" bind:value={b} min="0" max="10" />
+  <input type="range" bind:value={b} min="0" max="10" />
 </label>
 
 <p>{a} + {b} = {a + b}</p>
@@ -2468,12 +2458,12 @@ Since 5.6.0, if an `<input>` has a `defaultValue` and is part of a form, it will
 
 ```svelte
 <script>
-	let value = $state('');
+  let value = $state('')
 </script>
 
 <form>
-	<input bind:value defaultValue="not the empty string">
-	<input type="reset" value="Reset">
+  <input bind:value defaultValue="not the empty string" />
+  <input type="reset" value="Reset" />
 </form>
 ```
 
@@ -2486,8 +2476,8 @@ Checkbox and radio inputs can be bound with `bind:checked`:
 
 ```svelte
 <label>
-	<input type="checkbox" bind:checked={accepted} />
-	Accept terms and conditions
+  <input type="checkbox" bind:checked={accepted} />
+  Accept terms and conditions
 </label>
 ```
 
@@ -2495,12 +2485,12 @@ Since 5.6.0, if an `<input>` has a `defaultChecked` attribute and is part of a f
 
 ```svelte
 <script>
-	let checked = $state(true);
+  let checked = $state(true)
 </script>
 
 <form>
-	<input type="checkbox" bind:checked defaultChecked={true}>
-	<input type="reset" value="Reset">
+  <input type="checkbox" bind:checked defaultChecked={true} />
+  <input type="reset" value="Reset" />
 </form>
 ```
 
@@ -2510,20 +2500,20 @@ Checkboxes can be in an [indeterminate](https://developer.mozilla.org/en-US/docs
 
 ```svelte
 <script>
-	let checked = $state(false);
-	let indeterminate = $state(true);
+  let checked = $state(false)
+  let indeterminate = $state(true)
 </script>
 
 <form>
-	<input type="checkbox" bind:checked bind:indeterminate>
+  <input type="checkbox" bind:checked bind:indeterminate />
 
-	{#if indeterminate}
-		waiting...
-	{:else if checked}
-		checked
-	{:else}
-		unchecked
-	{/if}
+  {#if indeterminate}
+    waiting...
+  {:else if checked}
+    checked
+  {:else}
+    unchecked
+  {/if}
 </form>
 ```
 
@@ -2534,10 +2524,10 @@ Inputs that work together can use `bind:group` ([demo](/playground/untitled#H4sI
 ```svelte
 <!--- file: BurritoChooser.svelte --->
 <script>
-	let tortilla = $state('Plain');
+  let tortilla = $state('Plain')
 
-	/** @type {string[]} */
-	let fillings = $state([]);
+  /** @type {string[]} */
+  let fillings = $state([])
 </script>
 
 <!-- grouped radio inputs are mutually exclusive -->
@@ -2560,11 +2550,11 @@ On `<input>` elements with `type="file"`, you can use `bind:files` to get the [`
 
 ```svelte
 <script>
-	let files = $state();
+  let files = $state()
 
-	function clear() {
-		files = new DataTransfer().files; // null or undefined does not work
-	}
+  function clear() {
+    files = new DataTransfer().files // null or undefined does not work
+  }
 </script>
 
 <label for="avatar">Upload a picture:</label>
@@ -2582,9 +2572,9 @@ A `<select>` value binding corresponds to the `value` property on the selected `
 
 ```svelte
 <select bind:value={selected}>
-	<option value={a}>a</option>
-	<option value={b}>b</option>
-	<option value={c}>c</option>
+  <option value={a}>a</option>
+  <option value={b}>b</option>
+  <option value={c}>c</option>
 </select>
 ```
 
@@ -2592,10 +2582,10 @@ A `<select multiple>` element behaves similarly to a checkbox group. The bound v
 
 ```svelte
 <select multiple bind:value={fillings}>
-	<option value="Rice">Rice</option>
-	<option value="Beans">Beans</option>
-	<option value="Cheese">Cheese</option>
-	<option value="Guac (extra)">Guac (extra)</option>
+  <option value="Rice">Rice</option>
+  <option value="Beans">Beans</option>
+  <option value="Cheese">Cheese</option>
+  <option value="Guac (extra)">Guac (extra)</option>
 </select>
 ```
 
@@ -2603,10 +2593,10 @@ When the value of an `<option>` matches its text content, the attribute can be o
 
 ```svelte
 <select multiple bind:value={fillings}>
-	<option>Rice</option>
-	<option>Beans</option>
-	<option>Cheese</option>
-	<option>Guac (extra)</option>
+  <option>Rice</option>
+  <option>Beans</option>
+  <option>Cheese</option>
+  <option>Guac (extra)</option>
 </select>
 ```
 
@@ -2614,9 +2604,9 @@ You can give the `<select>` a default value by adding a `selected` attribute to 
 
 ```svelte
 <select bind:value={selected}>
-	<option value={a}>a</option>
-	<option value={b} selected>b</option>
-	<option value={c}>c</option>
+  <option value={a}>a</option>
+  <option value={b} selected>b</option>
+  <option value={c}>c</option>
 </select>
 ```
 
@@ -2661,8 +2651,8 @@ You can give the `<select>` a default value by adding a `selected` attribute to 
 
 ```svelte
 <details bind:open={isOpen}>
-	<summary>How do you comfort a JavaScript bug?</summary>
-	<p>You console it.</p>
+  <summary>How do you comfort a JavaScript bug?</summary>
+  <p>You console it.</p>
 </details>
 ```
 
@@ -2701,7 +2691,7 @@ All visible elements have the following readonly bindings, measured with a `Resi
 
 ```svelte
 <div bind:offsetWidth={width} bind:offsetHeight={height}>
-	<Chart {width} {height} />
+  <Chart {width} {height} />
 </div>
 ```
 
@@ -2718,13 +2708,13 @@ To get a reference to a DOM node, use `bind:this`. The value will be `undefined`
 
 ```svelte
 <script>
-	/** @type {HTMLCanvasElement} */
-	let canvas;
+  /** @type {HTMLCanvasElement} */
+  let canvas
 
-	$effect(() => {
-		const ctx = canvas.getContext('2d');
-		drawStuff(ctx);
-	});
+  $effect(() => {
+    const ctx = canvas.getContext('2d')
+    drawStuff(ctx)
+  })
 </script>
 
 <canvas bind:this={canvas}></canvas>
@@ -2742,10 +2732,10 @@ Components also support `bind:this`, allowing you to interact with component ins
 ```svelte
 <!--- file: ShoppingCart.svelte --->
 <script>
-	// All instance exports are available on the instance object
-	export function empty() {
-		// ...
-	}
+  // All instance exports are available on the instance object
+  export function empty() {
+    // ...
+  }
 </script>
 ```
 
@@ -2767,7 +2757,7 @@ To mark a property as bindable, use the [`$bindable`]($bindable) rune:
 
 ```svelte
 <script>
-	let { readonlyProperty, bindableProperty = $bindable() } = $props();
+  let { readonlyProperty, bindableProperty = $bindable() } = $props()
 </script>
 ```
 
@@ -2777,7 +2767,7 @@ Bindable properties can have a fallback value:
 
 ```svelte
 <script>
-	let { bindableProperty = $bindable('fallback value') } = $props();
+  let { bindableProperty = $bindable('fallback value') } = $props()
 </script>
 ```
 
@@ -2793,18 +2783,18 @@ Actions are functions that are called when an element is mounted. They are added
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	/** @type {import('svelte/action').Action} */
-	function myaction(node) {
-		// the node has been mounted in the DOM
+  /** @type {import('svelte/action').Action} */
+  function myaction(node) {
+    // the node has been mounted in the DOM
 
-		$effect(() => {
-			// setup goes here
+    $effect(() => {
+      // setup goes here
 
-			return () => {
-				// teardown goes here
-			};
-		});
-	}
+      return () => {
+        // teardown goes here
+      }
+    })
+  }
 </script>
 
 <div use:myaction>...</div>
@@ -2836,33 +2826,29 @@ The `Action` interface receives three optional type arguments — a node type (w
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	/**
-	 * @type {import('svelte/action').Action<
-	 * 	HTMLDivElement,
-	 * 	undefined,
-	 * 	{
-	 * 		onswiperight: (e: CustomEvent) => void;
-	 * 		onswipeleft: (e: CustomEvent) => void;
-	 * 		// ...
-	 * 	}
-	 * >}
-	 */
-	function gestures(node) {
-		$effect(() => {
-			// ...
-			node.dispatchEvent(new CustomEvent('swipeleft'));
+  /**
+   * @type {import('svelte/action').Action<
+   * 	HTMLDivElement,
+   * 	undefined,
+   * 	{
+   * 		onswiperight: (e: CustomEvent) => void;
+   * 		onswipeleft: (e: CustomEvent) => void;
+   * 		// ...
+   * 	}
+   * >}
+   */
+  function gestures(node) {
+    $effect(() => {
+      // ...
+      node.dispatchEvent(new CustomEvent('swipeleft'))
 
-			// ...
-			node.dispatchEvent(new CustomEvent('swiperight'));
-		});
-	}
+      // ...
+      node.dispatchEvent(new CustomEvent('swiperight'))
+    })
+  }
 </script>
 
-<div
-	use:gestures
-	onswipeleft={next}
-	onswiperight={prev}
->...</div>
+<div use:gestures onswipeleft={next} onswiperight={prev}>...</div>
 ```
 
 # transition:
@@ -2880,10 +2866,10 @@ The `transition:` directive indicates a _bidirectional_ transition, which means 
 	let visible = $state(false);
 </script>
 
-<button onclick={() => visible = !visible}>toggle</button>
+<button onclick={() => (visible = !visible)}>toggle</button>
 
 {#if visible}
-	<div +++transition:fade+++>fades in and out</div>
+  <div +++transition:fade+++>fades in and out</div>
 {/if}
 ```
 
@@ -2893,11 +2879,11 @@ Transitions are local by default. Local transitions only play when the block the
 
 ```svelte
 {#if x}
-	{#if y}
-		<p transition:fade>fades in and out only when y changes</p>
+  {#if y}
+    <p transition:fade>fades in and out only when y changes</p>
 
-		<p transition:fade|global>fades in and out when x or y change</p>
-	{/if}
+    <p transition:fade|global>fades in and out when x or y change</p>
+  {/if}
 {/if}
 ```
 
@@ -2913,7 +2899,7 @@ Transitions can have parameters.
 
 ```svelte
 {#if visible}
-	<div transition:fade={{ duration: 2000 }}>fades in and out over two seconds</div>
+  <div transition:fade={{ duration: 2000 }}>fades in and out over two seconds</div>
 {/if}
 ```
 
@@ -2940,29 +2926,29 @@ The function is called repeatedly _before_ the transition begins, with different
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import { elasticOut } from 'svelte/easing';
+  import { elasticOut } from 'svelte/easing'
 
-	/** @type {boolean} */
-	export let visible;
+  /** @type {boolean} */
+  export let visible
 
-	/**
-	 * @param {HTMLElement} node
-	 * @param {{ delay?: number, duration?: number, easing?: (t: number) => number }} params
-	 */
-	function whoosh(node, params) {
-		const existingTransform = getComputedStyle(node).transform.replace('none', '');
+  /**
+   * @param {HTMLElement} node
+   * @param {{ delay?: number, duration?: number, easing?: (t: number) => number }} params
+   */
+  function whoosh(node, params) {
+    const existingTransform = getComputedStyle(node).transform.replace('none', '')
 
-		return {
-			delay: params.delay || 0,
-			duration: params.duration || 400,
-			easing: params.easing || elasticOut,
-			css: (t, u) => `transform: ${existingTransform} scale(${t})`
-		};
-	}
+    return {
+      delay: params.delay || 0,
+      duration: params.duration || 400,
+      easing: params.easing || elasticOut,
+      css: (t, u) => `transform: ${existingTransform} scale(${t})`
+    }
+  }
 </script>
 
 {#if visible}
-	<div in:whoosh>whooshes in</div>
+  <div in:whoosh>whooshes in</div>
 {/if}
 ```
 
@@ -2973,34 +2959,34 @@ A custom transition function can also return a `tick` function, which is called 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	export let visible = false;
+  export let visible = false
 
-	/**
-	 * @param {HTMLElement} node
-	 * @param {{ speed?: number }} params
-	 */
-	function typewriter(node, { speed = 1 }) {
-		const valid = node.childNodes.length === 1 && node.childNodes[0].nodeType === Node.TEXT_NODE;
+  /**
+   * @param {HTMLElement} node
+   * @param {{ speed?: number }} params
+   */
+  function typewriter(node, { speed = 1 }) {
+    const valid = node.childNodes.length === 1 && node.childNodes[0].nodeType === Node.TEXT_NODE
 
-		if (!valid) {
-			throw new Error(`This transition only works on elements with a single text node child`);
-		}
+    if (!valid) {
+      throw new Error(`This transition only works on elements with a single text node child`)
+    }
 
-		const text = node.textContent;
-		const duration = text.length / (speed * 0.01);
+    const text = node.textContent
+    const duration = text.length / (speed * 0.01)
 
-		return {
-			duration,
-			tick: (t) => {
-				const i = ~~(text.length * t);
-				node.textContent = text.slice(0, i);
-			}
-		};
-	}
+    return {
+      duration,
+      tick: (t) => {
+        const i = ~~(text.length * t)
+        node.textContent = text.slice(0, i)
+      }
+    }
+  }
 </script>
 
 {#if visible}
-	<p in:typewriter={{ speed: 1 }}>The quick brown fox jumps over the lazy dog</p>
+  <p in:typewriter={{ speed: 1 }}>The quick brown fox jumps over the lazy dog</p>
 {/if}
 ```
 
@@ -3023,15 +3009,15 @@ An element with transitions will dispatch the following events in addition to an
 
 ```svelte
 {#if visible}
-	<p
-		transition:fly={{ y: 200, duration: 2000 }}
-		onintrostart={() => (status = 'intro started')}
-		onoutrostart={() => (status = 'outro started')}
-		onintroend={() => (status = 'intro ended')}
-		onoutroend={() => (status = 'outro ended')}
-	>
-		Flies in and out
-	</p>
+  <p
+    transition:fly={{ y: 200, duration: 2000 }}
+    onintrostart={() => (status = 'intro started')}
+    onoutrostart={() => (status = 'outro started')}
+    onintroend={() => (status = 'intro ended')}
+    onoutroend={() => (status = 'outro ended')}
+  >
+    Flies in and out
+  </p>
 {/if}
 ```
 
@@ -3041,18 +3027,18 @@ The `in:` and `out:` directives are identical to [`transition:`](transition), ex
 
 ```svelte
 <script>
-  import { fade, fly } from 'svelte/transition';
-  
-  let visible = $state(false);
+  import { fade, fly } from 'svelte/transition'
+
+  let visible = $state(false)
 </script>
 
 <label>
-  <input type="checkbox" bind:checked={visible}>
+  <input type="checkbox" bind:checked={visible} />
   visible
 </label>
 
 {#if visible}
-	<div in:fly={{ y: 200 }} out:fade>flies in, fades out</div>
+  <div in:fly={{ y: 200 }} out:fade>flies in, fades out</div>
 {/if}
 ```
 
@@ -3065,7 +3051,7 @@ Animations can be used with Svelte's [built-in animation functions](svelte-anima
 ```svelte
 <!-- When `list` is reordered the animation will run -->
 {#each list as item, index (item)}
-	<li animate:flip>{item}</li>
+  <li animate:flip>{item}</li>
 {/each}
 ```
 
@@ -3077,7 +3063,7 @@ As with actions and transitions, animations can have parameters.
 
 ```svelte
 {#each list as item, index (item)}
-	<li animate:flip={{ delay: 500 }}>{item}</li>
+  <li animate:flip={{ delay: 500 }}>{item}</li>
 {/each}
 ```
 
@@ -3108,30 +3094,30 @@ The function is called repeatedly _before_ the animation begins, with different 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import { cubicOut } from 'svelte/easing';
+  import { cubicOut } from 'svelte/easing'
 
-	/**
-	 * @param {HTMLElement} node
-	 * @param {{ from: DOMRect; to: DOMRect }} states
-	 * @param {any} params
-	 */
-	function whizz(node, { from, to }, params) {
-		const dx = from.left - to.left;
-		const dy = from.top - to.top;
+  /**
+   * @param {HTMLElement} node
+   * @param {{ from: DOMRect; to: DOMRect }} states
+   * @param {any} params
+   */
+  function whizz(node, { from, to }, params) {
+    const dx = from.left - to.left
+    const dy = from.top - to.top
 
-		const d = Math.sqrt(dx * dx + dy * dy);
+    const d = Math.sqrt(dx * dx + dy * dy)
 
-		return {
-			delay: 0,
-			duration: Math.sqrt(d) * 120,
-			easing: cubicOut,
-			css: (t, u) => `transform: translate(${u * dx}px, ${u * dy}px) rotate(${t * 360}deg);`
-		};
-	}
+    return {
+      delay: 0,
+      duration: Math.sqrt(d) * 120,
+      easing: cubicOut,
+      css: (t, u) => `transform: translate(${u * dx}px, ${u * dy}px) rotate(${t * 360}deg);`
+    }
+  }
 </script>
 
 {#each list as item, index (item)}
-	<div animate:whizz>{item}</div>
+  <div animate:whizz>{item}</div>
 {/each}
 ```
 
@@ -3142,30 +3128,30 @@ A custom animation function can also return a `tick` function, which is called _
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import { cubicOut } from 'svelte/easing';
+  import { cubicOut } from 'svelte/easing'
 
-	/**
-	 * @param {HTMLElement} node
-	 * @param {{ from: DOMRect; to: DOMRect }} states
-	 * @param {any} params
-	 */
-	function whizz(node, { from, to }, params) {
-		const dx = from.left - to.left;
-		const dy = from.top - to.top;
+  /**
+   * @param {HTMLElement} node
+   * @param {{ from: DOMRect; to: DOMRect }} states
+   * @param {any} params
+   */
+  function whizz(node, { from, to }, params) {
+    const dx = from.left - to.left
+    const dy = from.top - to.top
 
-		const d = Math.sqrt(dx * dx + dy * dy);
+    const d = Math.sqrt(dx * dx + dy * dy)
 
-		return {
-			delay: 0,
-			duration: Math.sqrt(d) * 120,
-			easing: cubicOut,
-			tick: (t, u) => Object.assign(node.style, { color: t > 0.5 ? 'Pink' : 'Blue' })
-		};
-	}
+    return {
+      delay: 0,
+      duration: Math.sqrt(d) * 120,
+      easing: cubicOut,
+      tick: (t, u) => Object.assign(node.style, { color: t > 0.5 ? 'Pink' : 'Blue' })
+    }
+  }
 </script>
 
 {#each list as item, index (item)}
-	<div animate:whizz>{item}</div>
+  <div animate:whizz>{item}</div>
 {/each}
 ```
 
@@ -3174,9 +3160,7 @@ A custom animation function can also return a `tick` function, which is called _
 The `style:` directive provides a shorthand for setting multiple styles on an element.
 
 ```svelte
-<!-- These are equivalent -->
-<div style:color="red">...</div>
-<div style="color: red;">...</div>
+<!-- These are equivalent --><div style:color="red">...</div><div style="color: red;">...</div>
 ```
 
 The value can contain arbitrary expressions:
@@ -3234,7 +3218,7 @@ If the value is an object, the truthy keys are added:
 
 ```svelte
 <script>
-	let { cool } = $props();
+  let { cool } = $props()
 </script>
 
 <!-- results in `class="cool"` if `cool` is truthy,
@@ -3257,11 +3241,11 @@ Arrays can contain arrays and objects, and clsx will flatten them. This is usefu
 ```svelte
 <!--- file: Button.svelte --->
 <script>
-	let props = $props();
+  let props = $props()
 </script>
 
 <button {...props} class={['cool-button', props.class]}>
-	{@render props.children?.()}
+  {@render props.children?.()}
 </button>
 ```
 
@@ -3270,15 +3254,12 @@ The user of this component has the same flexibility to use a mixture of objects,
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Button from './Button.svelte';
-	let useTailwind = $state(false);
+  import Button from './Button.svelte'
+  let useTailwind = $state(false)
 </script>
 
-<Button
-	onclick={() => useTailwind = true}
-	class={{ 'bg-blue-700 sm:w-1/2': useTailwind }}
->
-	Accept the inevitability of Tailwind
+<Button onclick={() => (useTailwind = true)} class={{ 'bg-blue-700 sm:w-1/2': useTailwind }}>
+  Accept the inevitability of Tailwind
 </Button>
 ```
 
@@ -3286,9 +3267,9 @@ Since Svelte 5.19, Svelte also exposes the `ClassValue` type, which is the type 
 
 ```svelte
 <script lang="ts">
-	import type { ClassValue } from 'svelte/elements';
+  import type { ClassValue } from 'svelte/elements'
 
-	const props: { class: ClassValue } = $props();
+  const props: { class: ClassValue } = $props()
 </script>
 
 <div class={['original', props.class]}>...</div>
@@ -3301,7 +3282,7 @@ Prior to Svelte 5.16, the `class:` directive was the most convenient way to set 
 ```svelte
 <!-- These are equivalent -->
 <div class={{ cool, lame: !cool }}>...</div>
-<div class:cool={cool} class:lame={!cool}>...</div>
+<div class:cool class:lame={!cool}>...</div>
 ```
 
 As with other directives, we can use a shorthand when the name of the class coincides with the value:
@@ -3325,12 +3306,12 @@ This feature is currently experimental, and you must opt in by adding the `exper
 ```js
 /// file: svelte.config.js
 export default {
-	compilerOptions: {
-		experimental: {
-			async: true
-		}
-	}
-};
+  compilerOptions: {
+    experimental: {
+      async: true
+    }
+  }
+}
 ```
 
 The experimental flag will be removed in Svelte 6.
@@ -3341,11 +3322,11 @@ Currently, you can only use `await` inside a [`<svelte:boundary>`](svelte-bounda
 
 ```svelte
 <svelte:boundary>
-	<MyApp />
+  <MyApp />
 
-	{#snippet pending()}
-		<p>loading...</p>
-	{/snippet}
+  {#snippet pending()}
+    <p>loading...</p>
+  {/snippet}
 </svelte:boundary>
 ```
 
@@ -3359,17 +3340,17 @@ When an `await` expression depends on a particular piece of state, changes to th
 
 ```svelte
 <script>
-	let a = $state(1);
-	let b = $state(2);
+  let a = $state(1)
+  let b = $state(2)
 
-	async function add(a, b) {
-		await new Promise((f) => setTimeout(f, 500)); // artificial delay
-		return a + b;
-	}
+  async function add(a, b) {
+    await new Promise((f) => setTimeout(f, 500)) // artificial delay
+    return a + b
+  }
 </script>
 
-<input type="number" bind:value={a}>
-<input type="number" bind:value={b}>
+<input type="number" bind:value={a} />
+<input type="number" bind:value={b} />
 
 <p>{a} + {b} = {await add(a, b)}</p>
 ```
@@ -3389,8 +3370,7 @@ Updates can overlap — a fast update will be reflected in the UI while an earli
 Svelte will do as much asynchronous work as it can in parallel. For example if you have two `await` expressions in your markup...
 
 ```svelte
-<p>{await one()}</p>
-<p>{await two()}</p>
+<p>{await one()}</p><p>{await two()}</p>
 ```
 
 ...both functions will run at the same time, as they are independent expressions, even though they are _visually_ sequential.
@@ -3398,13 +3378,17 @@ Svelte will do as much asynchronous work as it can in parallel. For example if y
 This does not apply to sequential `await` expressions inside your `<script>` or inside async functions — these run like any other asynchronous JavaScript. An exception is that independent `$derived` expressions will update independently, even though they will run sequentially when they are first created:
 
 ```js
-async function one() { return 1; }
-async function two() { return 2; }
+async function one() {
+  return 1
+}
+async function two() {
+  return 2
+}
 // ---cut---
 // these will run sequentially the first time,
 // but will update independently
-let a = $derived(await one());
-let b = $derived(await two());
+let a = $derived(await one())
+let b = $derived(await two())
 ```
 
 > [!NOTE] If you write code like this, expect Svelte to give you an [`await_waterfall`](runtime-warnings#Client-warnings-await_waterfall) warning
@@ -3416,28 +3400,28 @@ In addition to the nearest boundary's [`pending`](svelte-boundary#Properties-pen
 You can also use [`settled()`](svelte#settled) to get a promise that resolves when the current update is complete:
 
 ```js
-let color = 'red';
-let answer = -1;
-let updating = false;
+let color = 'red'
+let answer = -1
+let updating = false
 // ---cut---
-import { tick, settled } from 'svelte';
+import { tick, settled } from 'svelte'
 
 async function onclick() {
-	updating = true;
+  updating = true
 
-	// without this, the change to `updating` will be
-	// grouped with the other changes, meaning it
-	// won't be reflected in the UI
-	await tick();
+  // without this, the change to `updating` will be
+  // grouped with the other changes, meaning it
+  // won't be reflected in the UI
+  await tick()
 
-	color = 'octarine';
-	answer = 42;
+  color = 'octarine'
+  answer = 42
 
-	await settled();
+  await settled()
 
-	// any updates affected by `color` or `answer`
-	// have now been applied
-	updating = false;
+  // any updates affected by `color` or `answer`
+  // have now been applied
+  updating = false
 }
 ```
 
@@ -3463,10 +3447,10 @@ This works by adding a class to affected elements, which is based on a hash of t
 
 ```svelte
 <style>
-	p {
-		/* this will only affect <p> elements in this component */
-		color: burlywood;
-	}
+  p {
+    /* this will only affect <p> elements in this component */
+    color: burlywood;
+  }
 </style>
 ```
 
@@ -3482,14 +3466,14 @@ If a component defines `@keyframes`, the name is scoped to the component using t
 
 ```svelte
 <style>
-	.bouncy {
-		animation: bounce 10s;
-	}
+  .bouncy {
+    animation: bounce 10s;
+  }
 
-	/* these keyframes are only accessible inside this component */
-	@keyframes bounce {
-		/* ... */
-	}
+  /* these keyframes are only accessible inside this component */
+  @keyframes bounce {
+    /* ... */
+  }
 </style>
 ```
 
@@ -3501,23 +3485,23 @@ To apply styles to a single selector globally, use the `:global(...)` modifier:
 
 ```svelte
 <style>
-	:global(body) {
-		/* applies to <body> */
-		margin: 0;
-	}
+  :global(body) {
+    /* applies to <body> */
+    margin: 0;
+  }
 
-	div :global(strong) {
-		/* applies to all <strong> elements, in any component,
+  div :global(strong) {
+    /* applies to all <strong> elements, in any component,
 		   that are inside <div> elements belonging
 		   to this component */
-		color: goldenrod;
-	}
+    color: goldenrod;
+  }
 
-	p:global(.big.red) {
-		/* applies to all <p> elements belonging to this component
+  p:global(.big.red) {
+    /* applies to all <p> elements belonging to this component
 		   with `class="big red"`, even if it is applied
 		   programmatically (for example by a library) */
-	}
+  }
 </style>
 ```
 
@@ -3527,9 +3511,9 @@ The `-global-` part will be removed when compiled, and the keyframe will then be
 
 ```svelte
 <style>
-	@keyframes -global-my-animation-name {
-		/* code goes here */
-	}
+  @keyframes -global-my-animation-name {
+    /* code goes here */
+  }
 </style>
 ```
 
@@ -3562,24 +3546,16 @@ To apply styles to a group of selectors globally, create a `:global {...}` block
 You can pass CSS custom properties — both static and dynamic — to components:
 
 ```svelte
-<Slider
-	bind:value
-	min={0}
-	max={100}
-	--track-color="black"
-	--thumb-color="rgb({r} {g} {b})"
-/>
+<Slider bind:value min={0} max={100} --track-color="black" --thumb-color="rgb({r} {g} {b})" />
 ```
 
 The above code essentially desugars to this:
 
 ```svelte
-<svelte-css-wrapper style="display: contents; --track-color: black; --thumb-color: rgb({r} {g} {b})">
-	<Slider
-		bind:value
-		min={0}
-		max={100}
-	/>
+<svelte-css-wrapper
+  style="display: contents; --track-color: black; --thumb-color: rgb({r} {g} {b})"
+>
+  <Slider bind:value min={0} max={100} />
 </svelte-css-wrapper>
 ```
 
@@ -3587,11 +3563,7 @@ For an SVG element, it would use `<g>` instead:
 
 ```svelte
 <g style="--track-color: black; --thumb-color: rgb({r} {g} {b})">
-	<Slider
-		bind:value
-		min={0}
-		max={100}
-	/>
+  <Slider bind:value min={0} max={100} />
 </g>
 ```
 
@@ -3599,13 +3571,13 @@ Inside the component, we can read these custom properties (and provide fallback 
 
 ```svelte
 <style>
-	.track {
-		background: var(--track-color, #aaa);
-	}
+  .track {
+    background: var(--track-color, #aaa);
+  }
 
-	.thumb {
-		background: var(--thumb-color, blue);
-	}
+  .thumb {
+    background: var(--thumb-color, blue);
+  }
 </style>
 ```
 
@@ -3623,13 +3595,13 @@ In that case, the `<style>` tag will be inserted as-is into the DOM; no scoping 
 
 ```svelte
 <div>
-	<style>
-		/* this style tag will be inserted as-is */
-		div {
-			/* this will apply to all `<div>` elements in the DOM */
-			color: red;
-		}
-	</style>
+  <style>
+    /* this style tag will be inserted as-is */
+    div {
+      /* this will apply to all `<div>` elements in the DOM */
+      color: red;
+    }
+  </style>
 </div>
 ```
 
@@ -3661,11 +3633,11 @@ As of Svelte 5.36, boundaries with a `pending` snippet can contain [`await`](awa
 
 ```svelte
 <svelte:boundary>
-	<p>{await delayed('hello!')}</p>
+  <p>{await delayed('hello!')}</p>
 
-	{#snippet pending()}
-		<p>loading...</p>
-	{/snippet}
+  {#snippet pending()}
+    <p>loading...</p>
+  {/snippet}
 </svelte:boundary>
 ```
 
@@ -3673,18 +3645,17 @@ The `pending` snippet will _not_ be shown for subsequent async updates — for t
 
 > [!NOTE] In the [playground](/playground), your app is rendered inside a boundary with an empty pending snippet, so that you can use `await` without having to create one.
 
-
 ### `failed`
 
 If a `failed` snippet is provided, it will be rendered when an error is thrown inside the boundary, with the `error` and a `reset` function that recreates the contents ([demo](/playground/hello-world#H4sIAAAAAAAAE3VRy26DMBD8lS2tFCIh6JkAUlWp39Cq9EBg06CAbdlLArL87zWGKk8ORnhmd3ZnrD1WtOjFXqKO2BDGW96xqpBD5gXerm5QefG39mgQY9EIWHxueRMinLosti0UPsJLzggZKTeilLWgLGc51a3gkuCjKQ7DO7cXZotgJ3kLqzC6hmex1SZnSXTWYHcrj8LJjWTk0PHoZ8VqIdCOKayPykcpuQxAokJaG1dGybYj4gw4K5u6PKTasSbjXKgnIDlA8VvUdo-pzonraBY2bsH7HAl78mKSHZpgIcuHjq9jXSpZSLixRlveKYQUXhQVhL6GPobXAAb7BbNeyvNUs4qfRg3OnELLj5hqH9eQZqCnoBwR9lYcQxuVXeBzc8kMF8yXY4yNJ5oGiUzP_aaf_waTRGJib5_Ad3P_vbCuaYxzeNpbU0eUMPAOKh7Yw1YErgtoXyuYlPLzc10_xo_5A91zkQL_AgAA)):
 
 ```svelte
 <svelte:boundary>
-	<FlakyComponent />
+  <FlakyComponent />
 
-	{#snippet failed(error, reset)}
-		<button onclick={reset}>oops! try again</button>
-	{/snippet}
+  {#snippet failed(error, reset)}
+    <button onclick={reset}>oops! try again</button>
+  {/snippet}
 </svelte:boundary>
 ```
 
@@ -3702,35 +3673,33 @@ If a `failed` snippet is provided, it will be rendered when an error is thrown i
 If an `onerror` function is provided, it will be called with the same two `error` and `reset` arguments. This is useful for tracking the error with an error reporting service...
 
 ```svelte
-<svelte:boundary onerror={(e) => report(e)}>
-	...
-</svelte:boundary>
+<svelte:boundary onerror={(e) => report(e)}>...</svelte:boundary>
 ```
 
 ...or using `error` and `reset` outside the boundary itself:
 
 ```svelte
 <script>
-	let error = $state(null);
-	let reset = $state(() => {});
+  let error = $state(null)
+  let reset = $state(() => {})
 
-	function onerror(e, r) {
-		error = e;
-		reset = r;
-	}
+  function onerror(e, r) {
+    error = e
+    reset = r
+  }
 </script>
 
-<svelte:boundary {onerror}>
-	<FlakyComponent />
-</svelte:boundary>
+<svelte:boundary {onerror}><FlakyComponent /></svelte:boundary>
 
 {#if error}
-	<button onclick={() => {
-		error = null;
-		reset();
-	}}>
-		oops! try again
-	</button>
+  <button
+    onclick={() => {
+      error = null
+      reset()
+    }}
+  >
+    oops! try again
+  </button>
 {/if}
 ```
 
@@ -3752,9 +3721,9 @@ This element may only appear at the top level of your component — it cannot be
 
 ```svelte
 <script>
-	function handleKeydown(event) {
-		alert(`pressed the ${event.key} key`);
-	}
+  function handleKeydown(event) {
+    alert(`pressed the ${event.key} key`)
+  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -3832,8 +3801,8 @@ As with `<svelte:window>`, `<svelte:document>` and `<svelte:body>`, this element
 
 ```svelte
 <svelte:head>
-	<title>Hello world!</title>
-	<meta name="description" content="This is where the description goes for SEO" />
+  <title>Hello world!</title>
+  <meta name="description" content="This is where the description goes for SEO" />
 </svelte:head>
 ```
 
@@ -3853,12 +3822,10 @@ If `this` is the name of a [void element](https://developer.mozilla.org/en-US/do
 
 ```svelte
 <script>
-	let tag = $state('hr');
+  let tag = $state('hr')
 </script>
 
-<svelte:element this={tag}>
-	This text cannot appear inside an hr element
-</svelte:element>
+<svelte:element this={tag}> This text cannot appear inside an hr element </svelte:element>
 ```
 
 Svelte tries its best to infer the correct namespace from the element's surroundings, but it's not always possible. You can make it explicit with an `xmlns` attribute:
@@ -3913,16 +3880,16 @@ Local variables (that do not represent store values) must _not_ have a `$` prefi
 
 ```svelte
 <script>
-	import { writable } from 'svelte/store';
+  import { writable } from 'svelte/store'
 
-	const count = writable(0);
-	console.log($count); // logs 0
+  const count = writable(0)
+  console.log($count) // logs 0
 
-	count.set(1);
-	console.log($count); // logs 1
+  count.set(1)
+  console.log($count) // logs 1
 
-	$count = 2;
-	console.log($count); // logs 2
+  $count = 2
+  console.log($count) // logs 2
 </script>
 ```
 
@@ -3936,22 +3903,24 @@ Prior to Svelte 5, stores were the go-to solution for creating cross-component r
 ```ts
 /// file: state.svelte.js
 export const userState = $state({
-	name: 'name',
-	/* ... */
-});
+  name: 'name'
+  /* ... */
+})
 ```
 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import { userState } from './state.svelte.js';
+  import { userState } from './state.svelte.js'
 </script>
 
 <p>User name: {userState.name}</p>
-<button onclick={() => {
-	userState.name = 'new name';
-}}>
-	change name
+<button
+  onclick={() => {
+    userState.name = 'new name'
+  }}
+>
+  change name
 </button>
 ```
 
@@ -3971,37 +3940,37 @@ Function that creates a store which has values that can be set from 'outside' co
 
 ```js
 /// file: store.js
-import { writable } from 'svelte/store';
+import { writable } from 'svelte/store'
 
-const count = writable(0);
+const count = writable(0)
 
 count.subscribe((value) => {
-	console.log(value);
-}); // logs '0'
+  console.log(value)
+}) // logs '0'
 
-count.set(1); // logs '1'
+count.set(1) // logs '1'
 
-count.update((n) => n + 1); // logs '2'
+count.update((n) => n + 1) // logs '2'
 ```
 
 If a function is passed as the second argument, it will be called when the number of subscribers goes from zero to one (but not from one to two, etc). That function will be passed a `set` function which changes the value of the store, and an `update` function which works like the `update` method on the store, taking a callback to calculate the store's new value from its old value. It must return a `stop` function that is called when the subscriber count goes from one to zero.
 
 ```js
 /// file: store.js
-import { writable } from 'svelte/store';
+import { writable } from 'svelte/store'
 
 const count = writable(0, () => {
-	console.log('got a subscriber');
-	return () => console.log('no more subscribers');
-});
+  console.log('got a subscriber')
+  return () => console.log('no more subscribers')
+})
 
-count.set(1); // does nothing
+count.set(1) // does nothing
 
 const unsubscribe = count.subscribe((value) => {
-	console.log(value);
-}); // logs 'got a subscriber', then '1'
+  console.log(value)
+}) // logs 'got a subscriber', then '1'
 
-unsubscribe(); // logs 'no more subscribers'
+unsubscribe() // logs 'no more subscribers'
 ```
 
 Note that the value of a `writable` is lost when it is destroyed, for example when the page is refreshed. However, you can write your own logic to sync the value to for example the `localStorage`.
@@ -4011,25 +3980,25 @@ Note that the value of a `writable` is lost when it is destroyed, for example wh
 Creates a store whose value cannot be set from 'outside', the first argument is the store's initial value, and the second argument to `readable` is the same as the second argument to `writable`.
 
 ```ts
-import { readable } from 'svelte/store';
+import { readable } from 'svelte/store'
 
 const time = readable(new Date(), (set) => {
-	set(new Date());
+  set(new Date())
 
-	const interval = setInterval(() => {
-		set(new Date());
-	}, 1000);
+  const interval = setInterval(() => {
+    set(new Date())
+  }, 1000)
 
-	return () => clearInterval(interval);
-});
+  return () => clearInterval(interval)
+})
 
 const ticktock = readable('tick', (set, update) => {
-	const interval = setInterval(() => {
-		update((sound) => (sound === 'tick' ? 'tock' : 'tick'));
-	}, 1000);
+  const interval = setInterval(() => {
+    update((sound) => (sound === 'tick' ? 'tock' : 'tick'))
+  }, 1000)
 
-	return () => clearInterval(interval);
-});
+  return () => clearInterval(interval)
+})
 ```
 
 ### `derived`
@@ -4040,19 +4009,19 @@ In the simplest version, `derived` takes a single store, and the callback return
 
 ```ts
 // @filename: ambient.d.ts
-import { type Writable } from 'svelte/store';
+import { type Writable } from 'svelte/store'
 
 declare global {
-	const a: Writable<number>;
+  const a: Writable<number>
 }
 
-export {};
+export {}
 
 // @filename: index.ts
 // ---cut---
-import { derived } from 'svelte/store';
+import { derived } from 'svelte/store'
 
-const doubled = derived(a, ($a) => $a * 2);
+const doubled = derived(a, ($a) => $a * 2)
 ```
 
 The callback can set a value asynchronously by accepting a second argument, `set`, and an optional third argument, `update`, calling either or both of them when appropriate.
@@ -4061,89 +4030,89 @@ In this case, you can also pass a third argument to `derived` — the initial va
 
 ```ts
 // @filename: ambient.d.ts
-import { type Writable } from 'svelte/store';
+import { type Writable } from 'svelte/store'
 
 declare global {
-	const a: Writable<number>;
+  const a: Writable<number>
 }
 
-export {};
+export {}
 
 // @filename: index.ts
 // @errors: 18046 2769 7006
 // ---cut---
-import { derived } from 'svelte/store';
+import { derived } from 'svelte/store'
 
 const delayed = derived(
-	a,
-	($a, set) => {
-		setTimeout(() => set($a), 1000);
-	},
-	2000
-);
+  a,
+  ($a, set) => {
+    setTimeout(() => set($a), 1000)
+  },
+  2000
+)
 
 const delayedIncrement = derived(a, ($a, set, update) => {
-	set($a);
-	setTimeout(() => update((x) => x + 1), 1000);
-	// every time $a produces a value, this produces two
-	// values, $a immediately and then $a + 1 a second later
-});
+  set($a)
+  setTimeout(() => update((x) => x + 1), 1000)
+  // every time $a produces a value, this produces two
+  // values, $a immediately and then $a + 1 a second later
+})
 ```
 
 If you return a function from the callback, it will be called when a) the callback runs again, or b) the last subscriber unsubscribes.
 
 ```ts
 // @filename: ambient.d.ts
-import { type Writable } from 'svelte/store';
+import { type Writable } from 'svelte/store'
 
 declare global {
-	const frequency: Writable<number>;
+  const frequency: Writable<number>
 }
 
-export {};
+export {}
 
 // @filename: index.ts
 // ---cut---
-import { derived } from 'svelte/store';
+import { derived } from 'svelte/store'
 
 const tick = derived(
-	frequency,
-	($frequency, set) => {
-		const interval = setInterval(() => {
-			set(Date.now());
-		}, 1000 / $frequency);
+  frequency,
+  ($frequency, set) => {
+    const interval = setInterval(() => {
+      set(Date.now())
+    }, 1000 / $frequency)
 
-		return () => {
-			clearInterval(interval);
-		};
-	},
-	2000
-);
+    return () => {
+      clearInterval(interval)
+    }
+  },
+  2000
+)
 ```
 
 In both cases, an array of arguments can be passed as the first argument instead of a single store.
 
 ```ts
 // @filename: ambient.d.ts
-import { type Writable } from 'svelte/store';
+import { type Writable } from 'svelte/store'
 
 declare global {
-	const a: Writable<number>;
-	const b: Writable<number>;
+  const a: Writable<number>
+  const b: Writable<number>
 }
 
-export {};
+export {}
 
 // @filename: index.ts
 
 // ---cut---
-import { derived } from 'svelte/store';
+import { derived } from 'svelte/store'
 
-const summed = derived([a, b], ([$a, $b]) => $a + $b);
+const summed = derived([a, b], ([$a, $b]) => $a + $b)
 
 const delayed = derived([a, b], ([$a, $b], set) => {
-	setTimeout(() => set($a + $b), 1000);
-});
+  setTimeout(() => set($a + $b), 1000)
+})
 ```
 
 ### `readonly`
@@ -4151,16 +4120,16 @@ const delayed = derived([a, b], ([$a, $b], set) => {
 This simple helper function makes a store readonly. You can still subscribe to the changes from the original one using this new readable store.
 
 ```js
-import { readonly, writable } from 'svelte/store';
+import { readonly, writable } from 'svelte/store'
 
-const writableStore = writable(1);
-const readableStore = readonly(writableStore);
+const writableStore = writable(1)
+const readableStore = readonly(writableStore)
 
-readableStore.subscribe(console.log);
+readableStore.subscribe(console.log)
 
-writableStore.set(2); // console: 2
+writableStore.set(2) // console: 2
 // @errors: 2339
-readableStore.set(2); // ERROR
+readableStore.set(2) // ERROR
 ```
 
 ### `get`
@@ -4171,19 +4140,19 @@ Generally, you should read the value of a store by subscribing to it and using t
 
 ```ts
 // @filename: ambient.d.ts
-import { type Writable } from 'svelte/store';
+import { type Writable } from 'svelte/store'
 
 declare global {
-	const store: Writable<string>;
+  const store: Writable<string>
 }
 
-export {};
+export {}
 
 // @filename: index.ts
 // ---cut---
-import { get } from 'svelte/store';
+import { get } from 'svelte/store'
 
-const value = get(store);
+const value = get(store)
 ```
 
 ## Store contract
@@ -4208,9 +4177,9 @@ Context allows components to access values owned by parent components without pa
 ```svelte
 <!--- file: Parent.svelte --->
 <script>
-	import { setContext } from 'svelte';
+  import { setContext } from 'svelte'
 
-	setContext('my-context', 'hello from Parent.svelte');
+  setContext('my-context', 'hello from Parent.svelte')
 </script>
 ```
 
@@ -4219,9 +4188,9 @@ Context allows components to access values owned by parent components without pa
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	import { getContext } from 'svelte';
+  import { getContext } from 'svelte'
 
-	const message = getContext('my-context');
+  const message = getContext('my-context')
 </script>
 
 <h1>{message}, inside Child.svelte</h1>
@@ -4231,7 +4200,7 @@ This is particularly useful when `Parent.svelte` is not directly aware of `Child
 
 ```svelte
 <Parent>
-	<Child />
+  <Child />
 </Parent>
 ```
 
@@ -4245,19 +4214,17 @@ You can store reactive state in context ([demo](/playground/untitled#H4sIAAAAAAA
 
 ```svelte
 <script>
-	import { setContext } from 'svelte';
-	import Child from './Child.svelte';
+  import { setContext } from 'svelte'
+  import Child from './Child.svelte'
 
-	let counter = $state({
-		count: 0
-	});
+  let counter = $state({
+    count: 0
+  })
 
-	setContext('counter', counter);
+  setContext('counter', counter)
 </script>
 
-<button onclick={() => counter.count += 1}>
-	increment
-</button>
+<button onclick={() => (counter.count += 1)}> increment </button>
 
 <Child />
 <Child />
@@ -4267,9 +4234,7 @@ You can store reactive state in context ([demo](/playground/untitled#H4sIAAAAAAA
 ...though note that if you _reassign_ `counter` instead of updating it, you will 'break the link' — in other words instead of this...
 
 ```svelte
-<button onclick={() => counter = { count: 0 }}>
-	reset
-</button>
+<button onclick={() => (counter = { count: 0 })}> reset </button>
 ```
 
 ...you must do this:
@@ -4314,11 +4279,11 @@ When you have state shared by many different components, you might be tempted to
 ```js
 /// file: state.svelte.js
 export const myGlobalState = $state({
-	user: {
-		// ...
-	}
-	// ...
-});
+  user: {
+    // ...
+  }
+  // ...
+})
 ```
 
 In many cases this is perfectly fine, but there is a risk: if you mutate the state during server-side rendering (which is discouraged, but entirely possible!)...
@@ -4326,13 +4291,13 @@ In many cases this is perfectly fine, but there is a risk: if you mutate the sta
 ```svelte
 <!--- file: App.svelte ---->
 <script>
-	import { myGlobalState } from './state.svelte.js';
+  import { myGlobalState } from './state.svelte.js'
 
-	let { data } = $props();
+  let { data } = $props()
 
-	if (data.user) {
-		myGlobalState.user = data.user;
-	}
+  if (data.user) {
+    myGlobalState.user = data.user
+  }
 </script>
 ```
 
@@ -4355,11 +4320,11 @@ The `onMount` function schedules a callback to run as soon as the component has 
 
 ```svelte
 <script>
-	import { onMount } from 'svelte';
+  import { onMount } from 'svelte'
 
-	onMount(() => {
-		console.log('the component has mounted');
-	});
+  onMount(() => {
+    console.log('the component has mounted')
+  })
 </script>
 ```
 
@@ -4367,15 +4332,15 @@ If a function is returned from `onMount`, it will be called when the component i
 
 ```svelte
 <script>
-	import { onMount } from 'svelte';
+  import { onMount } from 'svelte'
 
-	onMount(() => {
-		const interval = setInterval(() => {
-			console.log('beep');
-		}, 1000);
+  onMount(() => {
+    const interval = setInterval(() => {
+      console.log('beep')
+    }, 1000)
 
-		return () => clearInterval(interval);
-	});
+    return () => clearInterval(interval)
+  })
 </script>
 ```
 
@@ -4389,11 +4354,11 @@ Out of `onMount`, `beforeUpdate`, `afterUpdate` and `onDestroy`, this is the onl
 
 ```svelte
 <script>
-	import { onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte'
 
-	onDestroy(() => {
-		console.log('the component is being destroyed');
-	});
+  onDestroy(() => {
+    console.log('the component is being destroyed')
+  })
 </script>
 ```
 
@@ -4403,14 +4368,14 @@ While there's no "after update" hook, you can use `tick` to ensure that the UI i
 
 ```svelte
 <script>
-	import { tick } from 'svelte';
+  import { tick } from 'svelte'
 
-	$effect.pre(() => {
-		console.log('the component is about to update');
-		tick().then(() => {
-				console.log('the component just updated');
-		});
-	});
+  $effect.pre(() => {
+    console.log('the component is about to update')
+    tick().then(() => {
+      console.log('the component just updated')
+    })
+  })
 </script>
 ```
 
@@ -4420,15 +4385,15 @@ Svelte 4 contained hooks that ran before and after the component as a whole was 
 
 ```svelte
 <script>
-	import { beforeUpdate, afterUpdate } from 'svelte';
+  import { beforeUpdate, afterUpdate } from 'svelte'
 
-	beforeUpdate(() => {
-		console.log('the component is about to update');
-	});
+  beforeUpdate(() => {
+    console.log('the component is about to update')
+  })
 
-	afterUpdate(() => {
-		console.log('the component just updated');
-	});
+  afterUpdate(() => {
+    console.log('the component just updated')
+  })
 </script>
 ```
 
@@ -4520,13 +4485,13 @@ Instantiates a component and mounts it to the given target:
 
 ```js
 // @errors: 2322
-import { mount } from 'svelte';
-import App from './App.svelte';
+import { mount } from 'svelte'
+import App from './App.svelte'
 
 const app = mount(App, {
-	target: document.querySelector('#app'),
-	props: { some: 'property' }
-});
+  target: document.querySelector('#app'),
+  props: { some: 'property' }
+})
 ```
 
 You can mount multiple components per page, and you can also mount from within your application, for example when creating a tooltip component and attaching it to the hovered element.
@@ -4540,13 +4505,13 @@ Unmounts a component that was previously created with [`mount`](#mount) or [`hyd
 If `options.outro` is `true`, [transitions](transition) will play before the component is removed from the DOM:
 
 ```js
-import { mount, unmount } from 'svelte';
-import App from './App.svelte';
+import { mount, unmount } from 'svelte'
+import App from './App.svelte'
 
-const app = mount(App, { target: document.body });
+const app = mount(App, { target: document.body })
 
 // later
-unmount(app, { outro: true });
+unmount(app, { outro: true })
 ```
 
 Returns a `Promise` that resolves after transitions have completed if `options.outro` is true, or immediately otherwise.
@@ -4557,14 +4522,14 @@ Only available on the server and when compiling with the `server` option. Takes 
 
 ```js
 // @errors: 2724 2305 2307
-import { render } from 'svelte/server';
-import App from './App.svelte';
+import { render } from 'svelte/server'
+import App from './App.svelte'
 
 const result = render(App, {
-	props: { some: 'property' }
-});
-result.body; // HTML for somewhere in this <body> tag
-result.head; // HTML for somewhere in this <head> tag
+  props: { some: 'property' }
+})
+result.body // HTML for somewhere in this <body> tag
+result.head // HTML for somewhere in this <head> tag
 ```
 
 ## `hydrate`
@@ -4573,13 +4538,13 @@ Like `mount`, but will reuse up any HTML rendered by Svelte's SSR output (from t
 
 ```js
 // @errors: 2322
-import { hydrate } from 'svelte';
-import App from './App.svelte';
+import { hydrate } from 'svelte'
+import App from './App.svelte'
 
 const app = hydrate(App, {
-	target: document.querySelector('#app'),
-	props: { some: 'property' }
-});
+  target: document.querySelector('#app'),
+  props: { some: 'property' }
+})
 ```
 
 As with `mount`, effects will not run during `hydrate` — use `flushSync()` immediately afterwards if you need them to.
@@ -4622,19 +4587,19 @@ You can now write unit tests for code inside your `.js/.ts` files:
 
 ```js
 /// file: multiplier.svelte.test.js
-import { flushSync } from 'svelte';
-import { expect, test } from 'vitest';
-import { multiplier } from './multiplier.svelte.js';
+import { flushSync } from 'svelte'
+import { expect, test } from 'vitest'
+import { multiplier } from './multiplier.svelte.js'
 
 test('Multiplier', () => {
-	let double = multiplier(0, 2);
+  let double = multiplier(0, 2)
 
-	expect(double.value).toEqual(0);
+  expect(double.value).toEqual(0)
 
-	double.set(5);
+  double.set(5)
 
-	expect(double.value).toEqual(10);
-});
+  expect(double.value).toEqual(10)
+})
 ```
 
 ```js
@@ -4644,17 +4609,17 @@ test('Multiplier', () => {
  * @param {number} k
  */
 export function multiplier(initial, k) {
-	let count = $state(initial);
+  let count = $state(initial)
 
-	return {
-		get value() {
-			return count * k;
-		},
-		/** @param {number} c */
-		set: (c) => {
-			count = c;
-		}
-	};
+  return {
+    get value() {
+      return count * k
+    },
+    /** @param {number} c */
+    set: (c) => {
+      count = c
+    }
+  }
 }
 ```
 
@@ -4664,20 +4629,20 @@ Since Vitest processes your test files the same way as your source files, you ca
 
 ```js
 /// file: multiplier.svelte.test.js
-import { flushSync } from 'svelte';
-import { expect, test } from 'vitest';
-import { multiplier } from './multiplier.svelte.js';
+import { flushSync } from 'svelte'
+import { expect, test } from 'vitest'
+import { multiplier } from './multiplier.svelte.js'
 
 test('Multiplier', () => {
-	let count = $state(0);
-	let double = multiplier(() => count, 2);
+  let count = $state(0)
+  let double = multiplier(() => count, 2)
 
-	expect(double.value).toEqual(0);
+  expect(double.value).toEqual(0)
 
-	count = 5;
+  count = 5
 
-	expect(double.value).toEqual(10);
-});
+  expect(double.value).toEqual(10)
+})
 ```
 
 ```js
@@ -4687,11 +4652,11 @@ test('Multiplier', () => {
  * @param {number} k
  */
 export function multiplier(getCount, k) {
-	return {
-		get value() {
-			return getCount() * k;
-		}
-	};
+  return {
+    get value() {
+      return getCount() * k
+    }
+  }
 }
 ```
 
@@ -4699,30 +4664,30 @@ If the code being tested uses effects, you need to wrap the test inside `$effect
 
 ```js
 /// file: logger.svelte.test.js
-import { flushSync } from 'svelte';
-import { expect, test } from 'vitest';
-import { logger } from './logger.svelte.js';
+import { flushSync } from 'svelte'
+import { expect, test } from 'vitest'
+import { logger } from './logger.svelte.js'
 
 test('Effect', () => {
-	const cleanup = $effect.root(() => {
-		let count = $state(0);
+  const cleanup = $effect.root(() => {
+    let count = $state(0)
 
-		// logger uses an $effect to log updates of its input
-		let log = logger(() => count);
+    // logger uses an $effect to log updates of its input
+    let log = logger(() => count)
 
-		// effects normally run after a microtask,
-		// use flushSync to execute all pending effects synchronously
-		flushSync();
-		expect(log).toEqual([0]);
+    // effects normally run after a microtask,
+    // use flushSync to execute all pending effects synchronously
+    flushSync()
+    expect(log).toEqual([0])
 
-		count = 1;
-		flushSync();
+    count = 1
+    flushSync()
 
-		expect(log).toEqual([0, 1]);
-	});
+    expect(log).toEqual([0, 1])
+  })
 
-	cleanup();
-});
+  cleanup()
+})
 ```
 
 ```js
@@ -4731,14 +4696,14 @@ test('Effect', () => {
  * @param {() => any} getValue
  */
 export function logger(getValue) {
-	/** @type {any[]} */
-	let log = [];
+  /** @type {any[]} */
+  let log = []
 
-	$effect(() => {
-		log.push(getValue());
-	});
+  $effect(() => {
+    log.push(getValue())
+  })
 
-	return log;
+  return log
 }
 ```
 
@@ -4758,74 +4723,74 @@ Then adjust your `vite.config.js`:
 
 ```js
 /// file: vite.config.js
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-	plugins: [
-		/* ... */
-	],
-	test: {
-		// If you are testing components client-side, you need to setup a DOM environment.
-		// If not all your files should have this environment, you can use a
-		// `// @vitest-environment jsdom` comment at the top of the test files instead.
-		environment: 'jsdom'
-	},
-	// Tell Vitest to use the `browser` entry points in `package.json` files, even though it's running in Node
-	resolve: process.env.VITEST
-		? {
-				conditions: ['browser']
-			}
-		: undefined
-});
+  plugins: [
+    /* ... */
+  ],
+  test: {
+    // If you are testing components client-side, you need to setup a DOM environment.
+    // If not all your files should have this environment, you can use a
+    // `// @vitest-environment jsdom` comment at the top of the test files instead.
+    environment: 'jsdom'
+  },
+  // Tell Vitest to use the `browser` entry points in `package.json` files, even though it's running in Node
+  resolve: process.env.VITEST
+    ? {
+        conditions: ['browser']
+      }
+    : undefined
+})
 ```
 
 After that, you can create a test file in which you import the component to test, interact with it programmatically and write expectations about the results:
 
 ```js
 /// file: component.test.js
-import { flushSync, mount, unmount } from 'svelte';
-import { expect, test } from 'vitest';
-import Component from './Component.svelte';
+import { flushSync, mount, unmount } from 'svelte'
+import { expect, test } from 'vitest'
+import Component from './Component.svelte'
 
 test('Component', () => {
-	// Instantiate the component using Svelte's `mount` API
-	const component = mount(Component, {
-		target: document.body, // `document` exists because of jsdom
-		props: { initial: 0 }
-	});
+  // Instantiate the component using Svelte's `mount` API
+  const component = mount(Component, {
+    target: document.body, // `document` exists because of jsdom
+    props: { initial: 0 }
+  })
 
-	expect(document.body.innerHTML).toBe('<button>0</button>');
+  expect(document.body.innerHTML).toBe('<button>0</button>')
 
-	// Click the button, then flush the changes so you can synchronously write expectations
-	document.body.querySelector('button').click();
-	flushSync();
+  // Click the button, then flush the changes so you can synchronously write expectations
+  document.body.querySelector('button').click()
+  flushSync()
 
-	expect(document.body.innerHTML).toBe('<button>1</button>');
+  expect(document.body.innerHTML).toBe('<button>1</button>')
 
-	// Remove the component from the DOM
-	unmount(component);
-});
+  // Remove the component from the DOM
+  unmount(component)
+})
 ```
 
 While the process is very straightforward, it is also low level and somewhat brittle, as the precise structure of your component may change frequently. Tools like [@testing-library/svelte](https://testing-library.com/docs/svelte-testing-library/intro/) can help streamline your tests. The above test could be rewritten like this:
 
 ```js
 /// file: component.test.js
-import { render, screen } from '@testing-library/svelte';
-import userEvent from '@testing-library/user-event';
-import { expect, test } from 'vitest';
-import Component from './Component.svelte';
+import { render, screen } from '@testing-library/svelte'
+import userEvent from '@testing-library/user-event'
+import { expect, test } from 'vitest'
+import Component from './Component.svelte'
 
 test('Component', async () => {
-	const user = userEvent.setup();
-	render(Component);
+  const user = userEvent.setup()
+  render(Component)
 
-	const button = screen.getByRole('button');
-	expect(button).toHaveTextContent(0);
+  const button = screen.getByRole('button')
+  expect(button).toHaveTextContent(0)
 
-	await user.click(button);
-	expect(button).toHaveTextContent(1);
-});
+  await user.click(button)
+  expect(button).toHaveTextContent(1)
+})
 ```
 
 When writing component tests that involve two-way bindings, context or snippet props, it's best to create a wrapper component for your specific test and interact with that. `@testing-library/svelte` contains some [examples](https://testing-library.com/docs/svelte-testing-library/example).
@@ -4841,15 +4806,15 @@ If you've run `npm init playwright` or are not using Vite, you may need to adjus
 ```js
 /// file: playwright.config.js
 const config = {
-	webServer: {
-		command: 'npm run build && npm run preview',
-		port: 4173
-	},
-	testDir: 'tests',
-	testMatch: /(.+\.)?(test|spec)\.[jt]s/
-};
+  webServer: {
+    command: 'npm run build && npm run preview',
+    port: 4173
+  },
+  testDir: 'tests',
+  testMatch: /(.+\.)?(test|spec)\.[jt]s/
+}
 
-export default config;
+export default config
 ```
 
 You can now start writing tests. These are totally unaware of Svelte as a framework, so you mainly interact with the DOM and write assertions.
@@ -4857,12 +4822,12 @@ You can now start writing tests. These are totally unaware of Svelte as a framew
 ```js
 // @errors: 2307 7031
 /// file: tests/hello-world.spec.js
-import { expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test'
 
 test('home page has expected h1', async ({ page }) => {
-	await page.goto('/');
-	await expect(page.locator('h1')).toBeVisible();
-});
+  await page.goto('/')
+  await expect(page.locator('h1')).toBeVisible()
+})
 ```
 
 # TypeScript
@@ -4881,15 +4846,15 @@ To use TypeScript inside your Svelte components, add `lang="ts"` to your `script
 
 ```svelte
 <script lang="ts">
-	let name: string = 'world';
+  let name: string = 'world'
 
-	function greet(name: string) {
-		alert(`Hello, ${name}!`);
-	}
+  function greet(name: string) {
+    alert(`Hello, ${name}!`)
+  }
 </script>
 
 <button onclick={(e: Event) => greet(e.target.innerText)}>
-	{name as string}
+  {name as string}
 </button>
 ```
 
@@ -4908,14 +4873,14 @@ To use non-type-only TypeScript features within Svelte components, you need to a
 ```ts
 /// file: svelte.config.js
 // @noErrors
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 const config = {
-	// Note the additional `{ script: true }`
-	preprocess: vitePreprocess({ script: true })
-};
+  // Note the additional `{ script: true }`
+  preprocess: vitePreprocess({ script: true })
+}
 
-export default config;
+export default config
 ```
 
 ### Using SvelteKit or Vite
@@ -4925,13 +4890,13 @@ The easiest way to get started is scaffolding a new SvelteKit project by typing 
 ```ts
 /// file: svelte.config.js
 // @noErrors
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 const config = {
-	preprocess: vitePreprocess()
-};
+  preprocess: vitePreprocess()
+}
 
-export default config;
+export default config
 ```
 
 If you don't need or want all the features SvelteKit has to offer, you can scaffold a Svelte-flavoured Vite project instead by typing `npm create vite@latest` and selecting the `svelte-ts` option.
@@ -4950,7 +4915,7 @@ When using TypeScript, make sure your `tsconfig.json` is setup correctly.
 
 - Use a [`target`](https://www.typescriptlang.org/tsconfig/#target) of at least `ES2015` so classes are not compiled to functions
 - Set [`verbatimModuleSyntax`](https://www.typescriptlang.org/tsconfig/#verbatimModuleSyntax) to `true` so that imports are left as-is
-- Set [`isolatedModules`](https://www.typescriptlang.org/tsconfig/#isolatedModules) to `true` so that each file is looked at in isolation. TypeScript has a few features which require cross-file analysis and compilation, which the Svelte compiler and tooling like Vite don't do. 
+- Set [`isolatedModules`](https://www.typescriptlang.org/tsconfig/#isolatedModules) to `true` so that each file is looked at in isolation. TypeScript has a few features which require cross-file analysis and compilation, which the Svelte compiler and tooling like Vite don't do.
 
 ## Typing `$props`
 
@@ -4958,27 +4923,27 @@ Type `$props` just like a regular object with certain properties.
 
 ```svelte
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+  import type { Snippet } from 'svelte'
 
-	interface Props {
-		requiredProperty: number;
-		optionalProperty?: boolean;
-		snippetWithStringArgument: Snippet<[string]>;
-		eventHandler: (arg: string) => void;
-		[key: string]: unknown;
-	}
+  interface Props {
+    requiredProperty: number
+    optionalProperty?: boolean
+    snippetWithStringArgument: Snippet<[string]>
+    eventHandler: (arg: string) => void
+    [key: string]: unknown
+  }
 
-	let {
-		requiredProperty,
-		optionalProperty,
-		snippetWithStringArgument,
-		eventHandler,
-		...everythingElse
-	}: Props = $props();
+  let {
+    requiredProperty,
+    optionalProperty,
+    snippetWithStringArgument,
+    eventHandler,
+    ...everythingElse
+  }: Props = $props()
 </script>
 
 <button onclick={() => eventHandler('clicked button')}>
-	{@render snippetWithStringArgument('hello')}
+  {@render snippetWithStringArgument('hello')}
 </button>
 ```
 
@@ -4988,18 +4953,18 @@ Components can declare a generic relationship between their properties. One exam
 
 ```svelte
 <script lang="ts" generics="Item extends { text: string }">
-	interface Props {
-		items: Item[];
-		select(item: Item): void;
-	}
+  interface Props {
+    items: Item[]
+    select(item: Item): void
+  }
 
-	let { items, select }: Props = $props();
+  let { items, select }: Props = $props()
 </script>
 
 {#each items as item}
-	<button onclick={() => select(item)}>
-		{item.text}
-	</button>
+  <button onclick={() => select(item)}>
+    {item.text}
+  </button>
 {/each}
 ```
 
@@ -5011,13 +4976,13 @@ In case you're writing a component that wraps a native element, you may want to 
 
 ```svelte
 <script lang="ts">
-	import type { HTMLButtonAttributes } from 'svelte/elements';
+  import type { HTMLButtonAttributes } from 'svelte/elements'
 
-	let { children, ...rest }: HTMLButtonAttributes = $props();
+  let { children, ...rest }: HTMLButtonAttributes = $props()
 </script>
 
 <button {...rest}>
-	{@render children?.()}
+  {@render children?.()}
 </button>
 ```
 
@@ -5025,13 +4990,13 @@ Not all elements have a dedicated type definition. For those without one, use `S
 
 ```svelte
 <script lang="ts">
-	import type { SvelteHTMLElements } from 'svelte/elements';
+  import type { SvelteHTMLElements } from 'svelte/elements'
 
-	let { children, ...rest }: SvelteHTMLElements['div'] = $props();
+  let { children, ...rest }: SvelteHTMLElements['div'] = $props()
 </script>
 
 <div {...rest}>
-	{@render children?.()}
+  {@render children?.()}
 </div>
 ```
 
@@ -5040,7 +5005,7 @@ Not all elements have a dedicated type definition. For those without one, use `S
 You can type `$state` like any other variable.
 
 ```ts
-let count: number = $state(0);
+let count: number = $state(0)
 ```
 
 If you don't give `$state` an initial value, part of its types will be `undefined`.
@@ -5048,17 +5013,17 @@ If you don't give `$state` an initial value, part of its types will be `undefine
 ```ts
 // @noErrors
 // Error: Type 'number | undefined' is not assignable to type 'number'
-let count: number = $state();
+let count: number = $state()
 ```
 
 If you know that the variable _will_ be defined before you first use it, use an `as` casting. This is especially useful in the context of classes:
 
 ```ts
 class Counter {
-	count = $state() as number;
-	constructor(initial: number) {
-		this.count = initial;
-	}
+  count = $state() as number
+  constructor(initial: number) {
+    this.count = initial
+  }
 }
 ```
 
@@ -5070,15 +5035,15 @@ Using it together with dynamic components to restrict what kinds of component ca
 
 ```svelte
 <script lang="ts">
-	import type { Component } from 'svelte';
+  import type { Component } from 'svelte'
 
-	interface Props {
-		// only components that have at most the "prop"
-		// property required can be passed
-		DynamicComponent: Component<{ prop: string }>;
-	}
+  interface Props {
+    // only components that have at most the "prop"
+    // property required can be passed
+    DynamicComponent: Component<{ prop: string }>
+  }
 
-	let { DynamicComponent }: Props = $props();
+  let { DynamicComponent }: Props = $props()
 </script>
 
 <DynamicComponent prop="foo" />
@@ -5089,27 +5054,27 @@ Using it together with dynamic components to restrict what kinds of component ca
 To extract the properties from a component, use `ComponentProps`.
 
 ```ts
-import type { Component, ComponentProps } from 'svelte';
-import MyComponent from './MyComponent.svelte';
+import type { Component, ComponentProps } from 'svelte'
+import MyComponent from './MyComponent.svelte'
 
 function withProps<TComponent extends Component<any>>(
-	component: TComponent,
-	props: ComponentProps<TComponent>
+  component: TComponent,
+  props: ComponentProps<TComponent>
 ) {}
 
 // Errors if the second argument is not the correct props expected
 // by the component in the first argument.
-withProps(MyComponent, { foo: 'bar' });
+withProps(MyComponent, { foo: 'bar' })
 ```
 
 To declare that a variable expects the constructor or instance type of a component:
 
 ```svelte
 <script lang="ts">
-	import MyComponent from './MyComponent.svelte';
+  import MyComponent from './MyComponent.svelte'
 
-	let componentConstructor: typeof MyComponent = MyComponent;
-	let componentInstance: MyComponent;
+  let componentConstructor: typeof MyComponent = MyComponent
+  let componentInstance: MyComponent
 </script>
 
 <MyComponent bind:this={componentInstance} />
@@ -5123,26 +5088,26 @@ In case this is a custom or experimental attribute/event, you can enhance the ty
 
 ```ts
 /// file: additional-svelte-typings.d.ts
-import { HTMLButtonAttributes } from 'svelte/elements';
+import { HTMLButtonAttributes } from 'svelte/elements'
 
 declare module 'svelte/elements' {
-	// add a new element
-	export interface SvelteHTMLElements {
-		'custom-button': HTMLButtonAttributes;
-	}
+  // add a new element
+  export interface SvelteHTMLElements {
+    'custom-button': HTMLButtonAttributes
+  }
 
-	// add a new global attribute that is available on all html elements
-	export interface HTMLAttributes<T> {
-		globalattribute?: string;
-	}
+  // add a new global attribute that is available on all html elements
+  export interface HTMLAttributes<T> {
+    globalattribute?: string
+  }
 
-	// add a new attribute for button elements
-	export interface HTMLButtonAttributes {
-		veryexperimentalattribute?: string;
-	}
+  // add a new attribute for button elements
+  export interface HTMLButtonAttributes {
+    veryexperimentalattribute?: string
+  }
 }
 
-export {}; // ensure this is not an ambient module, else types will be overridden instead of augmented
+export {} // ensure this is not an ambient module, else types will be overridden instead of augmented
 ```
 
 Then make sure that the `d.ts` file is referenced in your `tsconfig.json`. If it reads something like `"include": ["src/**/*"]` and your `d.ts` file is inside `src`, it should work. You may need to reload for the changes to take effect.
@@ -5157,7 +5122,7 @@ Svelte components can also be compiled to custom elements (aka web components) u
 <svelte:options customElement="my-element" />
 
 <script>
-	let { name = 'world' } = $props();
+  let { name = 'world' } = $props()
 </script>
 
 <h1>Hello {name}!</h1>
@@ -5168,9 +5133,9 @@ You can leave out the tag name for any of your inner components which you don't 
 
 ```js
 // @noErrors
-import MyElement from './MyElement.svelte';
+import MyElement from './MyElement.svelte'
 
-customElements.define('my-element', MyElement.element);
+customElements.define('my-element', MyElement.element)
 ```
 
 Once a custom element has been defined, it can be used as a regular DOM element:
@@ -5180,20 +5145,20 @@ document.body.innerHTML = `
 	<my-element>
 		<p>This is some slotted content</p>
 	</my-element>
-`;
+`
 ```
 
 Any [props](basic-markup#Component-props) are exposed as properties of the DOM element (as well as being readable/writable as attributes, where possible).
 
 ```js
 // @noErrors
-const el = document.querySelector('my-element');
+const el = document.querySelector('my-element')
 
 // get the current value of the 'name' prop
-console.log(el.name);
+console.log(el.name)
 
 // set a new value, updating the shadow DOM
-el.name = 'everybody';
+el.name = 'everybody'
 ```
 
 Note that you need to list out all properties explicitly, i.e. doing `let props = $props()` without declaring `props` in the [component options](#Component-options) means that Svelte can't know which props to expose as properties on the DOM element.
@@ -5223,39 +5188,39 @@ When constructing a custom element, you can tailor several aspects by defining `
 
 ```svelte
 <svelte:options
-	customElement={{
-		tag: 'custom-element',
-		shadow: 'none',
-		props: {
-			name: { reflect: true, type: 'Number', attribute: 'element-index' }
-		},
-		extend: (customElementConstructor) => {
-			// Extend the class so we can let it participate in HTML forms
-			return class extends customElementConstructor {
-				static formAssociated = true;
+  customElement={{
+    tag: 'custom-element',
+    shadow: 'none',
+    props: {
+      name: { reflect: true, type: 'Number', attribute: 'element-index' }
+    },
+    extend: (customElementConstructor) => {
+      // Extend the class so we can let it participate in HTML forms
+      return class extends customElementConstructor {
+        static formAssociated = true
 
-				constructor() {
-					super();
-					this.attachedInternals = this.attachInternals();
-				}
+        constructor() {
+          super()
+          this.attachedInternals = this.attachInternals()
+        }
 
-				// Add the function here, not below in the component so that
-				// it's always available, not just when the inner Svelte component
-				// is mounted
-				randomIndex() {
-					this.elementIndex = Math.random();
-				}
-			};
-		}
-	}}
+        // Add the function here, not below in the component so that
+        // it's always available, not just when the inner Svelte component
+        // is mounted
+        randomIndex() {
+          this.elementIndex = Math.random()
+        }
+      }
+    }
+  }}
 />
 
 <script>
-	let { elementIndex, attachedInternals } = $props();
-	// ...
-	function check() {
-		attachedInternals.checkValidity();
-	}
+  let { elementIndex, attachedInternals } = $props()
+  // ...
+  function check() {
+    attachedInternals.checkValidity()
+  }
 </script>
 
 ...
@@ -5294,6 +5259,7 @@ If you're a library author, consider whether to only support Svelte 4 or if it's
 ## Browser conditions for bundlers
 
 Bundlers must now specify the `browser` condition when building a frontend bundle for the browser. SvelteKit and Vite will handle this automatically for you. If you're using any others, you may observe lifecycle callbacks such as `onMount` not get called and you'll need to update the module resolution configuration.
+
 - For Rollup this is done within the `@rollup/plugin-node-resolve` plugin by setting `browser: true` in its options. See the [`rollup-plugin-svelte`](https://github.com/sveltejs/rollup-plugin-svelte/#usage) documentation for more details
 - For webpack this is done by adding `"browser"` to the `conditionNames` array. You may also have to update your `alias` config, if you have set it. See the [`svelte-loader`](https://github.com/sveltejs/svelte-loader#usage) documentation for more details
 
@@ -5311,23 +5277,23 @@ There are now stricter types for `createEventDispatcher`, `Action`, `ActionRetur
 
 ```ts
 // @errors: 2554 2345
-import { createEventDispatcher } from 'svelte';
+import { createEventDispatcher } from 'svelte'
 
 const dispatch = createEventDispatcher<{
-	optional: number | null;
-	required: string;
-	noArgument: null;
-}>();
+  optional: number | null
+  required: string
+  noArgument: null
+}>()
 
 // Svelte version 3:
-dispatch('optional');
-dispatch('required'); // I can still omit the detail argument
-dispatch('noArgument', 'surprise'); // I can still add a detail argument
+dispatch('optional')
+dispatch('required') // I can still omit the detail argument
+dispatch('noArgument', 'surprise') // I can still add a detail argument
 
 // Svelte version 4 using TypeScript strict mode:
-dispatch('optional');
-dispatch('required'); // error, missing argument
-dispatch('noArgument', 'surprise'); // error, cannot pass an argument
+dispatch('optional')
+dispatch('required') // error, missing argument
+dispatch('noArgument', 'surprise') // error, cannot pass an argument
 ```
 
 - `Action` and `ActionReturn` have a default parameter type of `undefined` now, which means you need to type the generic if you want to specify that this action receives a parameter. The migration script will migrate this automatically ([#7442](https://github.com/sveltejs/svelte/pull/7442))
@@ -5421,16 +5387,16 @@ Default slot bindings are no longer exposed to named slots and vice versa:
 
 ```svelte
 <script>
-	import Nested from './Nested.svelte';
+  import Nested from './Nested.svelte'
 </script>
 
 <Nested let:count>
-	<p>
-		count in default slot - is available: {count}
-	</p>
-	<p slot="bar">
-		count in bar slot - is not available: {count}
-	</p>
+  <p>
+    count in default slot - is available: {count}
+  </p>
+  <p slot="bar">
+    count in bar slot - is not available: {count}
+  </p>
 </Nested>
 ```
 
@@ -5442,38 +5408,38 @@ The order in which preprocessors are applied has changed. Now, preprocessors are
 
 ```js
 // @errors: 2304
-import { preprocess } from 'svelte/compiler';
+import { preprocess } from 'svelte/compiler'
 
 const { code } = await preprocess(
-	source,
-	[
-		{
-			markup: () => {
-				console.log('markup-1');
-			},
-			script: () => {
-				console.log('script-1');
-			},
-			style: () => {
-				console.log('style-1');
-			}
-		},
-		{
-			markup: () => {
-				console.log('markup-2');
-			},
-			script: () => {
-				console.log('script-2');
-			},
-			style: () => {
-				console.log('style-2');
-			}
-		}
-	],
-	{
-		filename: 'App.svelte'
-	}
-);
+  source,
+  [
+    {
+      markup: () => {
+        console.log('markup-1')
+      },
+      script: () => {
+        console.log('script-1')
+      },
+      style: () => {
+        console.log('style-1')
+      }
+    },
+    {
+      markup: () => {
+        console.log('markup-2')
+      },
+      script: () => {
+        console.log('script-2')
+      },
+      style: () => {
+        console.log('style-2')
+      }
+    }
+  ],
+  {
+    filename: 'App.svelte'
+  }
+)
 
 // Svelte 3 logs:
 // markup-1
@@ -5645,11 +5611,11 @@ Event handlers have been given a facelift in Svelte 5. Whereas in Svelte 4 we us
 
 ```svelte
 <script>
-	let count = $state(0);
+  let count = $state(0)
 </script>
 
 <button on---:---click={() => count++}>
-	clicks: {count}
+  clicks: {count}
 </button>
 ```
 
@@ -5657,15 +5623,15 @@ Since they're just properties, you can use the normal shorthand syntax...
 
 ```svelte
 <script>
-	let count = $state(0);
+  let count = $state(0)
 
-	function onclick() {
-		count++;
-	}
+  function onclick() {
+    count++
+  }
 </script>
 
 <button {onclick}>
-	clicks: {count}
+  clicks: {count}
 </button>
 ```
 
@@ -5741,20 +5707,18 @@ Instead of doing `<button on:click>` to 'forward' the event from the element to 
 	+++let { onclick } = $props();+++
 </script>
 
-<button ---on:click--- +++{onclick}+++>
-	click me
-</button>
+<button ---on:click--- +++{onclick}+++> click me </button>
 ```
 
 Note that this also means you can 'spread' event handlers onto the element along with other props instead of tediously forwarding each event separately:
 
 ```svelte
 <script>
-	let props = $props();
+  let props = $props()
 </script>
 
 <button ---{...$$props} on:click on:keydown on:all_the_other_stuff--- +++{...props}+++>
-	click me
+  click me
 </button>
 ```
 
@@ -5772,19 +5736,19 @@ Since event handlers are just functions, you can create your own wrappers as nec
 
 ```svelte
 <script>
-	function once(fn) {
-		return function (event) {
-			if (fn) fn.call(this, event);
-			fn = null;
-		};
-	}
+  function once(fn) {
+    return function (event) {
+      if (fn) fn.call(this, event)
+      fn = null
+    }
+  }
 
-	function preventDefault(fn) {
-		return function (event) {
-			event.preventDefault();
-			fn.call(this, event);
-		};
-	}
+  function preventDefault(fn) {
+    return function (event) {
+      event.preventDefault()
+      fn.call(this, event)
+    }
+  }
 </script>
 
 <button onclick={once(preventDefault(handler))}>...</button>
@@ -5812,12 +5776,12 @@ Duplicate attributes/properties on elements — which now includes event handler
 
 ```svelte
 <button
-	onclick={(e) => {
-		one(e);
-		two(e);
-	}}
+  onclick={(e) => {
+    one(e)
+    two(e)
+  }}
 >
-	...
+  ...
 </button>
 ```
 
@@ -5825,13 +5789,13 @@ When spreading props, local event handlers must go _after_ the spread, or they r
 
 ```svelte
 <button
-	{...props}
-	onclick={(e) => {
-		doStuff(e);
-		props.onclick?.(e);
-	}}
+  {...props}
+  onclick={(e) => {
+    doStuff(e)
+    props.onclick?.(e)
+  }}
 >
-	...
+  ...
 </button>
 ```
 
@@ -5875,15 +5839,15 @@ They continue to work, however, and you can pass snippets to a component that us
 ```svelte
 <!--- file: Parent.svelte --->
 <script>
-	import Child from './Child.svelte';
+  import Child from './Child.svelte'
 </script>
 
 <Child>
-	default child content
+  default child content
 
-	{#snippet foo({ message })}
-		message from child: {message}
-	{/snippet}
+  {#snippet foo({ message })}
+    message from child: {message}
+  {/snippet}
 </Child>
 ```
 
@@ -5900,8 +5864,7 @@ In Svelte 4, the easiest way to pass a piece of UI to the child was using a `<sl
 	+++let { children } = $props();+++
 </script>
 
----<slot />---
-+++{@render children?.()}+++
+---<slot />--- +++{@render children?.()}+++
 ```
 
 ### Multiple content placeholders
@@ -5914,18 +5877,15 @@ If you wanted multiple UI placeholders, you had to use named slots. In Svelte 5,
 </script>
 
 <header>
-	---<slot name="header" />---
-	+++{@render header()}+++
+  ---<slot name="header" />--- +++{@render header()}+++
 </header>
 
 <main>
-	---<slot name="main" />---
-	+++{@render main()}+++
+  ---<slot name="main" />--- +++{@render main()}+++
 </main>
 
 <footer>
-	---<slot name="footer" />---
-	+++{@render footer()}+++
+  ---<slot name="footer" />--- +++{@render footer()}+++
 </footer>
 ```
 
@@ -5936,17 +5896,15 @@ In Svelte 4, you would pass data to a `<slot />` and then retrieve it with `let:
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import List from './List.svelte';
+  import List from './List.svelte'
 </script>
 
 <List items={['one', 'two', 'three']} ---let:item--->
-	+++{#snippet item(text)}+++
-		<span>{text}</span>
-	+++{/snippet}+++
-	---<span slot="empty">No items yet</span>---
-	+++{#snippet empty()}
-		<span>No items yet</span>
-	{/snippet}+++
+  +++{#snippet item(text)}+++
+    <span>{text}</span>
+    +++{/snippet}+++ ---<span slot="empty">No items yet</span>--- +++{#snippet empty()}
+    <span>No items yet</span>
+  {/snippet}+++
 </List>
 ```
 
@@ -5957,17 +5915,15 @@ In Svelte 4, you would pass data to a `<slot />` and then retrieve it with `let:
 </script>
 
 {#if items.length}
-	<ul>
-		{#each items as entry}
-			<li>
-				---<slot item={entry} />---
-				+++{@render item(entry)}+++
-			</li>
-		{/each}
-	</ul>
+  <ul>
+    {#each items as entry}
+      <li>
+        ---<slot item={entry} />--- +++{@render item(entry)}+++
+      </li>
+    {/each}
+  </ul>
 {:else}
-	---<slot name="empty" />---
-	+++{@render empty?.()}+++
+  ---<slot name="empty" />--- +++{@render empty?.()}+++
 {/if}
 ```
 
@@ -6108,12 +6064,12 @@ If this component is not under your control, you can use the `compatibility.comp
 ```js
 /// svelte.config.js
 export default {
-	compilerOptions: {
-		compatibility: {
-			componentApi: 4
-		}
-	}
-};
+  compilerOptions: {
+    compatibility: {
+      componentApi: 4
+    }
+  }
+}
 ```
 
 Note that `mount` and `hydrate` are _not_ synchronous, so things like `onMount` won't have been called by the time the function returns and the pending block of promises will not have been rendered yet (because `#await` waits a microtask to wait for a potentially immediately-resolved promise). If you need that guarantee, call `flushSync` (import from `'svelte'`) after calling `mount/hydrate`.
@@ -6137,10 +6093,10 @@ In Svelte 4, rendering a component to a string also returned the CSS of all comp
 The change from classes towards functions is also reflected in the typings: `SvelteComponent`, the base class from Svelte 4, is deprecated in favour of the new `Component` type which defines the function shape of a Svelte component. To manually define a component shape in a `d.ts` file:
 
 ```ts
-import type { Component } from 'svelte';
+import type { Component } from 'svelte'
 export declare const MyComponent: Component<{
-	foo: string;
-}>;
+  foo: string
+}>
 ```
 
 To declare that a component of a certain type is required:
@@ -6170,21 +6126,22 @@ This is no longer true in Svelte 5:
 
 ```svelte
 <script>
-	import A from './A.svelte';
-	import B from './B.svelte';
+  import A from './A.svelte'
+  import B from './B.svelte'
 
-	let Thing = $state();
+  let Thing = $state()
 </script>
 
 <select bind:value={Thing}>
-	<option value={A}>A</option>
-	<option value={B}>B</option>
+  <option value={A}>A</option>
+  <option value={B}>B</option>
 </select>
 
 <!-- these are equivalent -->
 <Thing />
 <svelte:component this={Thing} />
 ```
+
 While migrating, keep in mind that your component's name should be capitalized (`Thing`) to distinguish it from elements, unless using dot notation.
 
 ### Dot notation indicates a component
@@ -6193,7 +6150,7 @@ In Svelte 4, `<foo.bar>` would create an element with a tag name of `"foo.bar"`.
 
 ```svelte
 {#each items as item}
-	<item.component {...item.props} />
+  <item.component {...item.props} />
 {/each}
 ```
 
@@ -6252,8 +6209,8 @@ Setting the `accessors` option to `true` makes properties of a component directl
 <svelte:options accessors={true} />
 
 <script>
-	// available via componentInstance.name
-	export let name;
+  // available via componentInstance.name
+  export let name
 </script>
 ```
 
@@ -6261,9 +6218,9 @@ In runes mode, properties are never accessible on the component instance. You ca
 
 ```svelte
 <script>
-	let { name } = $props();
-	// available via componentInstance.getName()
-	export const getName = () => name;
+  let { name } = $props()
+  // available via componentInstance.getName()
+  export const getName = () => name
 </script>
 ```
 
@@ -6290,11 +6247,10 @@ In Svelte 4, doing the following triggered reactivity:
 
 ```svelte
 <script>
-	let foo = new Foo();
+  let foo = new Foo()
 </script>
 
-<button on:click={() => (foo.value = 1)}>{foo.value}</button
->
+<button on:click={() => (foo.value = 1)}>{foo.value}</button>
 ```
 
 This is because the Svelte compiler treated the assignment to `foo.value` as an instruction to update anything that referenced `foo`. In Svelte 5, reactivity is determined at runtime rather than compile time, so you should define `value` as a reactive `$state` field on the `Foo` class. Wrapping `new Foo()` with `$state(...)` will have no effect — only vanilla objects and arrays are made deeply reactive.
@@ -6328,9 +6284,9 @@ In Svelte 4, you were allowed to write HTML code that would be repaired by the b
 
 ```svelte
 <table>
-	<tr>
-		<td>hi</td>
-	</tr>
+  <tr>
+    <td>hi</td>
+  </tr>
 </table>
 ```
 
@@ -6338,11 +6294,11 @@ In Svelte 4, you were allowed to write HTML code that would be repaired by the b
 
 ```svelte
 <table>
-	<tbody>
-		<tr>
-			<td>hi</td>
-		</tr>
-	</tbody>
+  <tbody>
+    <tr>
+      <td>hi</td>
+    </tr>
+  </tbody>
 </table>
 ```
 
@@ -6379,7 +6335,7 @@ In the event that you need to support ancient browsers that don't implement `:wh
 
 ```js
 // @errors: 2552
-css = css.replace(/:where\((.+?)\)/, '$1');
+css = css.replace(/:where\((.+?)\)/, '$1')
 ```
 
 ### Error/warning codes have been renamed
@@ -6462,21 +6418,21 @@ Since these mismatches are extremely rare, Svelte 5 assumes that the values are 
 
 ```svelte
 <script>
-	let { markup, src } = $props();
+  let { markup, src } = $props()
 
-	if (typeof window !== 'undefined') {
-		// stash the values...
-		const initial = { markup, src };
+  if (typeof window !== 'undefined') {
+    // stash the values...
+    const initial = { markup, src }
 
-		// unset them...
-		markup = src = undefined;
+    // unset them...
+    markup = src = undefined
 
-		$effect(() => {
-			// ...and reset after we've mounted
-			markup = initial.markup;
-			src = initial.src;
-		});
-	}
+    $effect(() => {
+      // ...and reset after we've mounted
+      markup = initial.markup
+      src = initial.src
+    })
+  }
 </script>
 
 {@html markup}
@@ -6531,8 +6487,8 @@ In editors which use the Svelte Language Server you can document Components, fun
 
 ````svelte
 <script>
-	/** What should we call the user? */
-	export let name = 'world';
+  /** What should we call the user? */
+  export let name = 'world'
 </script>
 
 <!--
@@ -6548,9 +6504,9 @@ It will show up on hover.
   ```
 -->
 <main>
-	<h1>
-		Hello, {name}
-	</h1>
+  <h1>
+    Hello, {name}
+  </h1>
 </main>
 ````
 
@@ -6632,27 +6588,27 @@ We recommend using [SvelteKit](/docs/kit), which supports HMR out of the box and
 ```js
 // @noErrors
 import {
-	SvelteComponent,
-	SvelteComponentTyped,
-	afterUpdate,
-	beforeUpdate,
-	createEventDispatcher,
-	createRawSnippet,
-	flushSync,
-	getAbortSignal,
-	getAllContexts,
-	getContext,
-	hasContext,
-	hydrate,
-	mount,
-	onDestroy,
-	onMount,
-	setContext,
-	settled,
-	tick,
-	unmount,
-	untrack
-} from 'svelte';
+  SvelteComponent,
+  SvelteComponentTyped,
+  afterUpdate,
+  beforeUpdate,
+  createEventDispatcher,
+  createRawSnippet,
+  flushSync,
+  getAbortSignal,
+  getAllContexts,
+  getContext,
+  hasContext,
+  hydrate,
+  mount,
+  onDestroy,
+  onMount,
+  setContext,
+  settled,
+  tick,
+  unmount,
+  untrack
+} from 'svelte'
 ```
 
 ## SvelteComponent
@@ -6705,8 +6661,8 @@ constructor(options: ComponentConstructorOptions<Properties<Props, Slots>>);
 <div class="ts-block-property-bullets">
 
 - <span class="tag deprecated">deprecated</span> This constructor only exists when using the `asClassComponent` compatibility helper, which
-is a stop-gap solution. Migrate towards using `mount` instead. See
-[migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes) for more info.
+  is a stop-gap solution. Migrate towards using `mount` instead. See
+  [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes) for more info.
 
 </div>
 
@@ -6724,8 +6680,8 @@ $destroy(): void;
 <div class="ts-block-property-bullets">
 
 - <span class="tag deprecated">deprecated</span> This method only exists when using one of the legacy compatibility helpers, which
-is a stop-gap solution. See [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes)
-for more info.
+  is a stop-gap solution. See [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes)
+  for more info.
 
 </div>
 
@@ -6746,8 +6702,8 @@ $on<K extends Extract<keyof Events, string>>(
 <div class="ts-block-property-bullets">
 
 - <span class="tag deprecated">deprecated</span> This method only exists when using one of the legacy compatibility helpers, which
-is a stop-gap solution. See [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes)
-for more info.
+  is a stop-gap solution. See [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes)
+  for more info.
 
 </div>
 
@@ -6765,15 +6721,13 @@ $set(props: Partial<Props>): void;
 <div class="ts-block-property-bullets">
 
 - <span class="tag deprecated">deprecated</span> This method only exists when using one of the legacy compatibility helpers, which
-is a stop-gap solution. See [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes)
-for more info.
+  is a stop-gap solution. See [migration guide](https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes)
+  for more info.
 
 </div>
 
 </div>
 </div></div>
-
-
 
 ## SvelteComponentTyped
 
@@ -6794,8 +6748,6 @@ class SvelteComponentTyped<
 ```
 
 </div>
-
-
 
 ## afterUpdate
 
@@ -6819,8 +6771,6 @@ function afterUpdate(fn: () => void): void;
 
 </div>
 
-
-
 ## beforeUpdate
 
 <blockquote class="tag deprecated note">
@@ -6843,8 +6793,6 @@ function beforeUpdate(fn: () => void): void;
 
 </div>
 
-
-
 ## createEventDispatcher
 
 <blockquote class="tag deprecated note">
@@ -6863,12 +6811,13 @@ The `detail` argument corresponds to the [CustomEvent.detail](https://developer.
 property and can contain any type of data.
 
 The event dispatcher can be typed to narrow the allowed event names and the type of the `detail` argument:
+
 ```ts
 const dispatch = createEventDispatcher<{
- loaded: null; // does not take a detail argument
- change: string; // takes a detail argument of type string, which is required
- optional: number | null; // takes an optional detail argument of type number
-}>();
+  loaded: null // does not take a detail argument
+  change: string // takes a detail argument of type string, which is required
+  optional: number | null // takes an optional detail argument of type number
+}>()
 ```
 
 <div class="ts-block">
@@ -6880,8 +6829,6 @@ function createEventDispatcher<
 ```
 
 </div>
-
-
 
 ## createRawSnippet
 
@@ -6900,8 +6847,6 @@ function createRawSnippet<Params extends unknown[]>(
 
 </div>
 
-
-
 ## flushSync
 
 Synchronously flush any pending updates.
@@ -6915,8 +6860,6 @@ function flushSync<T = void>(fn?: (() => T) | undefined): T;
 
 </div>
 
-
-
 ## getAbortSignal
 
 Returns an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) that aborts when the current [derived](/docs/svelte/$derived) or [effect](/docs/svelte/$effect) re-runs or is destroyed.
@@ -6925,19 +6868,19 @@ Must be called while a derived or effect is running.
 
 ```svelte
 <script>
-	import { getAbortSignal } from 'svelte';
+  import { getAbortSignal } from 'svelte'
 
-	let { id } = $props();
+  let { id } = $props()
 
-	async function getData(id) {
-		const response = await fetch(`/items/${id}`, {
-			signal: getAbortSignal()
-		});
+  async function getData(id) {
+    const response = await fetch(`/items/${id}`, {
+      signal: getAbortSignal()
+    })
 
-		return await response.json();
-	}
+    return await response.json()
+  }
 
-	const data = $derived(await getData(id));
+  const data = $derived(await getData(id))
 </script>
 ```
 
@@ -6948,8 +6891,6 @@ function getAbortSignal(): AbortSignal;
 ```
 
 </div>
-
-
 
 ## getAllContexts
 
@@ -6967,8 +6908,6 @@ function getAllContexts<
 
 </div>
 
-
-
 ## getContext
 
 Retrieves the context that belongs to the closest parent component with the specified `key`.
@@ -6982,8 +6921,6 @@ function getContext<T>(key: any): T;
 
 </div>
 
-
-
 ## hasContext
 
 Checks whether a given `key` has been set in the context of a parent component.
@@ -6996,8 +6933,6 @@ function hasContext(key: any): boolean;
 ```
 
 </div>
-
-
 
 ## hydrate
 
@@ -7035,8 +6970,6 @@ function hydrate<
 
 </div>
 
-
-
 ## mount
 
 Mounts a component to the given target and returns the exports and potentially the props (if compiled with `accessors: true`) of the component.
@@ -7058,8 +6991,6 @@ function mount<
 
 </div>
 
-
-
 ## onDestroy
 
 Schedules a callback to run immediately before the component is unmounted.
@@ -7074,8 +7005,6 @@ function onDestroy(fn: () => any): void;
 ```
 
 </div>
-
-
 
 ## onMount
 
@@ -7101,8 +7030,6 @@ function onMount<T>(
 
 </div>
 
-
-
 ## setContext
 
 Associates an arbitrary `context` object with the current component and the specified `key`
@@ -7118,8 +7045,6 @@ function setContext<T>(key: any, context: T): T;
 ```
 
 </div>
-
-
 
 ## settled
 
@@ -7140,8 +7065,6 @@ function settled(): Promise<void>;
 
 </div>
 
-
-
 ## tick
 
 Returns a promise that resolves once any pending state changes have been applied.
@@ -7154,8 +7077,6 @@ function tick(): Promise<void>;
 
 </div>
 
-
-
 ## unmount
 
 Unmounts a component that was previously mounted using `mount` or `hydrate`.
@@ -7166,13 +7087,13 @@ Returns a `Promise` that resolves after transitions have completed if `options.o
 
 ```js
 // @errors: 7031
-import { mount, unmount } from 'svelte';
-import App from './App.svelte';
+import { mount, unmount } from 'svelte'
+import App from './App.svelte'
 
-const app = mount(App, { target: document.body });
+const app = mount(App, { target: document.body })
 
 // later...
-unmount(app, { outro: true });
+unmount(app, { outro: true })
 ```
 
 <div class="ts-block">
@@ -7190,8 +7111,6 @@ function unmount(
 
 </div>
 
-
-
 ## untrack
 
 When used inside a [`$derived`](/docs/svelte/$derived) or [`$effect`](/docs/svelte/$effect),
@@ -7199,11 +7118,11 @@ any state read inside `fn` will not be treated as a dependency.
 
 ```ts
 $effect(() => {
-	// this will run when `data` changes, but not when `time` changes
-	save(data, {
-		timestamp: untrack(() => time)
-	});
-});
+  // this will run when `data` changes, but not when `time` changes
+  save(data, {
+    timestamp: untrack(() => time)
+  })
+})
 ```
 
 <div class="ts-block">
@@ -7214,8 +7133,6 @@ function untrack<T>(fn: () => T): T;
 
 </div>
 
-
-
 ## Component
 
 Can be used to create strongly typed Svelte components.
@@ -7225,17 +7142,21 @@ Can be used to create strongly typed Svelte components.
 You have component library on npm called `component-library`, from which
 you export a component called `MyComponent`. For Svelte+TypeScript users,
 you want to provide typings. Therefore you create a `index.d.ts`:
+
 ```ts
 import type { Component } from 'svelte';
 export declare const MyComponent: Component<{ foo: string }> {}
 ```
+
 Typing this makes it possible for IDEs like VS Code with the Svelte extension
 to provide intellisense and to use the component like this in a Svelte file
 with TypeScript:
+
 ```svelte
 <script lang="ts">
-	import { MyComponent } from "component-library";
+  import { MyComponent } from 'component-library'
 </script>
+
 <MyComponent foo={'bar'} />
 ```
 
@@ -7444,11 +7365,11 @@ Convenience type to get the props the given component expects.
 Example: Ensure a variable contains the props expected by `MyComponent`:
 
 ```ts
-import type { ComponentProps } from 'svelte';
-import MyComponent from './MyComponent.svelte';
+import type { ComponentProps } from 'svelte'
+import MyComponent from './MyComponent.svelte'
 
 // Errors if these aren't the correct props expected by MyComponent.
-const props: ComponentProps<typeof MyComponent> = { foo: 'bar' };
+const props: ComponentProps<typeof MyComponent> = { foo: 'bar' }
 ```
 
 > [!NOTE] In Svelte 4, you would do `ComponentProps<MyComponent>` because `MyComponent` was a class.
@@ -7456,16 +7377,16 @@ const props: ComponentProps<typeof MyComponent> = { foo: 'bar' };
 Example: A generic function that accepts some component and infers the type of its props:
 
 ```ts
-import type { Component, ComponentProps } from 'svelte';
-import MyComponent from './MyComponent.svelte';
+import type { Component, ComponentProps } from 'svelte'
+import MyComponent from './MyComponent.svelte'
 
 function withProps<TComponent extends Component<any>>(
-	component: TComponent,
-	props: ComponentProps<TComponent>
-) {};
+  component: TComponent,
+  props: ComponentProps<TComponent>
+) {}
 
 // Errors if the second argument is not the correct props expected by the component in the first argument.
-withProps(MyComponent, { foo: 'bar' });
+withProps(MyComponent, { foo: 'bar' })
 ```
 
 <div class="ts-block">
@@ -7587,9 +7508,11 @@ type MountOptions<
 ## Snippet
 
 The type of a `#snippet` block. You can use it to (for example) express that your component expects a snippet of a certain type:
+
 ```ts
-let { banner }: { banner: Snippet<[{ text: string }]> } = $props();
+let { banner }: { banner: Snippet<[{ text: string }]> } = $props()
 ```
+
 You can only call a snippet through the `{@render ...}` tag.
 
 See the [snippet documentation](/docs/svelte/snippet) for more info.
@@ -7627,11 +7550,16 @@ Actions are functions that are called when an element is created.
 You can use this interface to type such actions.
 The following example defines an action that only works on `<div>` elements
 and optionally accepts a parameter which it has a default value for:
+
 ```ts
-export const myAction: Action<HTMLDivElement, { someProperty: boolean } | undefined> = (node, param = { someProperty: true }) => {
-	// ...
+export const myAction: Action<HTMLDivElement, { someProperty: boolean } | undefined> = (
+  node,
+  param = { someProperty: true }
+) => {
+  // ...
 }
 ```
+
 `Action<HTMLDivElement>` and `Action<HTMLDivElement, undefined>` both signal that the action accepts no parameters.
 
 You can return an object with methods `update` and `destroy` from the function and type which additional attributes and events it has.
@@ -7666,15 +7594,17 @@ interface Action<
 ## ActionReturn
 
 Actions can return an object containing the two properties defined in this interface. Both are optional.
+
 - update: An action can have a parameter. This method will be called whenever that parameter changes,
-	immediately after Svelte has applied updates to the markup. `ActionReturn` and `ActionReturn<undefined>` both
-	mean that the action accepts no parameters.
+  immediately after Svelte has applied updates to the markup. `ActionReturn` and `ActionReturn<undefined>` both
+  mean that the action accepts no parameters.
 - destroy: Method that is called after the element is unmounted
 
 Additionally, you can specify which additional attributes and events the action enables on the applied element.
 This applies to TypeScript typings only and has no effect at runtime.
 
 Example usage:
+
 ```ts
 interface Attributes {
 	newprop?: string;
@@ -7724,7 +7654,7 @@ destroy?: () => void;
 
 ```js
 // @noErrors
-import { flip } from 'svelte/animate';
+import { flip } from 'svelte/animate'
 ```
 
 ## flip
@@ -7749,8 +7679,6 @@ function flip(
 ```
 
 </div>
-
-
 
 ## AnimationConfig
 
@@ -7844,7 +7772,7 @@ easing?: (t: number) => number;
 
 ```js
 // @noErrors
-import { createAttachmentKey, fromAction } from 'svelte/attachments';
+import { createAttachmentKey, fromAction } from 'svelte/attachments'
 ```
 
 ## createAttachmentKey
@@ -7861,15 +7789,15 @@ is generally not needed when building an app.
 
 ```svelte
 <script>
-	import { createAttachmentKey } from 'svelte/attachments';
+  import { createAttachmentKey } from 'svelte/attachments'
 
-	const props = {
-		class: 'cool',
-		onclick: () => alert('clicked'),
-		[createAttachmentKey()]: (node) => {
-			node.textContent = 'attached!';
-		}
-	};
+  const props = {
+    class: 'cool',
+    onclick: () => alert('clicked'),
+    [createAttachmentKey()]: (node) => {
+      node.textContent = 'attached!'
+    }
+  }
 </script>
 
 <button {...props}>click me</button>
@@ -7882,8 +7810,6 @@ function createAttachmentKey(): symbol;
 ```
 
 </div>
-
-
 
 ## fromAction
 
@@ -7929,8 +7855,6 @@ function fromAction<E extends EventTarget>(
 
 </div>
 
-
-
 ## Attachment
 
 An [attachment](/docs/svelte/@attach) is a function that runs when an element is mounted
@@ -7958,15 +7882,7 @@ interface Attachment<T extends EventTarget = Element> {/*…*/}
 
 ```js
 // @noErrors
-import {
-	VERSION,
-	compile,
-	compileModule,
-	migrate,
-	parse,
-	preprocess,
-	walk
-} from 'svelte/compiler';
+import { VERSION, compile, compileModule, migrate, parse, preprocess, walk } from 'svelte/compiler'
 ```
 
 ## VERSION
@@ -7980,8 +7896,6 @@ const VERSION: string;
 ```
 
 </div>
-
-
 
 ## compile
 
@@ -7998,8 +7912,6 @@ function compile(
 
 </div>
 
-
-
 ## compileModule
 
 `compileModule` takes your JavaScript source code containing runes, and turns it into a JavaScript module.
@@ -8014,8 +7926,6 @@ function compileModule(
 ```
 
 </div>
-
-
 
 ## migrate
 
@@ -8042,8 +7952,6 @@ function migrate(
 ```
 
 </div>
-
-
 
 ## parse
 
@@ -8084,8 +7992,6 @@ function parse(
 
 </div>
 
-
-
 ## preprocess
 
 The preprocess function provides convenient hooks for arbitrarily transforming component source code.
@@ -8107,8 +8013,6 @@ function preprocess(
 
 </div>
 
-
-
 ## walk
 
 <blockquote class="tag deprecated note">
@@ -8125,13 +8029,11 @@ function walk(): never;
 
 </div>
 
-
-
 ## AST
 
 <div class="ts-block">
 
-```dts
+````dts
 namespace AST {
 	export interface BaseNode {
 		type: string;
@@ -8596,7 +8498,7 @@ namespace AST {
 
 	export type { _CSS as CSS };
 }
-```
+````
 
 </div>
 
@@ -8721,7 +8623,7 @@ css?: 'injected' | 'external';
 
 - `'injected'`: styles will be included in the `head` when using `render(...)`, and injected into the document (if not already present) when the component mounts. For components compiled as custom elements, styles are injected to the shadow root.
 - `'external'`: the CSS will only be returned in the `css` field of the compilation result. Most Svelte bundler plugins will set this to `'external'` and use the CSS that is statically generated for better performance, as it will result in smaller JavaScript bundles and the output can be served as cacheable `.css` files.
-This is always `'injected'` when compiling with `customElement` mode.
+  This is always `'injected'` when compiling with `customElement` mode.
 
 </div>
 </div>
@@ -9063,6 +8965,7 @@ warnings: Warning[];
 <div class="ts-block-property-details">
 
 An array of warning objects that were generated during compilation. Each warning has several properties:
+
 - `code` is a string identifying the category of warning
 - `message` describes the issue in human-readable terms
 - `start` and `end`, if the warning relates to a specific location, are objects with `line`, `column` and `character` properties
@@ -9428,38 +9331,38 @@ interface Warning extends ICompileDiagnostic {}
 ```js
 // @noErrors
 import {
-	backIn,
-	backInOut,
-	backOut,
-	bounceIn,
-	bounceInOut,
-	bounceOut,
-	circIn,
-	circInOut,
-	circOut,
-	cubicIn,
-	cubicInOut,
-	cubicOut,
-	elasticIn,
-	elasticInOut,
-	elasticOut,
-	expoIn,
-	expoInOut,
-	expoOut,
-	linear,
-	quadIn,
-	quadInOut,
-	quadOut,
-	quartIn,
-	quartInOut,
-	quartOut,
-	quintIn,
-	quintInOut,
-	quintOut,
-	sineIn,
-	sineInOut,
-	sineOut
-} from 'svelte/easing';
+  backIn,
+  backInOut,
+  backOut,
+  bounceIn,
+  bounceInOut,
+  bounceOut,
+  circIn,
+  circInOut,
+  circOut,
+  cubicIn,
+  cubicInOut,
+  cubicOut,
+  elasticIn,
+  elasticInOut,
+  elasticOut,
+  expoIn,
+  expoInOut,
+  expoOut,
+  linear,
+  quadIn,
+  quadInOut,
+  quadOut,
+  quartIn,
+  quartInOut,
+  quartOut,
+  quintIn,
+  quintInOut,
+  quintOut,
+  sineIn,
+  sineInOut,
+  sineOut
+} from 'svelte/easing'
 ```
 
 ## backIn
@@ -9472,8 +9375,6 @@ function backIn(t: number): number;
 
 </div>
 
-
-
 ## backInOut
 
 <div class="ts-block">
@@ -9483,8 +9384,6 @@ function backInOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## backOut
 
@@ -9496,8 +9395,6 @@ function backOut(t: number): number;
 
 </div>
 
-
-
 ## bounceIn
 
 <div class="ts-block">
@@ -9507,8 +9404,6 @@ function bounceIn(t: number): number;
 ```
 
 </div>
-
-
 
 ## bounceInOut
 
@@ -9520,8 +9415,6 @@ function bounceInOut(t: number): number;
 
 </div>
 
-
-
 ## bounceOut
 
 <div class="ts-block">
@@ -9531,8 +9424,6 @@ function bounceOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## circIn
 
@@ -9544,8 +9435,6 @@ function circIn(t: number): number;
 
 </div>
 
-
-
 ## circInOut
 
 <div class="ts-block">
@@ -9555,8 +9444,6 @@ function circInOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## circOut
 
@@ -9568,8 +9455,6 @@ function circOut(t: number): number;
 
 </div>
 
-
-
 ## cubicIn
 
 <div class="ts-block">
@@ -9579,8 +9464,6 @@ function cubicIn(t: number): number;
 ```
 
 </div>
-
-
 
 ## cubicInOut
 
@@ -9592,8 +9475,6 @@ function cubicInOut(t: number): number;
 
 </div>
 
-
-
 ## cubicOut
 
 <div class="ts-block">
@@ -9603,8 +9484,6 @@ function cubicOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## elasticIn
 
@@ -9616,8 +9495,6 @@ function elasticIn(t: number): number;
 
 </div>
 
-
-
 ## elasticInOut
 
 <div class="ts-block">
@@ -9627,8 +9504,6 @@ function elasticInOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## elasticOut
 
@@ -9640,8 +9515,6 @@ function elasticOut(t: number): number;
 
 </div>
 
-
-
 ## expoIn
 
 <div class="ts-block">
@@ -9651,8 +9524,6 @@ function expoIn(t: number): number;
 ```
 
 </div>
-
-
 
 ## expoInOut
 
@@ -9664,8 +9535,6 @@ function expoInOut(t: number): number;
 
 </div>
 
-
-
 ## expoOut
 
 <div class="ts-block">
@@ -9675,8 +9544,6 @@ function expoOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## linear
 
@@ -9688,8 +9555,6 @@ function linear(t: number): number;
 
 </div>
 
-
-
 ## quadIn
 
 <div class="ts-block">
@@ -9699,8 +9564,6 @@ function quadIn(t: number): number;
 ```
 
 </div>
-
-
 
 ## quadInOut
 
@@ -9712,8 +9575,6 @@ function quadInOut(t: number): number;
 
 </div>
 
-
-
 ## quadOut
 
 <div class="ts-block">
@@ -9723,8 +9584,6 @@ function quadOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## quartIn
 
@@ -9736,8 +9595,6 @@ function quartIn(t: number): number;
 
 </div>
 
-
-
 ## quartInOut
 
 <div class="ts-block">
@@ -9747,8 +9604,6 @@ function quartInOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## quartOut
 
@@ -9760,8 +9615,6 @@ function quartOut(t: number): number;
 
 </div>
 
-
-
 ## quintIn
 
 <div class="ts-block">
@@ -9771,8 +9624,6 @@ function quintIn(t: number): number;
 ```
 
 </div>
-
-
 
 ## quintInOut
 
@@ -9784,8 +9635,6 @@ function quintInOut(t: number): number;
 
 </div>
 
-
-
 ## quintOut
 
 <div class="ts-block">
@@ -9795,8 +9644,6 @@ function quintOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## sineIn
 
@@ -9808,8 +9655,6 @@ function sineIn(t: number): number;
 
 </div>
 
-
-
 ## sineInOut
 
 <div class="ts-block">
@@ -9819,8 +9664,6 @@ function sineInOut(t: number): number;
 ```
 
 </div>
-
-
 
 ## sineOut
 
@@ -9836,7 +9679,7 @@ function sineOut(t: number): number;
 
 ```js
 // @noErrors
-import { on } from 'svelte/events';
+import { on } from 'svelte/events'
 ```
 
 ## on
@@ -9932,25 +9775,23 @@ function on(
 
 This module provides various functions for use during the migration, since some features can't be replaced one to one with new features. All imports are marked as deprecated and should be migrated away from over time.
 
-
-
 ```js
 // @noErrors
 import {
-	asClassComponent,
-	createBubbler,
-	createClassComponent,
-	handlers,
-	nonpassive,
-	once,
-	passive,
-	preventDefault,
-	run,
-	self,
-	stopImmediatePropagation,
-	stopPropagation,
-	trusted
-} from 'svelte/legacy';
+  asClassComponent,
+  createBubbler,
+  createClassComponent,
+  handlers,
+  nonpassive,
+  once,
+  passive,
+  preventDefault,
+  run,
+  self,
+  stopImmediatePropagation,
+  stopPropagation,
+  trusted
+} from 'svelte/legacy'
 ```
 
 ## asClassComponent
@@ -9982,8 +9823,6 @@ function asClassComponent<
 
 </div>
 
-
-
 ## createBubbler
 
 <blockquote class="tag deprecated note">
@@ -10003,8 +9842,6 @@ function createBubbler(): (
 ```
 
 </div>
-
-
 
 ## createClassComponent
 
@@ -10035,8 +9872,6 @@ function createClassComponent<
 
 </div>
 
-
-
 ## handlers
 
 Function to mimic the multiple listeners available in svelte 4
@@ -10050,8 +9885,6 @@ function handlers(
 ```
 
 </div>
-
-
 
 ## nonpassive
 
@@ -10071,8 +9904,6 @@ function nonpassive(
 
 </div>
 
-
-
 ## once
 
 Substitute for the `once` event modifier
@@ -10086,8 +9917,6 @@ function once(
 ```
 
 </div>
-
-
 
 ## passive
 
@@ -10107,8 +9936,6 @@ function passive(
 
 </div>
 
-
-
 ## preventDefault
 
 Substitute for the `preventDefault` event modifier
@@ -10122,8 +9949,6 @@ function preventDefault(
 ```
 
 </div>
-
-
 
 ## run
 
@@ -10143,8 +9968,6 @@ function run(fn: () => void | (() => void)): void;
 
 </div>
 
-
-
 ## self
 
 Substitute for the `self` event modifier
@@ -10158,8 +9981,6 @@ function self(
 ```
 
 </div>
-
-
 
 ## stopImmediatePropagation
 
@@ -10175,8 +9996,6 @@ function stopImmediatePropagation(
 
 </div>
 
-
-
 ## stopPropagation
 
 Substitute for the `stopPropagation` event modifier
@@ -10191,8 +10010,6 @@ function stopPropagation(
 
 </div>
 
-
-
 ## trusted
 
 Substitute for the `trusted` event modifier
@@ -10206,8 +10023,6 @@ function trusted(
 ```
 
 </div>
-
-
 
 ## LegacyComponentType
 
@@ -10232,13 +10047,7 @@ type LegacyComponentType = {
 
 ```js
 // @noErrors
-import {
-	Spring,
-	Tween,
-	prefersReducedMotion,
-	spring,
-	tweened
-} from 'svelte/motion';
+import { Spring, Tween, prefersReducedMotion, spring, tweened } from 'svelte/motion'
 ```
 
 ## Spring
@@ -10254,9 +10063,9 @@ move towards it over time, taking account of the `spring.stiffness` and `spring.
 
 ```svelte
 <script>
-	import { Spring } from 'svelte/motion';
+  import { Spring } from 'svelte/motion'
 
-	const spring = new Spring(0);
+  const spring = new Spring(0)
 </script>
 
 <input type="range" bind:value={spring.target} />
@@ -10291,11 +10100,11 @@ inside an effect root (for example, during component initialisation).
 
 ```svelte
 <script>
-	import { Spring } from 'svelte/motion';
+  import { Spring } from 'svelte/motion'
 
-	let { number } = $props();
+  let { number } = $props()
 
-	const spring = Spring.of(() => number);
+  const spring = Spring.of(() => number)
 </script>
 ```
 
@@ -10375,8 +10184,6 @@ This property only exists on the `Spring` class, not the legacy `spring` store.
 </div>
 </div></div>
 
-
-
 ## Tween
 
 <blockquote class="since note">
@@ -10390,9 +10197,9 @@ move towards it over time, taking account of the `delay`, `duration` and `easing
 
 ```svelte
 <script>
-	import { Tween } from 'svelte/motion';
+  import { Tween } from 'svelte/motion'
 
-	const tween = new Tween(0);
+  const tween = new Tween(0)
 </script>
 
 <input type="range" bind:value={tween.target} />
@@ -10418,11 +10225,11 @@ inside an effect root (for example, during component initialisation).
 
 ```svelte
 <script>
-	import { Tween } from 'svelte/motion';
+  import { Tween } from 'svelte/motion'
 
-	let { number } = $props();
+  let { number } = $props()
 
-	const tween = Tween.of(() => number);
+  const tween = Tween.of(() => number)
 </script>
 ```
 
@@ -10480,8 +10287,6 @@ get target(): T;
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## prefersReducedMotion
 
 <blockquote class="since note">
@@ -10494,20 +10299,18 @@ A [media query](/docs/svelte/svelte-reactivity#MediaQuery) that matches if the u
 
 ```svelte
 <script>
-	import { prefersReducedMotion } from 'svelte/motion';
-	import { fly } from 'svelte/transition';
+  import { prefersReducedMotion } from 'svelte/motion'
+  import { fly } from 'svelte/transition'
 
-	let visible = $state(false);
+  let visible = $state(false)
 </script>
 
-<button onclick={() => visible = !visible}>
-	toggle
-</button>
+<button onclick={() => (visible = !visible)}> toggle </button>
 
 {#if visible}
-	<p transition:fly={{ y: prefersReducedMotion.current ? 0 : 200 }}>
-		flies in, unless the user prefers reduced motion
-	</p>
+  <p transition:fly={{ y: prefersReducedMotion.current ? 0 : 200 }}>
+    flies in, unless the user prefers reduced motion
+  </p>
 {/if}
 ```
 
@@ -10518,8 +10321,6 @@ const prefersReducedMotion: MediaQuery;
 ```
 
 </div>
-
-
 
 ## spring
 
@@ -10542,8 +10343,6 @@ function spring<T = any>(
 
 </div>
 
-
-
 ## tweened
 
 <blockquote class="tag deprecated note">
@@ -10564,8 +10363,6 @@ function tweened<T>(
 ```
 
 </div>
-
-
 
 ## Spring
 
@@ -10677,28 +10474,26 @@ This module exports reactive versions of various `window` values, each of which 
 
 ```svelte
 <script>
-	import { innerWidth, innerHeight } from 'svelte/reactivity/window';
+  import { innerWidth, innerHeight } from 'svelte/reactivity/window'
 </script>
 
 <p>{innerWidth.current}x{innerHeight.current}</p>
 ```
 
-
-
 ```js
 // @noErrors
 import {
-	devicePixelRatio,
-	innerHeight,
-	innerWidth,
-	online,
-	outerHeight,
-	outerWidth,
-	screenLeft,
-	screenTop,
-	scrollX,
-	scrollY
-} from 'svelte/reactivity/window';
+  devicePixelRatio,
+  innerHeight,
+  innerWidth,
+  online,
+  outerHeight,
+  outerWidth,
+  screenLeft,
+  screenTop,
+  scrollX,
+  scrollY
+} from 'svelte/reactivity/window'
 ```
 
 ## devicePixelRatio
@@ -10723,8 +10518,6 @@ const devicePixelRatio: {
 
 </div>
 
-
-
 ## innerHeight
 
 <blockquote class="since note">
@@ -10742,8 +10535,6 @@ const innerHeight: ReactiveValue<number | undefined>;
 ```
 
 </div>
-
-
 
 ## innerWidth
 
@@ -10763,8 +10554,6 @@ const innerWidth: ReactiveValue<number | undefined>;
 
 </div>
 
-
-
 ## online
 
 <blockquote class="since note">
@@ -10782,8 +10571,6 @@ const online: ReactiveValue<boolean | undefined>;
 ```
 
 </div>
-
-
 
 ## outerHeight
 
@@ -10803,8 +10590,6 @@ const outerHeight: ReactiveValue<number | undefined>;
 
 </div>
 
-
-
 ## outerWidth
 
 <blockquote class="since note">
@@ -10822,8 +10607,6 @@ const outerWidth: ReactiveValue<number | undefined>;
 ```
 
 </div>
-
-
 
 ## screenLeft
 
@@ -10843,8 +10626,6 @@ const screenLeft: ReactiveValue<number | undefined>;
 
 </div>
 
-
-
 ## screenTop
 
 <blockquote class="since note">
@@ -10863,8 +10644,6 @@ const screenTop: ReactiveValue<number | undefined>;
 
 </div>
 
-
-
 ## scrollX
 
 <blockquote class="since note">
@@ -10882,8 +10661,6 @@ const scrollX: ReactiveValue<number | undefined>;
 ```
 
 </div>
-
-
 
 ## scrollY
 
@@ -10907,19 +10684,17 @@ const scrollY: ReactiveValue<number | undefined>;
 
 Svelte provides reactive versions of various built-ins like [`Map`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map), [`Set`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set) and [`URL`](https://developer.mozilla.org/en-US/docs/Web/API/URL) that can be used just like their native counterparts, as well as a handful of additional utilities for handling reactivity.
 
-
-
 ```js
 // @noErrors
 import {
-	MediaQuery,
-	SvelteDate,
-	SvelteMap,
-	SvelteSet,
-	SvelteURL,
-	SvelteURLSearchParams,
-	createSubscriber
-} from 'svelte/reactivity';
+  MediaQuery,
+  SvelteDate,
+  SvelteMap,
+  SvelteSet,
+  SvelteURL,
+  SvelteURLSearchParams,
+  createSubscriber
+} from 'svelte/reactivity'
 ```
 
 ## MediaQuery
@@ -10937,9 +10712,9 @@ If you can use the media query in CSS to achieve the same effect, do that.
 
 ```svelte
 <script>
-	import { MediaQuery } from 'svelte/reactivity';
+  import { MediaQuery } from 'svelte/reactivity'
 
-	const large = new MediaQuery('min-width: 800px');
+  const large = new MediaQuery('min-width: 800px')
 </script>
 
 <h1>{large.current ? 'large screen' : 'small screen'}</h1>
@@ -10969,8 +10744,6 @@ constructor(query: string, fallback?: boolean | undefined);
 </div>
 </div></div>
 
-
-
 ## SvelteDate
 
 A reactive version of the built-in [`Date`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date) object.
@@ -10980,25 +10753,25 @@ will cause it to be re-evaluated when the value of the date changes.
 
 ```svelte
 <script>
-	import { SvelteDate } from 'svelte/reactivity';
+  import { SvelteDate } from 'svelte/reactivity'
 
-	const date = new SvelteDate();
+  const date = new SvelteDate()
 
-	const formatter = new Intl.DateTimeFormat(undefined, {
-	  hour: 'numeric',
-	  minute: 'numeric',
-	  second: 'numeric'
-	});
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric'
+  })
 
-	$effect(() => {
-		const interval = setInterval(() => {
-			date.setTime(Date.now());
-		}, 1000);
+  $effect(() => {
+    const interval = setInterval(() => {
+      date.setTime(Date.now())
+    }, 1000)
 
-		return () => {
-			clearInterval(interval);
-		};
-	});
+    return () => {
+      clearInterval(interval)
+    }
+  })
 </script>
 
 <p>The time is {formatter.format(date)}</p>
@@ -11019,8 +10792,6 @@ constructor(...params: any[]);
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## SvelteMap
 
 A reactive version of the built-in [`Map`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map) object.
@@ -11031,36 +10802,36 @@ Note that values in a reactive map are _not_ made [deeply reactive](/docs/svelte
 
 ```svelte
 <script>
-	import { SvelteMap } from 'svelte/reactivity';
-	import { result } from './game.js';
+  import { SvelteMap } from 'svelte/reactivity'
+  import { result } from './game.js'
 
-	let board = new SvelteMap();
-	let player = $state('x');
-	let winner = $derived(result(board));
+  let board = new SvelteMap()
+  let player = $state('x')
+  let winner = $derived(result(board))
 
-	function reset() {
-		player = 'x';
-		board.clear();
-	}
+  function reset() {
+    player = 'x'
+    board.clear()
+  }
 </script>
 
 <div class="board">
-	{#each Array(9), i}
-		<button
-			disabled={board.has(i) || winner}
-			onclick={() => {
-				board.set(i, player);
-				player = player === 'x' ? 'o' : 'x';
-			}}
-		>{board.get(i)}</button>
-	{/each}
+  {#each Array(9), i}
+    <button
+      disabled={board.has(i) || winner}
+      onclick={() => {
+        board.set(i, player)
+        player = player === 'x' ? 'o' : 'x'
+      }}>{board.get(i)}</button
+    >
+  {/each}
 </div>
 
 {#if winner}
-	<p>{winner} wins!</p>
-	<button onclick={reset}>reset</button>
+  <p>{winner} wins!</p>
+  <button onclick={reset}>reset</button>
 {:else}
-	<p>{player} is next</p>
+  <p>{player} is next</p>
 {/if}
 ```
 
@@ -11088,8 +10859,6 @@ set(key: K, value: V): this;
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## SvelteSet
 
 A reactive version of the built-in [`Set`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set) object.
@@ -11100,20 +10869,20 @@ Note that values in a reactive set are _not_ made [deeply reactive](/docs/svelte
 
 ```svelte
 <script>
-	import { SvelteSet } from 'svelte/reactivity';
-	let monkeys = new SvelteSet();
+  import { SvelteSet } from 'svelte/reactivity'
+  let monkeys = new SvelteSet()
 
-	function toggle(monkey) {
-		if (monkeys.has(monkey)) {
-			monkeys.delete(monkey);
-		} else {
-			monkeys.add(monkey);
-		}
-	}
+  function toggle(monkey) {
+    if (monkeys.has(monkey)) {
+      monkeys.delete(monkey)
+    } else {
+      monkeys.add(monkey)
+    }
+  }
 </script>
 
 {#each ['🙈', '🙉', '🙊'] as monkey}
-	<button onclick={() => toggle(monkey)}>{monkey}</button>
+  <button onclick={() => toggle(monkey)}>{monkey}</button>
 {/each}
 
 <button onclick={() => monkeys.clear()}>clear</button>
@@ -11147,8 +10916,6 @@ add(value: T): this;
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## SvelteURL
 
 A reactive version of the built-in [`URL`](https://developer.mozilla.org/en-US/docs/Web/API/URL) object.
@@ -11161,9 +10928,9 @@ The `searchParams` property is an instance of [SvelteURLSearchParams](/docs/svel
 
 ```svelte
 <script>
-	import { SvelteURL } from 'svelte/reactivity';
+  import { SvelteURL } from 'svelte/reactivity'
 
-	const url = new SvelteURL('https://example.com/path');
+  const url = new SvelteURL('https://example.com/path')
 </script>
 
 <!-- changes to these... -->
@@ -11192,8 +10959,6 @@ get searchParams(): SvelteURLSearchParams;
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## SvelteURLSearchParams
 
 A reactive version of the built-in [`URLSearchParams`](https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams) object.
@@ -11202,22 +10967,22 @@ will cause it to be re-evaluated as necessary when the params are updated.
 
 ```svelte
 <script>
-	import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { SvelteURLSearchParams } from 'svelte/reactivity'
 
-	const params = new SvelteURLSearchParams('message=hello');
+  const params = new SvelteURLSearchParams('message=hello')
 
-	let key = $state('key');
-	let value = $state('value');
+  let key = $state('key')
+  let value = $state('value')
 </script>
 
 <input bind:value={key} />
-<input bind:value={value} />
+<input bind:value />
 <button onclick={() => params.append(key, value)}>append</button>
 
 <p>?{params.toString()}</p>
 
 {#each params as [key, value]}
-	<p>{key}: {value}</p>
+  <p>{key}: {value}</p>
 {/each}
 ```
 
@@ -11235,8 +11000,6 @@ class SvelteURLSearchParams extends URLSearchParams {/*…*/}
 
 <div class="ts-block-property-details"></div>
 </div></div>
-
-
 
 ## createSubscriber
 
@@ -11261,32 +11024,32 @@ It's best understood with an example. Here's an implementation of [`MediaQuery`]
 
 ```js
 // @errors: 7031
-import { createSubscriber } from 'svelte/reactivity';
-import { on } from 'svelte/events';
+import { createSubscriber } from 'svelte/reactivity'
+import { on } from 'svelte/events'
 
 export class MediaQuery {
-	#query;
-	#subscribe;
+  #query
+  #subscribe
 
-	constructor(query) {
-		this.#query = window.matchMedia(`(${query})`);
+  constructor(query) {
+    this.#query = window.matchMedia(`(${query})`)
 
-		this.#subscribe = createSubscriber((update) => {
-			// when the `change` event occurs, re-run any effects that read `this.current`
-			const off = on(this.#query, 'change', update);
+    this.#subscribe = createSubscriber((update) => {
+      // when the `change` event occurs, re-run any effects that read `this.current`
+      const off = on(this.#query, 'change', update)
 
-			// stop listening when all the effects are destroyed
-			return () => off();
-		});
-	}
+      // stop listening when all the effects are destroyed
+      return () => off()
+    })
+  }
 
-	get current() {
-		// This makes the getter reactive, if read in an effect
-		this.#subscribe();
+  get current() {
+    // This makes the getter reactive, if read in an effect
+    this.#subscribe()
 
-		// Return the current state of the query, whether or not we're in an effect
-		return this.#query.matches;
-	}
+    // Return the current state of the query, whether or not we're in an effect
+    return this.#query.matches
+  }
 }
 ```
 
@@ -11304,7 +11067,7 @@ function createSubscriber(
 
 ```js
 // @noErrors
-import { render } from 'svelte/server';
+import { render } from 'svelte/server'
 ```
 
 ## render
@@ -11349,15 +11112,7 @@ function render<
 
 ```js
 // @noErrors
-import {
-	derived,
-	fromStore,
-	get,
-	readable,
-	readonly,
-	toStore,
-	writable
-} from 'svelte/store';
+import { derived, fromStore, get, readable, readonly, toStore, writable } from 'svelte/store'
 ```
 
 ## derived
@@ -11393,8 +11148,6 @@ function derived<S extends Stores, T>(
 
 </div>
 
-
-
 ## fromStore
 
 <div class="ts-block">
@@ -11417,8 +11170,6 @@ function fromStore<V>(store: Readable<V>): {
 
 </div>
 
-
-
 ## get
 
 Get the current value from a store by subscribing and immediately unsubscribing.
@@ -11430,8 +11181,6 @@ function get<T>(store: Readable<T>): T;
 ```
 
 </div>
-
-
 
 ## readable
 
@@ -11448,8 +11197,6 @@ function readable<T>(
 
 </div>
 
-
-
 ## readonly
 
 Takes a store and returns a new one derived from the old one that is readable.
@@ -11461,8 +11208,6 @@ function readonly<T>(store: Readable<T>): Readable<T>;
 ```
 
 </div>
-
-
 
 ## toStore
 
@@ -11485,8 +11230,6 @@ function toStore<V>(get: () => V): Readable<V>;
 
 </div>
 
-
-
 ## writable
 
 Create a `Writable` store that allows both updating and reading by subscription.
@@ -11501,8 +11244,6 @@ function writable<T>(
 ```
 
 </div>
-
-
 
 ## Readable
 
@@ -11638,15 +11379,7 @@ Update value using callback and inform subscribers.
 
 ```js
 // @noErrors
-import {
-	blur,
-	crossfade,
-	draw,
-	fade,
-	fly,
-	scale,
-	slide
-} from 'svelte/transition';
+import { blur, crossfade, draw, fade, fly, scale, slide } from 'svelte/transition'
 ```
 
 ## blur
@@ -11669,8 +11402,6 @@ function blur(
 ```
 
 </div>
-
-
 
 ## crossfade
 
@@ -11706,8 +11437,6 @@ function crossfade({
 
 </div>
 
-
-
 ## draw
 
 Animates the stroke of an SVG element, like a snake in a tube. `in` transitions begin with the path invisible and draw the path to the screen over time. `out` transitions start in a visible state and gradually erase the path. `draw` only works with elements that have a `getTotalLength` method, like `<path>` and `<polyline>`.
@@ -11730,8 +11459,6 @@ function draw(
 
 </div>
 
-
-
 ## fade
 
 Animates the opacity of an element from 0 to the current opacity for `in` transitions and from the current opacity to 0 for `out` transitions.
@@ -11746,8 +11473,6 @@ function fade(
 ```
 
 </div>
-
-
 
 ## fly
 
@@ -11771,8 +11496,6 @@ function fly(
 
 </div>
 
-
-
 ## scale
 
 Animates the opacity and scale of an element. `in` transitions animate from the provided values, passed as parameters, to an element's current (default) values. `out` transitions animate from an element's default values to the provided values.
@@ -11794,8 +11517,6 @@ function scale(
 
 </div>
 
-
-
 ## slide
 
 Slides an element in and out.
@@ -11815,8 +11536,6 @@ function slide(
 ```
 
 </div>
-
-
 
 ## BlurParams
 
@@ -12452,10 +12171,11 @@ A `:global` selector cannot be part of a selector list with entries that don't c
 The following CSS is invalid:
 
 ```css
-:global, x {
-    y {
-        color: red;
-    }
+:global,
+x {
+  y {
+    color: red;
+  }
 }
 ```
 
@@ -12463,13 +12183,13 @@ This is mixing a `:global` block, which means "everything in here is unscoped", 
 
 ```css
 :global {
-    y {
-        color: red;
-    }
+  y {
+    color: red;
+  }
 }
 
 x y {
-    color: red;
+  color: red;
 }
 ```
 
@@ -12591,15 +12311,15 @@ In legacy mode, it was possible to reassign or bind to the each block argument i
 
 ```svelte
 <script>
-	let array = [1, 2, 3];
+  let array = [1, 2, 3]
 </script>
 
 {#each array as entry}
-	<!-- reassignment -->
-	<button on:click={() => entry = 4}>change</button>
+  <!-- reassignment -->
+  <button on:click={() => (entry = 4)}>change</button>
 
-	<!-- binding -->
-	<input bind:value={entry}>
+  <!-- binding -->
+  <input bind:value={entry} />
 {/each}
 ```
 
@@ -12607,15 +12327,15 @@ This turned out to be buggy and unpredictable, particularly when working with de
 
 ```svelte
 <script>
-	let array = $state([1, 2, 3]);
+  let array = $state([1, 2, 3])
 </script>
 
 {#each array as entry, i}
-	<!-- reassignment -->
-	<button onclick={() => array[i] = 4}>change</button>
+  <!-- reassignment -->
+  <button onclick={() => (array[i] = 4)}>change</button>
 
-	<!-- binding -->
-	<input bind:value={array[i]}>
+  <!-- binding -->
+  <input bind:value={array[i]} />
 {/each}
 ```
 
@@ -13043,15 +12763,15 @@ It's possible to export a snippet from a `<script module>` block, but only if it
 
 ```svelte
 <script module>
-	export { greeting };
+  export { greeting }
 </script>
 
 <script>
-	let message = 'hello';
+  let message = 'hello'
 </script>
 
 {#snippet greeting(name)}
-	<p>{message} {name}!</p>
+  <p>{message} {name}!</p>
 {/snippet}
 ```
 
@@ -13085,7 +12805,7 @@ An assignment to a class field that uses a `$state` or `$derived` rune is consid
 
 ```js
 class Counter {
-	count = $state(0);
+  count = $state(0)
 }
 ```
 
@@ -13093,9 +12813,9 @@ class Counter {
 
 ```js
 class Counter {
-	constructor() {
-		this.count = $state(0);
-	}
+  constructor() {
+    this.count = $state(0)
+  }
 }
 ```
 
@@ -13501,7 +13221,7 @@ Enforce that certain DOM elements have the correct structure.
 ```svelte
 <!-- A11y: <figcaption> must be an immediate child of <figure> -->
 <div>
-	<figcaption>Image caption</figcaption>
+  <figcaption>Image caption</figcaption>
 </div>
 ```
 
@@ -14033,7 +13753,8 @@ In HTML, some elements are implicitly closed by another element. For example, yo
 
 ```html
 <!-- this HTML... -->
-<p><p>hello</p>
+<p></p>
+<p>hello</p>
 
 <!-- results in this DOM structure -->
 <p></p>
@@ -14051,16 +13772,14 @@ Self-closing HTML tags for non-void elements are ambiguous — use `<%name% ...>
 In HTML, there's [no such thing as a self-closing tag](https://jakearchibald.com/2023/against-self-closing-tags-in-html/). While this _looks_ like a self-contained element with some text next to it...
 
 ```html
-<div>
-	<span class="icon" /> some text!
-</div>
+<div><span class="icon" /> some text!</div>
 ```
 
 ...a spec-compliant HTML parser (such as a browser) will in fact parse it like this, with the text _inside_ the icon:
 
 ```html
 <div>
-	<span class="icon"> some text! </span>
+  <span class="icon"> some text! </span>
 </div>
 ```
 
@@ -14123,6 +13842,7 @@ This code will work when the component is rendered on the client (which is why t
 ```
 
 This warning is thrown when the compiler detects the following:
+
 - a variable was declared without `$state` or `$state.raw`
 - the variable is reassigned
 - the variable is read in a reactive context
@@ -14131,17 +13851,19 @@ In this case, changing the value will not correctly trigger updates. Example:
 
 ```svelte
 <script>
-	let reactive = $state('reactive');
-	let stale = 'stale';
+  let reactive = $state('reactive')
+  let stale = 'stale'
 </script>
 
 <p>This value updates: {reactive}</p>
 <p>This value does not update: {stale}</p>
 
-<button onclick={() => {
-	stale = 'updated';
-	reactive = 'updated';
-}}>update</button>
+<button
+  onclick={() => {
+    stale = 'updated'
+    reactive = 'updated'
+  }}>update</button
+>
 ```
 
 To fix this, wrap your variable declaration with `$state`.
@@ -14219,8 +13941,8 @@ Reassignments of module-level declarations will not cause reactive statements to
 ```
 
 ```svelte
-<script ---context="module"--- +++module+++>
-	let foo = 'bar';
+<script ---context="module" --- +++module+++>
+  let foo = 'bar'
 </script>
 ```
 
@@ -14255,29 +13977,26 @@ This 'breaks the link' to the original state declaration. For example, if you pa
 ```svelte
 <!--- file: Parent.svelte --->
 <script>
-	import { setContext } from 'svelte';
+  import { setContext } from 'svelte'
 
-	let count = $state(0);
+  let count = $state(0)
 
-	// warning: state_referenced_locally
-	setContext('count', count);
+  // warning: state_referenced_locally
+  setContext('count', count)
 </script>
 
-<button onclick={() => count++}>
-	increment
-</button>
+<button onclick={() => count++}> increment </button>
 ```
 
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	import { getContext } from 'svelte';
+  import { getContext } from 'svelte'
 
-	const count = getContext('count');
+  const count = getContext('count')
 </script>
 
-<!-- This will never update -->
-<p>The count is {count}</p>
+<!-- This will never update --><p>The count is {count}</p>
 ```
 
 To fix this, reference the variable such that it is lazily evaluated. For the above example, this can be achieved by wrapping `count` in a function:
@@ -14291,9 +14010,7 @@ To fix this, reference the variable such that it is lazily evaluated. For the ab
 	setContext('count', +++() => count+++);
 </script>
 
-<button onclick={() => count++}>
-	increment
-</button>
+<button onclick={() => count++}> increment </button>
 ```
 
 ```svelte
@@ -14478,13 +14195,13 @@ Maximum update depth exceeded. This typically indicates that an effect reads and
 If an effect updates some state that it also depends on, it will re-run, potentially in a loop:
 
 ```js
-let count = $state(0);
+let count = $state(0)
 
 $effect(() => {
-	// this both reads and writes `count`,
-	// so will run in an infinite loop
-	count += 1;
-});
+  // this both reads and writes `count`,
+  // so will run in an infinite loop
+  count += 1
+})
 ```
 
 (Svelte intervenes before this can crash your browser tab.)
@@ -14492,23 +14209,23 @@ $effect(() => {
 The same applies to array mutations, since these both read and write to the array:
 
 ```js
-let array = $state(['hello']);
+let array = $state(['hello'])
 
 $effect(() => {
-	array.push('goodbye');
-});
+  array.push('goodbye')
+})
 ```
 
 Note that it's fine for an effect to re-run itself as long as it 'settles':
 
 ```js
-let array = ['a', 'b', 'c'];
+let array = ['a', 'b', 'c']
 // ---cut---
 $effect(() => {
-	// this is okay, because sorting an already-sorted array
-	// won't result in a mutation
-	array.sort();
-});
+  // this is okay, because sorting an already-sorted array
+  // won't result in a mutation
+  array.sort()
+})
 ```
 
 Often when encountering this issue, the value in question shouldn't be state (for example, if you are pushing to a `logs` array in an effect, make `logs` a normal array rather than `$state([])`). In the rare cases where you really _do_ need to write to state in an effect — [which you should avoid]($effect#When-not-to-use-$effect) — you can read the state with [untrack](svelte#untrack) to avoid adding it as a dependency.
@@ -14595,14 +14312,14 @@ This error occurs when state is updated while evaluating a `$derived`. You might
 
 ```svelte
 <script>
-	let count = $state(0);
+  let count = $state(0)
 
-	let even = $state(true);
+  let even = $state(true)
 
-	let odd = $derived.by(() => {
-		even = count % 2 === 0;
-		return !even;
-	});
+  let odd = $derived.by(() => {
+    even = count % 2 === 0
+    return !even
+  })
 </script>
 
 <button onclick={() => count++}>{count}</button>
@@ -14614,10 +14331,10 @@ This error occurs when state is updated while evaluating a `$derived`. You might
 This is forbidden because it introduces instability: if `<p>{count} is even: {even}</p>` is updated before `odd` is recalculated, `even` will be stale. In most cases the solution is to make everything derived:
 
 ```js
-let count = 0;
+let count = 0
 // ---cut---
-let even = $derived(count % 2 === 0);
-let odd = $derived(!even);
+let even = $derived(count % 2 === 0)
+let odd = $derived(!even)
 ```
 
 If side-effects are unavoidable, use [`$effect`]($effect) instead.
@@ -14642,7 +14359,6 @@ If it's possible to resolve the error inside the `onerror` callback, you must at
 </svelte:boundary>
 ```
 
-
 ## Server errors
 
 <!-- This file is generated by scripts/process-messages/index.js. Do not edit! -->
@@ -14654,7 +14370,6 @@ If it's possible to resolve the error inside the `onerror` callback, you must at
 ```
 
 Certain methods such as `mount` cannot be invoked while running in a server context. Avoid calling them eagerly, i.e. not during render.
-
 
 ## Shared errors
 
@@ -14670,11 +14385,11 @@ The `await` keyword can only appear in a `$derived(...)` or template expression,
 
 ```svelte
 <svelte:boundary>
-	<p>{await getData()}</p>
+  <p>{await getData()}</p>
 
-	{#snippet pending()}
-		<p>loading...</p>
-	{/snippet}
+  {#snippet pending()}
+    <p>loading...</p>
+  {/snippet}
 </svelte:boundary>
 ```
 
@@ -14691,20 +14406,20 @@ This error would be thrown in a setup like this:
 ```svelte
 <!--- file: Parent.svelte --->
 <List {items} let:entry>
-    <span>{entry}</span>
+  <span>{entry}</span>
 </List>
 ```
 
 ```svelte
 <!--- file: List.svelte --->
 <script>
-    let { items, children } = $props();
+  let { items, children } = $props()
 </script>
 
 <ul>
-    {#each items as item}
-        <li>{@render children(item)}</li>
-    {/each}
+  {#each items as item}
+    <li>{@render children(item)}</li>
+  {/each}
 </ul>
 ```
 
@@ -14726,15 +14441,15 @@ Certain lifecycle methods can only be used during component initialisation. To f
 
 ```svelte
 <script>
-    import { onMount } from 'svelte';
+  import { onMount } from 'svelte'
 
-    function handleClick() {
-        // This is wrong
-        onMount(() => {})
-    }
-
-    // This is correct
+  function handleClick() {
+    // This is wrong
     onMount(() => {})
+  }
+
+  // This is correct
+  onMount(() => {})
 </script>
 
 <button onclick={handleClick}>click me</button>
@@ -14750,7 +14465,7 @@ A component throwing this error will look something like this (`children` is not
 
 ```svelte
 <script>
-    let { children } = $props();
+  let { children } = $props()
 </script>
 
 {children}
@@ -14770,11 +14485,10 @@ A component throwing this error will look something like this (`children` is not
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-  let { label } = $props();
+  let { label } = $props()
 </script>
 
-<!-- This component doesn't expect a snippet, but the parent provided one -->
-<p>{label}</p>
+<!-- This component doesn't expect a snippet, but the parent provided one --><p>{label}</p>
 ```
 
 ### store_invalid_shape
@@ -14805,15 +14519,14 @@ Given a case like this...
 
 ```svelte
 <script>
-	let object = $state({ array: null });
+  let object = $state({ array: null })
 
-	function add() {
-		(object.array ??= []).push(object.array.length);
-	}
+  function add() {
+    ;(object.array ??= []).push(object.array.length)
+  }
 </script>
 
-<button onclick={add}>add</button>
-<p>items: {JSON.stringify(object.items)}</p>
+<button onclick={add}>add</button><p>items: {JSON.stringify(object.items)}</p>
 ```
 
 ...the array being pushed to when the button is first clicked is the `[]` on the right-hand side of the assignment, but the resulting value of `object.array` is an empty state proxy. As a result, the pushed value will be discarded.
@@ -14821,11 +14534,11 @@ Given a case like this...
 You can fix this by separating it into two statements:
 
 ```js
-let object = { array: [0] };
+let object = { array: [0] }
 // ---cut---
 function add() {
-	object.array ??= [];
-	object.array.push(object.array.length);
+  object.array ??= []
+  object.array.push(object.array.length)
 }
 ```
 
@@ -14838,10 +14551,10 @@ Detected reactivity loss when reading `%name%`. This happens when state is read 
 Svelte's signal-based reactivity works by tracking which bits of state are read when a template or `$derived(...)` expression executes. If an expression contains an `await`, Svelte transforms it such that any state _after_ the `await` is also tracked — in other words, in a case like this...
 
 ```js
-let a = Promise.resolve(1);
-let b = 2;
+let a = Promise.resolve(1)
+let b = 2
 // ---cut---
-let total = $derived(await a + b);
+let total = $derived((await a) + b)
 ```
 
 ...both `a` and `b` are tracked, even though `b` is only read once `a` has resolved, after the initial execution.
@@ -14849,31 +14562,31 @@ let total = $derived(await a + b);
 This does _not_ apply to an `await` that is not 'visible' inside the expression. In a case like this...
 
 ```js
-let a = Promise.resolve(1);
-let b = 2;
+let a = Promise.resolve(1)
+let b = 2
 // ---cut---
 async function sum() {
-	return await a + b;
+  return (await a) + b
 }
 
-let total = $derived(await sum());
+let total = $derived(await sum())
 ```
 
 ...`total` will depend on `a` (which is read immediately) but not `b` (which is not). The solution is to pass the values into the function:
 
 ```js
-let a = Promise.resolve(1);
-let b = 2;
+let a = Promise.resolve(1)
+let b = 2
 // ---cut---
 /**
  * @param {Promise<number>} a
  * @param {number} b
  */
 async function sum(a, b) {
-	return await a + b;
+  return (await a) + b
 }
 
-let total = $derived(await sum(a, b));
+let total = $derived(await sum(a, b))
 ```
 
 ### await_waterfall
@@ -14885,11 +14598,15 @@ An async derived, `%name%` (%location%) was not read immediately after it resolv
 In a case like this...
 
 ```js
-async function one() { return 1 }
-async function two() { return 2 }
+async function one() {
+  return 1
+}
+async function two() {
+  return 2
+}
 // ---cut---
-let a = $derived(await one());
-let b = $derived(await two());
+let a = $derived(await one())
+let b = $derived(await two())
 ```
 
 ...the second `$derived` will not be created until the first one has resolved. Since `await two()` does not depend on the value of `a`, this delay, often described as a 'waterfall', is unnecessary.
@@ -14899,14 +14616,18 @@ let b = $derived(await two());
 You can solve this by creating the promises first and _then_ awaiting them:
 
 ```js
-async function one() { return 1 }
-async function two() { return 2 }
+async function one() {
+  return 1
+}
+async function two() {
+  return 2
+}
 // ---cut---
-let aPromise = $derived(one());
-let bPromise = $derived(two());
+let aPromise = $derived(one())
+let bPromise = $derived(two())
 
-let a = $derived(await aPromise);
-let b = $derived(await bPromise);
+let a = $derived(await aPromise)
+let b = $derived(await bPromise)
 ```
 
 ### binding_property_non_reactive
@@ -14947,20 +14668,20 @@ To fix this, either silence the warning with a [`svelte-ignore`](basic-markup#Co
 
 ```svelte
 <script>
-	let { src } = $props();
+  let { src } = $props()
 
-	if (typeof window !== 'undefined') {
-		// stash the value...
-		const initial = src;
+  if (typeof window !== 'undefined') {
+    // stash the value...
+    const initial = src
 
-		// unset it...
-		src = undefined;
+    // unset it...
+    src = undefined
 
-		$effect(() => {
-			// ...and reset after we've mounted
-			src = initial;
-		});
-	}
+    $effect(() => {
+      // ...and reset after we've mounted
+      src = initial
+    })
+  }
 </script>
 
 <img {src} />
@@ -14982,20 +14703,20 @@ To fix this, either silence the warning with a [`svelte-ignore`](basic-markup#Co
 
 ```svelte
 <script>
-	let { markup } = $props();
+  let { markup } = $props()
 
-	if (typeof window !== 'undefined') {
-		// stash the value...
-		const initial = markup;
+  if (typeof window !== 'undefined') {
+    // stash the value...
+    const initial = markup
 
-		// unset it...
-		markup = undefined;
+    // unset it...
+    markup = undefined
 
-		$effect(() => {
-			// ...and reset after we've mounted
-			markup = initial;
-		});
-	}
+    $effect(() => {
+      // ...and reset after we've mounted
+      markup = initial
+    })
+  }
 </script>
 
 {@html markup}
@@ -15054,8 +14775,8 @@ Consider the following code:
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Child from './Child.svelte';
-	let person = $state({ name: 'Florida', surname: 'Man' });
+  import Child from './Child.svelte'
+  let person = $state({ name: 'Florida', surname: 'Man' })
 </script>
 
 <Child {person} />
@@ -15064,11 +14785,11 @@ Consider the following code:
 ```svelte
 <!--- file: Child.svelte --->
 <script>
-	let { person } = $props();
+  let { person } = $props()
 </script>
 
-<input bind:value={person.name}>
-<input bind:value={person.surname}>
+<input bind:value={person.name} />
+<input bind:value={person.surname} />
 ```
 
 `Child` is mutating `person` which is owned by `App` without being explicitly "allowed" to do so. This is strongly discouraged since it can create code that is hard to reason about at scale ("who mutated this value?"), hence the warning.
@@ -15098,10 +14819,10 @@ Reactive `$state(...)` proxies and the values they proxy have different identiti
 
 ```svelte
 <script>
-	let value = { foo: 'bar' };
-	let proxy = $state(value);
+  let value = { foo: 'bar' }
+  let proxy = $state(value)
 
-	value === proxy; // always false
+  value === proxy // always false
 </script>
 ```
 
@@ -15119,17 +14840,17 @@ This `reset` function should only be called once. After that, it has no effect �
 
 ```svelte
 <script>
-	let reset;
+  let reset
 </script>
 
 <button onclick={reset}>reset</button>
 
 <svelte:boundary onerror={(e, r) => (reset = r)}>
-	<!-- contents -->
+  <!-- contents -->
 
-	{#snippet failed(e)}
-		<p>oops! {e.message}</p>
-	{/snippet}
+  {#snippet failed(e)}
+    <p>oops! {e.message}</p>
+  {/snippet}
 </svelte:boundary>
 ```
 
@@ -15144,7 +14865,6 @@ The [slide](/docs/svelte/svelte-transition#slide) transition works by animating 
 - `display: inline` (which is the default for elements like `<span>`), and its variants like `inline-block`, `inline-flex` and `inline-grid`
 - `display: table` and `table-[name]`, which are the defaults for elements like `<table>` and `<tr>`
 - `display: contents`
-
 
 ## Shared warnings
 
@@ -15174,7 +14894,7 @@ The following properties cannot be cloned with `$state.snapshot` — the return 
 
 ```js
 const object = $state({ property: 'this is cloneable', window })
-const snapshot = $state.snapshot(object);
+const snapshot = $state.snapshot(object)
 ```
 
 # Overview
@@ -15198,11 +14918,11 @@ In legacy mode, variables declared at the top level of a component are automatic
 
 ```svelte
 <script>
-	let count = 0;
+  let count = 0
 </script>
 
-<button on:click={() => count += 1}>
-	clicks: {count}
+<button on:click={() => (count += 1)}>
+  clicks: {count}
 </button>
 ```
 
@@ -15210,16 +14930,16 @@ Because Svelte's legacy mode reactivity is based on _assignments_, using array m
 
 ```svelte
 <script>
-	let numbers = [1, 2, 3, 4];
+  let numbers = [1, 2, 3, 4]
 
-	function addNumber() {
-		// this method call does not trigger an update
-		numbers.push(numbers.length + 1);
+  function addNumber() {
+    // this method call does not trigger an update
+    numbers.push(numbers.length + 1)
 
-		// this assignment will update anything
-		// that depends on `numbers`
-		numbers = numbers;
-	}
+    // this assignment will update anything
+    // that depends on `numbers`
+    numbers = numbers
+  }
 </script>
 ```
 
@@ -15231,17 +14951,17 @@ In legacy mode, any top-level statement (i.e. not inside a block or a function) 
 
 ```svelte
 <script>
-	let a = 1;
-	let b = 2;
+  let a = 1
+  let b = 2
 
-	// this is a 'reactive statement', and it will re-run
-	// when `a`, `b` or `sum` change
-	$: console.log(`${a} + ${b} = ${sum}`);
+  // this is a 'reactive statement', and it will re-run
+  // when `a`, `b` or `sum` change
+  $: console.log(`${a} + ${b} = ${sum}`)
 
-	// this is a 'reactive assignment' — `sum` will be
-	// recalculated when `a` or `b` change. It is
-	// not necessary to declare `sum` separately
-	$: sum = a + b;
+  // this is a 'reactive assignment' — `sum` will be
+  // recalculated when `a` or `b` change. It is
+  // not necessary to declare `sum` separately
+  $: sum = a + b
 </script>
 ```
 
@@ -15252,12 +14972,12 @@ Multiple statements can be combined by putting them in a block:
 ```js
 // @noErrors
 $: {
-	// recalculate `total` when `items` changes
-	total = 0;
+  // recalculate `total` when `items` changes
+  total = 0
 
-	for (const item of items) {
-		total += item.value;
-	}
+  for (const item of items) {
+    total += item.value
+  }
 }
 ```
 
@@ -15265,7 +14985,7 @@ The left-hand side of a reactive assignments can be an identifier, or it can be 
 
 ```js
 // @noErrors
-$: ({ larry, moe, curly } = stooges);
+$: ({ larry, moe, curly } = stooges)
 ```
 
 ## Understanding dependencies
@@ -15276,25 +14996,25 @@ In other words, a statement like this will _not_ re-run when `count` changes, be
 
 ```js
 // @noErrors
-let count = 0;
-let double = () => count * 2;
+let count = 0
+let double = () => count * 2
 
-$: doubled = double();
+$: doubled = double()
 ```
 
 Similarly, topological ordering will fail if dependencies are referenced indirectly: `z` will never update, because `y` is not considered 'dirty' when the update occurs. Moving `$: z = y` below `$: setY(x)` will fix it:
 
 ```svelte
 <script>
-	let x = 0;
-	let y = 0;
+  let x = 0
+  let y = 0
 
-	$: z = y;
-	$: setY(x);
+  $: z = y
+  $: setY(x)
 
-	function setY(value) {
-		y = value;
-	}
+  function setY(value) {
+    y = value
+  }
 </script>
 ```
 
@@ -15305,7 +15025,7 @@ Reactive statements run during server-side rendering as well as in the browser. 
 ```js
 // @noErrors
 $: if (browser) {
-	document.title = title;
+  document.title = title
 }
 ```
 
@@ -15317,12 +15037,12 @@ In legacy mode, props are marked with the `export` keyword, and can have a defau
 
 ```svelte
 <script>
-	export let foo;
-	export let bar = 'default value';
+  export let foo
+  export let bar = 'default value'
 
-	// Values that are passed in as props
-	// are immediately available
-	console.log({ foo });
+  // Values that are passed in as props
+  // are immediately available
+  console.log({ foo })
 </script>
 ```
 
@@ -15343,25 +15063,23 @@ An exported `const`, `class` or `function` declaration is _not_ considered a pro
 ```svelte
 <!--- file: Greeter.svelte--->
 <script>
-	export function greet(name) {
-		alert(`hello ${name}!`);
-	}
+  export function greet(name) {
+    alert(`hello ${name}!`)
+  }
 </script>
 ```
 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Greeter from './Greeter.svelte';
+  import Greeter from './Greeter.svelte'
 
-	let greeter;
+  let greeter
 </script>
 
 <Greeter bind:this={greeter} />
 
-<button on:click={() => greeter.greet('world')}>
-	greet
-</button>
+<button on:click={() => greeter.greet('world')}> greet </button>
 ```
 
 ## Renaming props
@@ -15371,12 +15089,12 @@ The `export` keyword can appear separately from the declaration. This is useful 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	/** @type {string} */
-	let className;
+  /** @type {string} */
+  let className
 
-	// creates a `class` property, even
-	// though it is a reserved word
-	export { className as class };
+  // creates a `class` property, even
+  // though it is a reserved word
+  export { className as class }
 </script>
 ```
 
@@ -15393,17 +15111,15 @@ For example, a `<Button>` component might need to pass along all its props to it
 
 ```svelte
 <script>
-	export let variant;
+  export let variant
 </script>
 
-<button {...$$restProps} class="variant-{variant} {$$props.class ?? ''}">
-	click me
-</button>
+<button {...$$restProps} class="variant-{variant} {$$props.class ?? ''}"> click me </button>
 
 <style>
-	.variant-danger {
-		background: red;
-	}
+  .variant-danger {
+    background: red;
+  }
 </style>
 ```
 
@@ -15418,16 +15134,16 @@ In legacy mode, we use the `on:` directive:
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	let count = 0;
+  let count = 0
 
-	/** @param {MouseEvent} event */
-	function handleClick(event) {
-		count += 1;
-	}
+  /** @param {MouseEvent} event */
+  function handleClick(event) {
+    count += 1
+  }
 </script>
 
 <button on:click={handleClick}>
-	count: {count}
+  count: {count}
 </button>
 ```
 
@@ -15435,7 +15151,7 @@ Handlers can be declared inline with no performance penalty:
 
 ```svelte
 <button on:click={() => (count += 1)}>
-	count: {count}
+  count: {count}
 </button>
 ```
 
@@ -15443,7 +15159,7 @@ Add _modifiers_ to element event handlers with the `|` character.
 
 ```svelte
 <form on:submit|preventDefault={handleSubmit}>
-	<!-- the `submit` event's default is prevented,
+  <!-- the `submit` event's default is prevented,
 	     so the page won't reload -->
 </form>
 ```
@@ -15465,9 +15181,7 @@ Modifiers can be chained together, e.g. `on:click|once|capture={...}`.
 If the `on:` directive is used without a value, the component will _forward_ the event, meaning that a consumer of the component can listen for it.
 
 ```svelte
-<button on:click>
-	The component itself will emit the click event
-</button>
+<button on:click> The component itself will emit the click event </button>
 ```
 
 It's possible to have multiple event listeners for the same event:
@@ -15475,20 +15189,20 @@ It's possible to have multiple event listeners for the same event:
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	let count = 0;
+  let count = 0
 
-	function increment() {
-		count += 1;
-	}
+  function increment() {
+    count += 1
+  }
 
-	/** @param {MouseEvent} event */
-	function log(event) {
-		console.log(event);
-	}
+  /** @param {MouseEvent} event */
+  function log(event) {
+    console.log(event)
+  }
 </script>
 
 <button on:click={increment} on:click={log}>
-	clicks: {count}
+  clicks: {count}
 </button>
 ```
 
@@ -15499,8 +15213,8 @@ Components can dispatch events by creating a _dispatcher_ when they are initiali
 ```svelte
 <!--- file: Stepper.svelte -->
 <script>
-	import { createEventDispatcher } from 'svelte';
-	const dispatch = createEventDispatcher();
+  import { createEventDispatcher } from 'svelte'
+  const dispatch = createEventDispatcher()
 </script>
 
 <button on:click={() => dispatch('decrement')}>decrement</button>
@@ -15513,15 +15227,12 @@ A consumer of this component can listen for the dispatched events:
 
 ```svelte
 <script>
-	import Stepper from './Stepper.svelte';
+  import Stepper from './Stepper.svelte'
 
-	let n = 0;
+  let n = 0
 </script>
 
-<Stepper
-	on:decrement={() => n -= 1}
-	on:increment={() => n += 1}
-/>
+<Stepper on:decrement={() => (n -= 1)} on:increment={() => (n += 1)} />
 
 <p>n: {n}</p>
 ```
@@ -15536,8 +15247,8 @@ Other than `once`, modifiers are not valid on component event handlers.
 > ```svelte
 > <!--- file: Stepper.svelte --->
 > <script>
-> 	export let decrement;
-> 	export let increment;
+>   export let decrement
+>   export let increment
 > </script>
 >
 > <button on:click={decrement}>decrement</button>
@@ -15553,7 +15264,7 @@ In legacy mode, content inside component tags is considered _slotted content_, w
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Modal from './Modal.svelte';
+  import Modal from './Modal.svelte'
 </script>
 
 <Modal>This is some slotted content</Modal>
@@ -15562,7 +15273,7 @@ In legacy mode, content inside component tags is considered _slotted content_, w
 ```svelte
 <!--- file: Modal.svelte --->
 <div class="modal">
-	<slot></slot>
+  <slot></slot>
 </div>
 ```
 
@@ -15575,21 +15286,21 @@ A component can have _named_ slots in addition to the default slot. On the paren
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Modal from './Modal.svelte';
+  import Modal from './Modal.svelte'
 
-	let open = true;
+  let open = true
 </script>
 
 {#if open}
-	<Modal>
-		This is some slotted content
-
-		+++<div slot="buttons">+++
-			<button on:click={() => open = false}>
-				close
-			</button>
-		+++</div>+++
-	</Modal>
+  <Modal>
+    This is some slotted content +++
+    <div slot="buttons">
+      +++
+      <button on:click={() => (open = false)}> close </button>
+      +++
+    </div>
+    +++
+  </Modal>
 {/if}
 ```
 
@@ -15598,9 +15309,9 @@ On the child side, add a corresponding `<slot name="...">` element:
 ```svelte
 <!--- file: Modal.svelte --->
 <div class="modal">
-	<slot></slot>
-	<hr>
-	+++<slot name="buttons"></slot>+++
+  <slot></slot>
+  <hr />
+  +++<slot name="buttons"></slot>+++
 </div>
 ```
 
@@ -15609,9 +15320,7 @@ On the child side, add a corresponding `<slot name="...">` element:
 If no slotted content is provided, a component can define fallback content by putting it inside the `<slot>` element:
 
 ```svelte
-<slot>
-	This will be rendered if no slotted content is provided
-</slot>
+<slot>This will be rendered if no slotted content is provided</slot>
 ```
 
 ## Passing data to slotted content
@@ -15621,12 +15330,12 @@ Slots can be rendered zero or more times and can pass values _back_ to the paren
 ```svelte
 <!--- file: FancyList.svelte --->
 <ul>
-	{#each items as data}
-		<li class="fancy">
-			<!-- 'item' here... -->
-			<slot item={process(data)} />
-		</li>
-	{/each}
+  {#each items as data}
+    <li class="fancy">
+      <!-- 'item' here... -->
+      <slot item={process(data)} />
+    </li>
+  {/each}
 </ul>
 ```
 
@@ -15634,7 +15343,7 @@ Slots can be rendered zero or more times and can pass values _back_ to the paren
 <!--- file: App.svelte --->
 <!-- ...corresponds to 'item' here: -->
 <FancyList {items} let:item={processed}>
-	<div>{processed.text}</div>
+  <div>{processed.text}</div>
 </FancyList>
 ```
 
@@ -15645,11 +15354,11 @@ Named slots can also expose values. The `let:` directive goes on the element wit
 ```svelte
 <!--- file: FancyList.svelte --->
 <ul>
-	{#each items as item}
-		<li class="fancy">
-			<slot name="item" item={process(data)} />
-		</li>
-	{/each}
+  {#each items as item}
+    <li class="fancy">
+      <slot name="item" item={process(data)} />
+    </li>
+  {/each}
 </ul>
 
 <slot name="footer" />
@@ -15658,8 +15367,8 @@ Named slots can also expose values. The `let:` directive goes on the element wit
 ```svelte
 <!--- file: App.svelte --->
 <FancyList {items}>
-	<div slot="item" let:item>{item.text}</div>
-	<p slot="footer">Copyright (c) 2019 Svelte Industries</p>
+  <div slot="item" let:item>{item.text}</div>
+  <p slot="footer">Copyright (c) 2019 Svelte Industries</p>
 </FancyList>
 ```
 
@@ -15672,20 +15381,20 @@ In legacy mode, the way to know if content was provided for a given slot is with
 ```svelte
 <!--- file: Card.svelte --->
 <div>
-	<slot name="title" />
-	{#if $$slots.description}
-		<!-- This <hr> and slot will render only if `slot="description"` is provided. -->
-		<hr />
-		<slot name="description" />
-	{/if}
+  <slot name="title" />
+  {#if $$slots.description}
+    <!-- This <hr> and slot will render only if `slot="description"` is provided. -->
+    <hr />
+    <slot name="description" />
+  {/if}
 </div>
 ```
 
 ```svelte
 <!--- file: App.svelte --->
 <Card>
-	<h1 slot="title">Blog Post Title</h1>
-	<!-- No slot named "description" was provided so the optional slot will not be rendered. -->
+  <h1 slot="title">Blog Post Title</h1>
+  <!-- No slot named "description" was provided so the optional slot will not be rendered. -->
 </Card>
 ```
 
@@ -15696,24 +15405,24 @@ The `<svelte:fragment>` element allows you to place content in a [named slot](le
 ```svelte
 <!--- file: Widget.svelte --->
 <div>
-	<slot name="header">No header was provided</slot>
-	<p>Some content between header and footer</p>
-	<slot name="footer" />
+  <slot name="header">No header was provided</slot>
+  <p>Some content between header and footer</p>
+  <slot name="footer" />
 </div>
 ```
 
 ```svelte
 <!--- file: App.svelte --->
 <script>
-	import Widget from './Widget.svelte';
+  import Widget from './Widget.svelte'
 </script>
 
 <Widget>
-	<h1 slot="header">Hello</h1>
-	<svelte:fragment slot="footer">
-		<p>All rights reserved.</p>
-		<p>Copyright (c) 2019 Svelte Industries</p>
-	</svelte:fragment>
+  <h1 slot="header">Hello</h1>
+  <svelte:fragment slot="footer">
+    <p>All rights reserved.</p>
+    <p>Copyright (c) 2019 Svelte Industries</p>
+  </svelte:fragment>
 </Widget>
 ```
 
@@ -15740,31 +15449,32 @@ It cannot appear at the top level of your markup; it must be inside an if or eac
 
 ```svelte
 <script>
-	export let count;
+  export let count
 </script>
 
 {#if count > 0}
-	<p>counting down... {count}</p>
-	<svelte:self count={count - 1} />
+  <p>counting down... {count}</p>
+  <svelte:self count={count - 1} />
 {:else}
-	<p>lift-off!</p>
+  <p>lift-off!</p>
 {/if}
 ```
 
 > [!NOTE]
 > This concept is obsolete, as components can import themselves:
+>
 > ```svelte
 > <!--- file: App.svelte --->
 > <script>
-> 	import Self from './App.svelte'
-> 	export let count;
+>   import Self from './App.svelte'
+>   export let count
 > </script>
 >
 > {#if count > 0}
-> 	<p>counting down... {count}</p>
-> 	<Self count={count - 1} />
+>   <p>counting down... {count}</p>
+>   <Self count={count - 1} />
 > {:else}
-> 	<p>lift-off!</p>
+>   <p>lift-off!</p>
 > {/if}
 > ```
 
@@ -15776,23 +15486,23 @@ In Svelte 3 and 4, the API for interacting with a component is different than in
 
 ```ts
 // @noErrors
-const component = new Component(options);
+const component = new Component(options)
 ```
 
 A client-side component — that is, a component compiled with `generate: 'dom'` (or the `generate` option left unspecified) is a JavaScript class.
 
 ```ts
 // @noErrors
-import App from './App.svelte';
+import App from './App.svelte'
 
 const app = new App({
-	target: document.body,
-	props: {
-		// assuming App.svelte contains something like
-		// `export let answer`:
-		answer: 42
-	}
-});
+  target: document.body,
+  props: {
+    // assuming App.svelte contains something like
+    // `export let answer`:
+    answer: 42
+  }
+})
 ```
 
 The following initialisation options can be provided:
@@ -15817,12 +15527,12 @@ The existing DOM doesn't need to match the component — Svelte will 'repair' th
 ```ts
 /// file: index.js
 // @noErrors
-import App from './App.svelte';
+import App from './App.svelte'
 
 const app = new App({
-	target: document.querySelector('#server-rendered-html'),
-	hydrate: true
-});
+  target: document.querySelector('#server-rendered-html'),
+  hydrate: true
+})
 ```
 
 > [!NOTE]
@@ -15832,7 +15542,7 @@ const app = new App({
 
 ```ts
 // @noErrors
-component.$set(props);
+component.$set(props)
 ```
 
 Programmatically sets props on an instance. `component.$set({ x: 1 })` is equivalent to `x = 1` inside the component's `<script>` block.
@@ -15841,7 +15551,7 @@ Calling this method schedules an update for the next microtask — the DOM is _n
 
 ```ts
 // @noErrors
-component.$set({ answer: 42 });
+component.$set({ answer: 42 })
 ```
 
 > [!NOTE]
@@ -15849,17 +15559,17 @@ component.$set({ answer: 42 });
 >
 > ```js
 > // @noErrors
-> let props = $state({ answer: 42 });
-> const component = mount(Component, { props });
+> let props = $state({ answer: 42 })
+> const component = mount(Component, { props })
 > // ...
-> props.answer = 24;
+> props.answer = 24
 > ```
 
 ## `$on`
 
 ```ts
 // @noErrors
-component.$on(ev, callback);
+component.$on(ev, callback)
 ```
 
 Causes the `callback` function to be called whenever the component dispatches an `event`.
@@ -15869,10 +15579,10 @@ A function is returned that will remove the event listener when called.
 ```ts
 // @noErrors
 const off = component.$on('selected', (event) => {
-	console.log(event.detail.selection);
-});
+  console.log(event.detail.selection)
+})
 
-off();
+off()
 ```
 
 > [!NOTE]
@@ -15882,7 +15592,7 @@ off();
 
 ```js
 // @noErrors
-component.$destroy();
+component.$destroy()
 ```
 
 Removes a component from the DOM and triggers any `onDestroy` handlers.
@@ -15894,12 +15604,12 @@ Removes a component from the DOM and triggers any `onDestroy` handlers.
 
 ```js
 // @noErrors
-component.prop;
+component.prop
 ```
 
 ```js
 // @noErrors
-component.prop = value;
+component.prop = value
 ```
 
 If a component is compiled with `accessors: true`, each instance will have getters and setters corresponding to each of the component's props. Setting a value will cause a _synchronous_ update, rather than the default async update caused by `component.$set(...)`.
@@ -15908,8 +15618,8 @@ By default, `accessors` is `false`, unless you're compiling as a custom element.
 
 ```js
 // @noErrors
-console.log(component.count);
-component.count += 1;
+console.log(component.count)
+component.count += 1
 ```
 
 > [!NOTE]
@@ -15930,13 +15640,13 @@ You can import a Svelte component directly into Node using `svelte/register`.
 
 ```js
 // @noErrors
-require('svelte/register');
+require('svelte/register')
 
-const App = require('./App.svelte').default;
+const App = require('./App.svelte').default
 
 const { head, html, css } = App.render({
-	answer: 42
-});
+  answer: 42
+})
 ```
 
 The `.render()` method accepts the following parameters:
@@ -15955,19 +15665,19 @@ The `options` object takes in the following options:
 ```js
 // @noErrors
 const { head, html, css } = App.render(
-	// props
-	{ answer: 42 },
-	// options
-	{
-		context: new Map([['context-key', 'context-value']])
-	}
-);
+  // props
+  { answer: 42 },
+  // options
+  {
+    context: new Map([['context-key', 'context-value']])
+  }
+)
 ```
 
 > [!NOTE]
 > In Svelte 5+, use [`render`](svelte-server#render) instead
-# Start of SvelteKit documentation
 
+# Start of SvelteKit documentation
 
 # Introduction
 
@@ -16211,21 +15921,24 @@ The [`Headers`](https://developer.mozilla.org/en-US/docs/Web/API/Headers) interf
 ```js
 // @errors: 2461
 /// file: src/routes/what-is-my-user-agent/+server.js
-import { json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit'
 
 /** @type {import('./$types').RequestHandler} */
 export function GET({ request }) {
-	// log all headers
-	console.log(...request.headers);
+  // log all headers
+  console.log(...request.headers)
 
-	// create a JSON Response using a header we received
-	return json({
-		// retrieve a specific header
-		userAgent: request.headers.get('user-agent')
-	}, {
-		// set a header on the response
-		headers: { 'x-custom-header': 'potato' }
-	});
+  // create a JSON Response using a header we received
+  return json(
+    {
+      // retrieve a specific header
+      userAgent: request.headers.get('user-agent')
+    },
+    {
+      // set a header on the response
+      headers: { 'x-custom-header': 'potato' }
+    }
+  )
 }
 ```
 
@@ -16236,19 +15949,19 @@ When dealing with HTML native form submissions you'll be working with [`FormData
 ```js
 // @errors: 2461
 /// file: src/routes/hello/+server.js
-import { json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit'
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST(event) {
-	const body = await event.request.formData();
+  const body = await event.request.formData()
 
-	// log all fields
-	console.log([...body]);
+  // log all fields
+  console.log([...body])
 
-	return json({
-		// get a specific field's value
-		name: body.get('name') ?? 'world'
-	});
+  return json({
+    // get a specific field's value
+    name: body.get('name') ?? 'world'
+  })
 }
 ```
 
@@ -16282,7 +15995,7 @@ const foo = url.searchParams.get('foo');
 The [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) is made available via the `crypto` global. It's used internally for [Content Security Policy](configuration#csp) headers, but you can also use it for things like generating UUIDs:
 
 ```js
-const uuid = crypto.randomUUID();
+const uuid = crypto.randomUUID()
 ```
 
 # Routing
@@ -16299,9 +16012,9 @@ Each route directory contains one or more _route files_, which can be identified
 
 We'll introduce these files in a moment in more detail, but here are a few simple rules to help you remember how SvelteKit's routing works:
 
-* All files can run on the server
-* All files run on the client except `+server` files
-* `+layout` and `+error` files apply to subdirectories as well as the directory they live in
+- All files can run on the server
+- All files run on the client except `+server` files
+- `+layout` and `+error` files apply to subdirectories as well as the directory they live in
 
 ## +page
 
@@ -16329,16 +16042,15 @@ Pages can receive data from `load` functions via the `data` prop.
 ```svelte
 <!--- file: src/routes/blog/[slug]/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 </script>
 
-<h1>{data.title}</h1>
-<div>{@html data.content}</div>
+<h1>{data.title}</h1><div>{@html data.content}</div>
 ```
 
 > [!LEGACY]
-> `PageProps` was added in 2.16.0. In earlier versions, you had to type the `data` property manually with `PageData` instead, see [$types](#\$types).
+> `PageProps` was added in 2.16.0. In earlier versions, you had to type the `data` property manually with `PageData` instead, see [$types](#$types).
 >
 > In Svelte 4, you'd use `export let data` instead.
 
@@ -16348,18 +16060,18 @@ Often, a page will need to load some data before it can be rendered. For this, w
 
 ```js
 /// file: src/routes/blog/[slug]/+page.js
-import { error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit'
 
 /** @type {import('./$types').PageLoad} */
 export function load({ params }) {
-	if (params.slug === 'hello-world') {
-		return {
-			title: 'Hello world!',
-			content: 'Welcome to our blog. Lorem ipsum dolor sit amet...'
-		};
-	}
+  if (params.slug === 'hello-world') {
+    return {
+      title: 'Hello world!',
+      content: 'Welcome to our blog. Lorem ipsum dolor sit amet...'
+    }
+  }
 
-	error(404, 'Not found');
+  error(404, 'Not found')
 }
 ```
 
@@ -16419,7 +16131,7 @@ If an error occurs during `load`, SvelteKit will render a default error page. Yo
 ```svelte
 <!--- file: src/routes/blog/[slug]/+error.svelte --->
 <script>
-	import { page } from '$app/state';
+  import { page } from '$app/state'
 </script>
 
 <h1>{page.status}: {page.error.message}</h1>
@@ -16450,7 +16162,7 @@ To create a layout that applies to every page, make a file called `src/routes/+l
 
 ```svelte
 <script>
-	let { children } = $props();
+  let { children } = $props()
 </script>
 
 {@render children()}
@@ -16461,13 +16173,13 @@ To create a layout that applies to every page, make a file called `src/routes/+l
 ```svelte
 <!--- file: src/routes/+layout.svelte --->
 <script>
-	let { children } = $props();
+  let { children } = $props()
 </script>
 
 <nav>
-	<a href="/">Home</a>
-	<a href="/about">About</a>
-	<a href="/settings">Settings</a>
+  <a href="/">Home</a>
+  <a href="/about">About</a>
+  <a href="/settings">Settings</a>
 </nav>
 
 {@render children()}
@@ -16499,23 +16211,23 @@ We can create a layout that only applies to pages below `/settings` (while inher
 ```svelte
 <!--- file: src/routes/settings/+layout.svelte --->
 <script>
-	/** @type {import('./$types').LayoutProps} */
-	let { data, children } = $props();
+  /** @type {import('./$types').LayoutProps} */
+  let { data, children } = $props()
 </script>
 
 <h1>Settings</h1>
 
 <div class="submenu">
-	{#each data.sections as section}
-		<a href="/settings/{section.slug}">{section.title}</a>
-	{/each}
+  {#each data.sections as section}
+    <a href="/settings/{section.slug}">{section.title}</a>
+  {/each}
 </div>
 
 {@render children()}
 ```
 
 > [!LEGACY]
-> `LayoutProps` was added in 2.16.0. In earlier versions, you had to [type the properties manually instead](#\$types).
+> `LayoutProps` was added in 2.16.0. In earlier versions, you had to [type the properties manually instead](#$types).
 
 You can see how `data` is populated by looking at the `+layout.js` example in the next section just below.
 
@@ -16529,12 +16241,12 @@ Just like `+page.svelte` loading data from `+page.js`, your `+layout.svelte` com
 /// file: src/routes/settings/+layout.js
 /** @type {import('./$types').LayoutLoad} */
 export function load() {
-	return {
-		sections: [
-			{ slug: 'profile', title: 'Profile' },
-			{ slug: 'notifications', title: 'Notifications' }
-		]
-	};
+  return {
+    sections: [
+      { slug: 'profile', title: 'Profile' },
+      { slug: 'notifications', title: 'Notifications' }
+    ]
+  }
 }
 ```
 
@@ -16545,10 +16257,10 @@ Data returned from a layout's `load` function is also available to all its child
 ```svelte
 <!--- file: src/routes/settings/profile/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 
-	console.log(data.sections); // [{ slug: 'profile', title: 'Profile' }, ...]
+  console.log(data.sections) // [{ slug: 'profile', title: 'Profile' }, ...]
 </script>
 ```
 
@@ -16568,22 +16280,22 @@ For example we could create an `/api/random-number` route with a `GET` handler:
 
 ```js
 /// file: src/routes/api/random-number/+server.js
-import { error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit'
 
 /** @type {import('./$types').RequestHandler} */
 export function GET({ url }) {
-	const min = Number(url.searchParams.get('min') ?? '0');
-	const max = Number(url.searchParams.get('max') ?? '1');
+  const min = Number(url.searchParams.get('min') ?? '0')
+  const max = Number(url.searchParams.get('max') ?? '1')
 
-	const d = max - min;
+  const d = max - min
 
-	if (isNaN(d) || d < 0) {
-		error(400, 'min and max must be numbers, and min must be less than max');
-	}
+  if (isNaN(d) || d < 0) {
+    error(400, 'min and max must be numbers, and min must be less than max')
+  }
 
-	const random = min + Math.random() * d;
+  const random = min + Math.random() * d
 
-	return new Response(String(random));
+  return new Response(String(random))
 }
 ```
 
@@ -16604,25 +16316,25 @@ By exporting `POST`/`PUT`/`PATCH`/`DELETE`/`OPTIONS`/`HEAD` handlers, `+server.j
 ```svelte
 <!--- file: src/routes/add/+page.svelte --->
 <script>
-	let a = 0;
-	let b = 0;
-	let total = 0;
+  let a = 0
+  let b = 0
+  let total = 0
 
-	async function add() {
-		const response = await fetch('/api/add', {
-			method: 'POST',
-			body: JSON.stringify({ a, b }),
-			headers: {
-				'content-type': 'application/json'
-			}
-		});
+  async function add() {
+    const response = await fetch('/api/add', {
+      method: 'POST',
+      body: JSON.stringify({ a, b }),
+      headers: {
+        'content-type': 'application/json'
+      }
+    })
 
-		total = await response.json();
-	}
+    total = await response.json()
+  }
 </script>
 
-<input type="number" bind:value={a}> +
-<input type="number" bind:value={b}> =
+<input type="number" bind:value={a} /> +
+<input type="number" bind:value={b} /> =
 {total}
 
 <button onclick={add}>Calculate</button>
@@ -16630,12 +16342,12 @@ By exporting `POST`/`PUT`/`PATCH`/`DELETE`/`OPTIONS`/`HEAD` handlers, `+server.j
 
 ```js
 /// file: src/routes/api/add/+server.js
-import { json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit'
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {
-	const { a, b } = await request.json();
-	return json(a + b);
+  const { a, b } = await request.json()
+  return json(a + b)
 }
 ```
 
@@ -16649,18 +16361,18 @@ Exporting the `fallback` handler will match any unhandled request methods, inclu
 
 ```js
 /// file: src/routes/api/add/+server.js
-import { json, text } from '@sveltejs/kit';
+import { json, text } from '@sveltejs/kit'
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {
-	const { a, b } = await request.json();
-	return json(a + b);
+  const { a, b } = await request.json()
+  return json(a + b)
 }
 
 // This handler will respond to PUT, PATCH, DELETE, etc.
 /** @type {import('./$types').RequestHandler} */
 export async function fallback({ request }) {
-	return text(`I caught your ${request.method} request!`);
+  return text(`I caught your ${request.method} request!`)
 }
 ```
 
@@ -16683,8 +16395,8 @@ For example, annotating `let { data } = $props()` with `PageProps` (or `LayoutPr
 ```svelte
 <!--- file: src/routes/blog/[slug]/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 </script>
 ```
 
@@ -16694,7 +16406,7 @@ For example, annotating `let { data } = $props()` with `PageProps` (or `LayoutPr
 > ```js
 > /// file: +page.svelte
 > /** @type {{ data: import('./$types').PageData, form: import('./$types').ActionData }} */
-> let { data, form } = $props();
+> let { data, form } = $props()
 > ```
 >
 > Or, for a layout:
@@ -16702,7 +16414,7 @@ For example, annotating `let { data } = $props()` with `PageProps` (or `LayoutPr
 > ```js
 > /// file: +layout.svelte
 > /** @type {{ data: import('./$types').LayoutData, children: Snippet }} */
-> let { data, children } = $props();
+> let { data, children } = $props()
 > ```
 
 In turn, annotating the `load` function with `PageLoad`, `PageServerLoad`, `LayoutLoad` or `LayoutServerLoad` (for `+page.js`, `+page.server.js`, `+layout.js` and `+layout.server.js` respectively) ensures that `params` and the return value are correctly typed.
@@ -16735,32 +16447,32 @@ A `+page.svelte` file can have a sibling `+page.js` that exports a `load` functi
 /// file: src/routes/blog/[slug]/+page.js
 /** @type {import('./$types').PageLoad} */
 export function load({ params }) {
-	return {
-		post: {
-			title: `Title for ${params.slug} goes here`,
-			content: `Content for ${params.slug} goes here`
-		}
-	};
+  return {
+    post: {
+      title: `Title for ${params.slug} goes here`,
+      content: `Content for ${params.slug} goes here`
+    }
+  }
 }
 ```
 
 ```svelte
 <!--- file: src/routes/blog/[slug]/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 </script>
 
-<h1>{data.post.title}</h1>
-<div>{@html data.post.content}</div>
+<h1>{data.post.title}</h1><div>{@html data.post.content}</div>
 ```
 
 > [!LEGACY]
 > Before version 2.16.0, the props of a page and layout had to be typed individually:
+>
 > ```js
 > /// file: +page.svelte
 > /** @type {{ data: import('./$types').PageData }} */
-> let { data } = $props();
+> let { data } = $props()
 > ```
 >
 > In Svelte 4, you'd use `export let data` instead.
@@ -16818,41 +16530,41 @@ export async function load() {
 ```svelte
 <!--- file: src/routes/blog/[slug]/+layout.svelte --->
 <script>
-	/** @type {import('./$types').LayoutProps} */
-	let { data, children } = $props();
+  /** @type {import('./$types').LayoutProps} */
+  let { data, children } = $props()
 </script>
 
 <main>
-	<!-- +page.svelte is `@render`ed here -->
-	{@render children()}
+  <!-- +page.svelte is `@render`ed here -->
+  {@render children()}
 </main>
 
 <aside>
-	<h2>More posts</h2>
-	<ul>
-		{#each data.posts as post}
-			<li>
-				<a href="/blog/{post.slug}">
-					{post.title}
-				</a>
-			</li>
-		{/each}
-	</ul>
+  <h2>More posts</h2>
+  <ul>
+    {#each data.posts as post}
+      <li>
+        <a href="/blog/{post.slug}">
+          {post.title}
+        </a>
+      </li>
+    {/each}
+  </ul>
 </aside>
 ```
 
 > [!LEGACY]
 > `LayoutProps` was added in 2.16.0. In earlier versions, properties had to be typed individually:
+>
 > ```js
 > /// file: +layout.svelte
 > /** @type {{ data: import('./$types').LayoutData, children: Snippet }} */
-> let { data, children } = $props();
+> let { data, children } = $props()
 > ```
 
 Data returned from layout `load` functions is available to child `+layout.svelte` components and the `+page.svelte` component as well as the layout that it 'belongs' to.
 
 ```svelte
-/// file: src/routes/blog/[slug]/+page.svelte
 <script>
 	+++import { page } from '$app/state';+++
 
@@ -16865,11 +16577,12 @@ Data returned from layout `load` functions is available to child `+layout.svelte
 	let next = $derived(data.posts[index + 1]);+++
 </script>
 
+/// file: src/routes/blog/[slug]/+page.svelte
 <h1>{data.post.title}</h1>
 <div>{@html data.post.content}</div>
 
 +++{#if next}
-	<p>Next post: <a href="/blog/{next.slug}">{next.title}</a></p>
+  <p>Next post: <a href="/blog/{next.slug}">{next.title}</a></p>
 {/if}+++
 ```
 
@@ -16884,11 +16597,11 @@ In some cases, we might need the opposite — a parent layout might need to acce
 ```svelte
 <!--- file: src/routes/+layout.svelte --->
 <script>
-	import { page } from '$app/state';
+  import { page } from '$app/state'
 </script>
 
 <svelte:head>
-	<title>{page.data.title}</title>
+  <title>{page.data.title}</title>
 </svelte:head>
 ```
 
@@ -16902,8 +16615,8 @@ Type information for `page.data` is provided by `App.PageData`.
 
 As we've seen, there are two types of `load` function:
 
-* `+page.js` and `+layout.js` files export _universal_ `load` functions that run both on the server and in the browser
-* `+page.server.js` and `+layout.server.js` files export _server_ `load` functions that only run server-side
+- `+page.js` and `+layout.js` files export _universal_ `load` functions that run both on the server and in the browser
+- `+page.server.js` and `+layout.server.js` files export _server_ `load` functions that only run server-side
 
 Conceptually, they're the same thing, but there are some important differences to be aware of.
 
@@ -16943,9 +16656,9 @@ In rare cases, you might need to use both together — for example, you might ne
 /// file: src/routes/+page.server.js
 /** @type {import('./$types').PageServerLoad} */
 export async function load() {
-	return {
-		serverMessage: 'hello from server load function'
-	};
+  return {
+    serverMessage: 'hello from server load function'
+  }
 }
 ```
 
@@ -16954,10 +16667,10 @@ export async function load() {
 // @errors: 18047
 /** @type {import('./$types').PageLoad} */
 export async function load({ data }) {
-	return {
-		serverMessage: data.serverMessage,
-		universalMessage: 'hello from universal load function'
-	};
+  return {
+    serverMessage: data.serverMessage,
+    universalMessage: 'hello from universal load function'
+  }
 }
 ```
 
@@ -16979,7 +16692,7 @@ Contains the name of the current route directory, relative to `src/routes`:
 /// file: src/routes/a/[b]/[...c]/+page.js
 /** @type {import('./$types').PageLoad} */
 export function load({ route }) {
-	console.log(route.id); // '/a/[b]/[...c]'
+  console.log(route.id) // '/a/[b]/[...c]'
 }
 ```
 
@@ -16991,8 +16704,8 @@ Given a `route.id` of `/a/[b]/[...c]` and a `url.pathname` of `/a/x/y/z`, the `p
 
 ```json
 {
-	"b": "x",
-	"c": "y/z"
+  "b": "x",
+  "c": "y/z"
 }
 ```
 
@@ -17010,10 +16723,10 @@ To get data from an external API or a `+server.js` handler, you can use the prov
 /// file: src/routes/items/[id]/+page.js
 /** @type {import('./$types').PageLoad} */
 export async function load({ fetch, params }) {
-	const res = await fetch(`/api/items/${params.id}`);
-	const item = await res.json();
+  const res = await fetch(`/api/items/${params.id}`)
+  const item = await res.json()
 
-	return { item };
+  return { item }
 }
 ```
 
@@ -17045,6 +16758,7 @@ export async function load({ cookies }) {
 Cookies will only be passed through the provided `fetch` function if the target host is the same as the SvelteKit application or a more specific subdomain of it.
 
 For example, if SvelteKit is serving my.domain.com:
+
 - domain.com WILL NOT receive cookies
 - my.domain.com WILL receive cookies
 - api.domain.com WILL NOT receive cookies
@@ -17061,17 +16775,17 @@ Both server and universal `load` functions have access to a `setHeaders` functio
 /// file: src/routes/products/+page.js
 /** @type {import('./$types').PageLoad} */
 export async function load({ fetch, setHeaders }) {
-	const url = `https://cms.example.com/products.json`;
-	const response = await fetch(url);
+  const url = `https://cms.example.com/products.json`
+  const response = await fetch(url)
 
-	// Headers are only set during SSR, caching the page's HTML
-	// for the same length of time as the underlying data.
-	setHeaders({
-		age: response.headers.get('age'),
-		'cache-control': response.headers.get('cache-control')
-	});
+  // Headers are only set during SSR, caching the page's HTML
+  // for the same length of time as the underlying data.
+  setHeaders({
+    age: response.headers.get('age'),
+    'cache-control': response.headers.get('cache-control')
+  })
 
-	return response.json();
+  return response.json()
 }
 ```
 
@@ -17085,7 +16799,7 @@ Occasionally it's useful for a `load` function to access data from a parent `loa
 /// file: src/routes/+layout.js
 /** @type {import('./$types').LayoutLoad} */
 export function load() {
-	return { a: 1 };
+  return { a: 1 }
 }
 ```
 
@@ -17093,8 +16807,8 @@ export function load() {
 /// file: src/routes/abc/+layout.js
 /** @type {import('./$types').LayoutLoad} */
 export async function load({ parent }) {
-	const { a } = await parent();
-	return { b: a + 1 };
+  const { a } = await parent()
+  return { b: a + 1 }
 }
 ```
 
@@ -17102,20 +16816,19 @@ export async function load({ parent }) {
 /// file: src/routes/abc/+page.js
 /** @type {import('./$types').PageLoad} */
 export async function load({ parent }) {
-	const { a, b } = await parent();
-	return { c: a + b };
+  const { a, b } = await parent()
+  return { c: a + b }
 }
 ```
 
 ```svelte
 <!--- file: src/routes/abc/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 </script>
 
-<!-- renders `1 + 2 = 3` -->
-<p>{data.a} + {data.b} = {data.c}</p>
+<!-- renders `1 + 2 = 3` --><p>{data.a} + {data.b} = {data.c}</p>
 ```
 
 > [!NOTE] Notice that the `load` function in `+page.js` receives the merged data from both layout `load` functions, not just the immediate parent.
@@ -17249,21 +16962,21 @@ This is useful for creating skeleton loading states, for example:
 ```svelte
 <!--- file: src/routes/blog/[slug]/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 </script>
 
 <h1>{data.post.title}</h1>
 <div>{@html data.post.content}</div>
 
 {#await data.comments}
-	Loading comments...
+  Loading comments...
 {:then comments}
-	{#each comments as comment}
-		<p>{comment.content}</p>
-	{/each}
+  {#each comments as comment}
+    <p>{comment.content}</p>
+  {/each}
 {:catch error}
-	<p>error loading comments: {error.message}</p>
+  <p>error loading comments: {error.message}</p>
 {/await}
 ```
 
@@ -17273,14 +16986,14 @@ When streaming data, be careful to handle promise rejections correctly. More spe
 /// file: src/routes/+page.server.js
 /** @type {import('./$types').PageServerLoad} */
 export function load({ fetch }) {
-	const ok_manual = Promise.reject();
-	ok_manual.catch(() => {});
+  const ok_manual = Promise.reject()
+  ok_manual.catch(() => {})
 
-	return {
-		ok_manual,
-		ok_fetch: fetch('/fetch/that/could/fail'),
-		dangerous_unhandled: Promise.reject()
-	};
+  return {
+    ok_manual,
+    ok_fetch: fetch('/fetch/that/could/fail'),
+    dangerous_unhandled: Promise.reject()
+  }
 }
 ```
 
@@ -17356,10 +17069,10 @@ In rare cases, you may wish to exclude something from the dependency tracking me
 /// file: src/routes/+page.js
 /** @type {import('./$types').PageLoad} */
 export async function load({ untrack, url }) {
-	// Untrack url.pathname so that path changes don't trigger a rerun
-	if (untrack(() => url.pathname === '/')) {
-		return { message: 'Welcome!' };
-	}
+  // Untrack url.pathname so that path changes don't trigger a rerun
+  if (untrack(() => url.pathname === '/')) {
+    return { message: 'Welcome!' }
+  }
 }
 ```
 
@@ -17373,33 +17086,33 @@ A `load` function depends on `url` if it calls `fetch(url)` or `depends(url)`. N
 /// file: src/routes/random-number/+page.js
 /** @type {import('./$types').PageLoad} */
 export async function load({ fetch, depends }) {
-	// load reruns when `invalidate('https://api.example.com/random-number')` is called...
-	const response = await fetch('https://api.example.com/random-number');
+  // load reruns when `invalidate('https://api.example.com/random-number')` is called...
+  const response = await fetch('https://api.example.com/random-number')
 
-	// ...or when `invalidate('app:random')` is called
-	depends('app:random');
+  // ...or when `invalidate('app:random')` is called
+  depends('app:random')
 
-	return {
-		number: await response.json()
-	};
+  return {
+    number: await response.json()
+  }
 }
 ```
 
 ```svelte
 <!--- file: src/routes/random-number/+page.svelte --->
 <script>
-	import { invalidate, invalidateAll } from '$app/navigation';
+  import { invalidate, invalidateAll } from '$app/navigation'
 
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 
-	function rerunLoadFunction() {
-		// any of these will cause the `load` function to rerun
-		invalidate('app:random');
-		invalidate('https://api.example.com/random-number');
-		invalidate(url => url.href.includes('random-number'));
-		invalidateAll();
-	}
+  function rerunLoadFunction() {
+    // any of these will cause the `load` function to rerun
+    invalidate('app:random')
+    invalidate('https://api.example.com/random-number')
+    invalidate((url) => url.href.includes('random-number'))
+    invalidateAll()
+  }
 </script>
 
 <p>random number: {data.number}</p>
@@ -17425,12 +17138,14 @@ Note that rerunning a `load` function will update the `data` prop inside the cor
 ## Implications for authentication
 
 A couple features of loading data have important implications for auth checks:
+
 - Layout `load` functions do not run on every request, such as during client side navigation between child routes. [(When do load functions rerun?)](load#Rerunning-load-functions-When-do-load-functions-rerun)
 - Layout and page `load` functions run concurrently unless `await parent()` is called. If a layout `load` throws, the page `load` function runs, but the client will not receive the returned data.
 
 There are a few possible strategies to ensure an auth check occurs before protected code.
 
 To prevent data waterfalls and preserve layout `load` caches:
+
 - Use [hooks](hooks) to protect multiple routes before any `load` functions run
 - Use auth guards directly in `+page.server.js` `load` functions for route specific protection
 
@@ -17524,10 +17239,10 @@ In the simplest case, a page declares a `default` action:
 /// file: src/routes/login/+page.server.js
 /** @satisfies {import('./$types').Actions} */
 export const actions = {
-	default: async (event) => {
-		// TODO log the user in
-	}
-};
+  default: async (event) => {
+    // TODO log the user in
+  }
+}
 ```
 
 To invoke this action from the `/login` page, just add a `<form>` — no JavaScript needed:
@@ -17535,15 +17250,15 @@ To invoke this action from the `/login` page, just add a `<form>` — no JavaScr
 ```svelte
 <!--- file: src/routes/login/+page.svelte --->
 <form method="POST">
-	<label>
-		Email
-		<input name="email" type="email">
-	</label>
-	<label>
-		Password
-		<input name="password" type="password">
-	</label>
-	<button>Log in</button>
+  <label>
+    Email
+    <input name="email" type="email" />
+  </label>
+  <label>
+    Password
+    <input name="password" type="password" />
+  </label>
+  <button>Log in</button>
 </form>
 ```
 
@@ -17556,7 +17271,7 @@ We can also invoke the action from other pages (for example if there's a login w
 ```html
 /// file: src/routes/+layout.svelte
 <form method="POST" action="/login">
-	<!-- content -->
+  <!-- content -->
 </form>
 ```
 
@@ -17594,17 +17309,17 @@ As well as the `action` attribute, we can use the `formaction` attribute on a bu
 
 ```svelte
 /// file: src/routes/login/+page.svelte
-<form method="POST" +++action="?/login"+++>
-	<label>
-		Email
-		<input name="email" type="email">
-	</label>
-	<label>
-		Password
-		<input name="password" type="password">
-	</label>
-	<button>Log in</button>
-	+++<button formaction="?/register">Register</button>+++
+<form method="POST" +++action="?/login" +++>
+  <label>
+    Email
+    <input name="email" type="email" />
+  </label>
+  <label>
+    Password
+    <input name="password" type="password" />
+  </label>
+  <button>Log in</button>
+  +++<button formaction="?/register">Register</button>+++
 </form>
 ```
 
@@ -17650,23 +17365,24 @@ export const actions = {
 ```svelte
 <!--- file: src/routes/login/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data, form } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data, form } = $props()
 </script>
 
 {#if form?.success}
-	<!-- this message is ephemeral; it exists because the page was rendered in
+  <!-- this message is ephemeral; it exists because the page was rendered in
 	       response to a form submission. it will vanish if the user reloads -->
-	<p>Successfully logged in! Welcome back, {data.user.name}</p>
+  <p>Successfully logged in! Welcome back, {data.user.name}</p>
 {/if}
 ```
 
 > [!LEGACY]
 > `PageProps` was added in 2.16.0. In earlier versions, you had to type the `data` and `form` properties individually:
+>
 > ```js
 > /// file: +page.svelte
 > /** @type {{ data: import('./$types').PageData, form: import('./$types').ActionData }} */
-> let { data, form } = $props();
+> let { data, form } = $props()
 > ```
 >
 > In Svelte 4, you'd use `export let data` and `export let form` instead to declare properties.
@@ -17717,18 +17433,18 @@ export const actions = {
 ```svelte
 /// file: src/routes/login/+page.svelte
 <form method="POST" action="?/login">
-+++	{#if form?.missing}<p class="error">The email field is required</p>{/if}
-	{#if form?.incorrect}<p class="error">Invalid credentials!</p>{/if}+++
-	<label>
-		Email
-		<input name="email" type="email" +++value={form?.email ?? ''}+++>
-	</label>
-	<label>
-		Password
-		<input name="password" type="password">
-	</label>
-	<button>Log in</button>
-	<button formaction="?/register">Register</button>
+  +++ {#if form?.missing}<p class="error">The email field is required</p>{/if}
+  {#if form?.incorrect}<p class="error">Invalid credentials!</p>{/if}+++
+  <label>
+    Email
+    <input name="email" type="email" +++value="{form?.email ?? ''}+++" />
+  </label>
+  <label>
+    Password
+    <input name="password" type="password" />
+  </label>
+  <button>Log in</button>
+  <button formaction="?/register">Register</button>
 </form>
 ```
 
@@ -17941,36 +17657,36 @@ We can also implement progressive enhancement ourselves, without `use:enhance`, 
 ```svelte
 <!--- file: src/routes/login/+page.svelte --->
 <script>
-	import { invalidateAll, goto } from '$app/navigation';
-	import { applyAction, deserialize } from '$app/forms';
+  import { invalidateAll, goto } from '$app/navigation'
+  import { applyAction, deserialize } from '$app/forms'
 
-	/** @type {import('./$types').PageProps} */
-	let { form } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { form } = $props()
 
-	/** @param {SubmitEvent & { currentTarget: EventTarget & HTMLFormElement}} event */
-	async function handleSubmit(event) {
-		event.preventDefault();
-		const data = new FormData(event.currentTarget);
+  /** @param {SubmitEvent & { currentTarget: EventTarget & HTMLFormElement}} event */
+  async function handleSubmit(event) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
 
-		const response = await fetch(event.currentTarget.action, {
-			method: 'POST',
-			body: data
-		});
+    const response = await fetch(event.currentTarget.action, {
+      method: 'POST',
+      body: data
+    })
 
-		/** @type {import('@sveltejs/kit').ActionResult} */
-		const result = deserialize(await response.text());
+    /** @type {import('@sveltejs/kit').ActionResult} */
+    const result = deserialize(await response.text())
 
-		if (result.type === 'success') {
-			// rerun all `load` functions, following the successful update
-			await invalidateAll();
-		}
+    if (result.type === 'success') {
+      // rerun all `load` functions, following the successful update
+      await invalidateAll()
+    }
 
-		applyAction(result);
-	}
+    applyAction(result)
+  }
 </script>
 
 <form method="POST" onsubmit={handleSubmit}>
-	<!-- content -->
+  <!-- content -->
 </form>
 ```
 
@@ -17996,11 +17712,11 @@ Form actions are the preferred way to send data to the server, since they can be
 ```svelte
 <!--- file: src/routes/send-message/+page.svelte --->
 <script>
-	function rerun() {
-		fetch('/api/ci', {
-			method: 'POST'
-		});
-	}
+  function rerun() {
+    fetch('/api/ci', {
+      method: 'POST'
+    })
+  }
 </script>
 
 <button onclick={rerun}>Rerun CI</button>
@@ -18011,7 +17727,7 @@ Form actions are the preferred way to send data to the server, since they can be
 /// file: src/routes/api/ci/+server.js
 /** @type {import('./$types').RequestHandler} */
 export function POST() {
-	// do something
+  // do something
 }
 ```
 
@@ -18023,10 +17739,10 @@ Some forms don't need to `POST` data to the server — search inputs, for exampl
 
 ```html
 <form action="/search">
-	<label>
-		Search
-		<input name="q">
-	</label>
+  <label>
+    Search
+    <input name="q" />
+  </label>
 </form>
 ```
 
@@ -18050,21 +17766,21 @@ It's likely that at least some routes of your app can be represented as a simple
 
 ```js
 /// file: +page.js/+page.server.js/+server.js
-export const prerender = true;
+export const prerender = true
 ```
 
 Alternatively, you can set `export const prerender = true` in your root `+layout.js` or `+layout.server.js` and prerender everything except pages that are explicitly marked as _not_ prerenderable:
 
 ```js
 /// file: +page.js/+page.server.js/+server.js
-export const prerender = false;
+export const prerender = false
 ```
 
 Routes with `prerender = true` will be excluded from manifests used for dynamic SSR, making your server (or serverless/edge functions) smaller. In some cases you might want to prerender a route but also include it in the manifest (for example, with a route like `/blog/[slug]` where you want to prerender your most recent/popular content but server-render the long tail) — for these cases, there's a third option, 'auto':
 
 ```js
 /// file: +page.js/+page.server.js/+server.js
-export const prerender = 'auto';
+export const prerender = 'auto'
 ```
 
 > [!NOTE] If your entire app is suitable for prerendering, you can use [`adapter-static`](adapter-static), which will output files suitable for use with any static webserver.
@@ -18079,12 +17795,12 @@ Unlike the other page options, `prerender` also applies to `+server.js` files. T
 
 ```js
 /// file: +page.js
-export const prerender = true;
+export const prerender = true
 
 /** @type {import('./$types').PageLoad} */
 export async function load({ fetch }) {
-	const res = await fetch('/my-server-route.json');
-	return await res.json();
+  const res = await fetch('/my-server-route.json')
+  return await res.json()
 }
 ```
 
@@ -18116,9 +17832,9 @@ If you encounter an error like 'The following routes were marked as prerenderabl
 
 Since these routes cannot be dynamically server-rendered, this will cause errors when people try to access the route in question. There are a few ways to fix it:
 
-* Ensure that SvelteKit can find the route by following links from [`config.kit.prerender.entries`](configuration#prerender) or the [`entries`](#entries) page option. Add links to dynamic routes (i.e. pages with `[parameters]` ) to this option if they are not found through crawling the other entry points, else they are not prerendered because SvelteKit doesn't know what value the parameters should have. Pages not marked as prerenderable will be ignored and their links to other pages will not be crawled, even if some of them would be prerenderable.
-* Ensure that SvelteKit can find the route by discovering a link to it from one of your other prerendered pages that have server-side rendering enabled.
-* Change `export const prerender = true` to `export const prerender = 'auto'`. Routes with `'auto'` can be dynamically server rendered
+- Ensure that SvelteKit can find the route by following links from [`config.kit.prerender.entries`](configuration#prerender) or the [`entries`](#entries) page option. Add links to dynamic routes (i.e. pages with `[parameters]` ) to this option if they are not found through crawling the other entry points, else they are not prerendered because SvelteKit doesn't know what value the parameters should have. Pages not marked as prerenderable will be ignored and their links to other pages will not be crawled, even if some of them would be prerenderable.
+- Ensure that SvelteKit can find the route by discovering a link to it from one of your other prerendered pages that have server-side rendering enabled.
+- Change `export const prerender = true` to `export const prerender = 'auto'`. Routes with `'auto'` can be dynamically server rendered
 
 ## entries
 
@@ -18140,13 +17856,10 @@ This can be done with [`config.kit.prerender.entries`](configuration#prerender),
 /// file: src/routes/blog/[slug]/+page.server.js
 /** @type {import('./$types').EntryGenerator} */
 export function entries() {
-	return [
-		{ slug: 'hello-world' },
-		{ slug: 'another-blog-post' }
-	];
+  return [{ slug: 'hello-world' }, { slug: 'another-blog-post' }]
 }
 
-export const prerender = true;
+export const prerender = true
 ```
 
 `entries` can be an `async` function, allowing you to (for example) retrieve a list of posts from a CMS or database, in the example above.
@@ -18157,7 +17870,7 @@ Normally, SvelteKit renders your page on the server first and sends that HTML to
 
 ```js
 /// file: +page.js
-export const ssr = false;
+export const ssr = false
 // If both `ssr` and `csr` are `false`, nothing will be rendered!
 ```
 
@@ -18171,25 +17884,25 @@ Ordinarily, SvelteKit [hydrates](glossary#Hydration) your server-rendered HTML i
 
 ```js
 /// file: +page.js
-export const csr = false;
+export const csr = false
 // If both `csr` and `ssr` are `false`, nothing will be rendered!
 ```
 
 Disabling CSR does not ship any JavaScript to the client. This means:
 
-* The webpage should work with HTML and CSS only.
-* `<script>` tags inside all Svelte components are removed.
-* `<form>` elements cannot be [progressively enhanced](form-actions#Progressive-enhancement).
-* Links are handled by the browser with a full-page navigation.
-* Hot Module Replacement (HMR) will be disabled.
+- The webpage should work with HTML and CSS only.
+- `<script>` tags inside all Svelte components are removed.
+- `<form>` elements cannot be [progressively enhanced](form-actions#Progressive-enhancement).
+- Links are handled by the browser with a full-page navigation.
+- Hot Module Replacement (HMR) will be disabled.
 
 You can enable `csr` during development (for example to take advantage of HMR) like so:
 
 ```js
 /// file: +page.js
-import { dev } from '$app/environment';
+import { dev } from '$app/environment'
 
-export const csr = dev;
+export const csr = dev
 ```
 
 ## trailingSlash
@@ -18200,7 +17913,7 @@ As with other page options, you can export this value from a `+layout.js` or a `
 
 ```js
 /// file: src/routes/+layout.js
-export const trailingSlash = 'always';
+export const trailingSlash = 'always'
 ```
 
 This option also affects [prerendering](#prerender). If `trailingSlash` is `always`, a route like `/about` will result in an `about/index.html` file, otherwise it will create `about.html`, mirroring static webserver conventions.
@@ -18233,11 +17946,11 @@ export const config = {
 ```js
 /// file: src/routes/+layout.js
 export const config = {
-	runtime: 'edge',
-	regions: 'all',
-	foo: {
-		bar: true
-	}
+  runtime: 'edge',
+  regions: 'all',
+  foo: {
+    bar: true
+  }
 }
 ```
 
@@ -18246,10 +17959,10 @@ export const config = {
 ```js
 /// file: src/routes/+page.js
 export const config = {
-	regions: ['us1', 'us2'],
-	foo: {
-		baz: true
-	}
+  regions: ['us1', 'us2'],
+  foo: {
+    baz: true
+  }
 }
 ```
 
@@ -18272,24 +17985,24 @@ Conceptually, that is. In reality, servers are often long-lived and shared by mu
 ```js
 // @errors: 7034 7005
 /// file: +page.server.js
-let user;
+let user
 
 /** @type {import('./$types').PageServerLoad} */
 export function load() {
-	return { user };
+  return { user }
 }
 
 /** @satisfies {import('./$types').Actions} */
 export const actions = {
-	default: async ({ request }) => {
-		const data = await request.formData();
+  default: async ({ request }) => {
+    const data = await request.formData()
 
-		// NEVER DO THIS!
-		user = {
-			name: data.get('name'),
-			embarrassingSecret: data.get('secret')
-		};
-	}
+    // NEVER DO THIS!
+    user = {
+      name: data.get('name'),
+      embarrassingSecret: data.get('secret')
+    }
+  }
 }
 ```
 
@@ -18346,24 +18059,24 @@ You might wonder how we're able to use `page.data` and other [app state]($app-st
 ```svelte
 <!--- file: src/routes/+layout.svelte --->
 <script>
-	import { setContext } from 'svelte';
+  import { setContext } from 'svelte'
 
-	/** @type {import('./$types').LayoutProps} */
-	let { data } = $props();
+  /** @type {import('./$types').LayoutProps} */
+  let { data } = $props()
 
-	// Pass a function referencing our state
-	// to the context for child components to access
-	setContext('user', () => data.user);
+  // Pass a function referencing our state
+  // to the context for child components to access
+  setContext('user', () => data.user)
 </script>
 ```
 
 ```svelte
 <!--- file: src/routes/user/+page.svelte --->
 <script>
-	import { getContext } from 'svelte';
+  import { getContext } from 'svelte'
 
-	// Retrieve user store from context
-	const user = getContext('user');
+  // Retrieve user store from context
+  const user = getContext('user')
 </script>
 
 <p>Welcome {user().name}</p>
@@ -18385,17 +18098,17 @@ When you navigate around your application, SvelteKit reuses existing layout and 
 ```svelte
 <!--- file: src/routes/blog/[slug]/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data } = $props()
 
-	// THIS CODE IS BUGGY!
-	const wordCount = data.content.split(' ').length;
-	const estimatedReadingTime = wordCount / 250;
+  // THIS CODE IS BUGGY!
+  const wordCount = data.content.split(' ').length
+  const estimatedReadingTime = wordCount / 250
 </script>
 
 <header>
-	<h1>{data.title}</h1>
-	<p>Reading time: {Math.round(estimatedReadingTime)} minutes</p>
+  <h1>{data.title}</h1>
+  <p>Reading time: {Math.round(estimatedReadingTime)} minutes</p>
 </header>
 
 <div>{@html data.content}</div>
@@ -18406,7 +18119,6 @@ When you navigate around your application, SvelteKit reuses existing layout and 
 Instead, we need to make the value [_reactive_](/tutorial/svelte/state):
 
 ```svelte
-/// file: src/routes/blog/[slug]/+page.svelte
 <script>
 	/** @type {import('./$types').PageProps} */
 	let { data } = $props();
@@ -18414,6 +18126,8 @@ Instead, we need to make the value [_reactive_](/tutorial/svelte/state):
 +++	let wordCount = $derived(data.content.split(' ').length);
 	let estimatedReadingTime = $derived(wordCount / 250);+++
 </script>
+
+/// file: src/routes/blog/[slug]/+page.svelte
 ```
 
 > [!NOTE] If your code in `onMount` and `onDestroy` has to run again after navigation you can use [afterNavigate]($app-navigation#afterNavigate) and [beforeNavigate]($app-navigation#beforeNavigate) respectively.
@@ -18422,11 +18136,11 @@ Reusing components like this means that things like sidebar scroll state are pre
 
 ```svelte
 <script>
-	import { page } from '$app/state';
+  import { page } from '$app/state'
 </script>
 
 {#key page.url.pathname}
-	<BlogPost title={data.title} content={data.title} />
+  <BlogPost title={data.title} content={data.title} />
 {/key}
 ```
 
@@ -18509,15 +18223,15 @@ The query returned from `getPosts` works as a [`Promise`](https://developer.mozi
 ```svelte
 <!--- file: src/routes/blog/+page.svelte --->
 <script>
-	import { getPosts } from './data.remote';
+  import { getPosts } from './data.remote'
 </script>
 
 <h1>Recent posts</h1>
 
 <ul>
-	{#each await getPosts() as { title, slug }}
-		<li><a href="/blog/{slug}">{title}</a></li>
-	{/each}
+  {#each await getPosts() as { title, slug }}
+    <li><a href="/blog/{slug}">{title}</a></li>
+  {/each}
 </ul>
 ```
 
@@ -18528,23 +18242,23 @@ While using `await` is recommended, as an alternative the query also has `loadin
 ```svelte
 <!--- file: src/routes/blog/+page.svelte --->
 <script>
-	import { getPosts } from './data.remote';
+  import { getPosts } from './data.remote'
 
-	const query = getPosts();
+  const query = getPosts()
 </script>
 
 <h1>Recent posts</h1>
 
 {#if query.error}
-	<p>oops!</p>
+  <p>oops!</p>
 {:else if query.loading}
-	<p>loading...</p>
+  <p>loading...</p>
 {:else}
-	<ul>
-		{#each query.current as { title, slug }}
-			<li><a href="/blog/{slug}">{title}</a></li>
-		{/each}
-	</ul>
+  <ul>
+    {#each query.current as { title, slug }}
+      <li><a href="/blog/{slug}">{title}</a></li>
+    {/each}
+  </ul>
 {/if}
 ```
 
@@ -18557,15 +18271,14 @@ Query functions can accept an argument, such as the `slug` of an individual post
 ```svelte
 <!--- file: src/routes/blog/[slug]/+page.svelte --->
 <script>
-	import { getPost } from '../data.remote';
+  import { getPost } from '../data.remote'
 
-	let { params } = $props();
+  let { params } = $props()
 
-	const post = $derived(await getPost(params.slug));
+  const post = $derived(await getPost(params.slug))
 </script>
 
-<h1>{post.title}</h1>
-<div>{@html post.content}</div>
+<h1>{post.title}</h1><div>{@html post.content}</div>
 ```
 
 Since `getPost` exposes an HTTP endpoint, it's important to validate this argument to be sure that it's the correct type. For this, we can use any [Standard Schema](https://standardschema.dev/) validation library such as [Zod](https://zod.dev/) or [Valibot](https://valibot.dev/):
@@ -18603,9 +18316,7 @@ Both the argument and the return value are serialized with [devalue](https://git
 Any query can be updated via its `refresh` method:
 
 ```svelte
-<button onclick={() => getPosts().refresh()}>
-	Check for new posts
-</button>
+<button onclick={() => getPosts().refresh()}> Check for new posts </button>
 ```
 
 > [!NOTE] Queries are cached while they're on the page, meaning `getPosts() === getPosts()`. This means you don't need a reference like `const posts = getPosts()` in order to refresh the query.
@@ -18614,60 +18325,63 @@ Any query can be updated via its `refresh` method:
 
 The `form` function makes it easy to write data to the server. It takes a callback that receives the current [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData)...
 
-
 ```ts
 /// file: src/routes/blog/data.remote.js
 // @filename: ambient.d.ts
 declare module '$lib/server/database' {
-	export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]>;
+  export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]>
 }
 
 declare module '$lib/server/auth' {
-	interface User {
-		name: string;
-	}
+  interface User {
+    name: string
+  }
 
-	/**
-	 * Gets a user's info from their cookies, using `getRequestEvent`
-	 */
-	export function getUser(): Promise<User | null>;
+  /**
+   * Gets a user's info from their cookies, using `getRequestEvent`
+   */
+  export function getUser(): Promise<User | null>
 }
 // @filename: index.js
 // ---cut---
-import * as v from 'valibot';
-import { error, redirect } from '@sveltejs/kit';
-import { query, form } from '$app/server';
-import * as db from '$lib/server/database';
-import * as auth from '$lib/server/auth';
+import * as v from 'valibot'
+import { error, redirect } from '@sveltejs/kit'
+import { query, form } from '$app/server'
+import * as db from '$lib/server/database'
+import * as auth from '$lib/server/auth'
 
-export const getPosts = query(async () => { /* ... */ });
+export const getPosts = query(async () => {
+  /* ... */
+})
 
-export const getPost = query(v.string(), async (slug) => { /* ... */ });
+export const getPost = query(v.string(), async (slug) => {
+  /* ... */
+})
 
 export const createPost = form(async (data) => {
-	// Check the user is logged in
-	const user = await auth.getUser();
-	if (!user) error(401, 'Unauthorized');
+  // Check the user is logged in
+  const user = await auth.getUser()
+  if (!user) error(401, 'Unauthorized')
 
-	const title = data.get('title');
-	const content = data.get('content');
+  const title = data.get('title')
+  const content = data.get('content')
 
-	// Check the data is valid
-	if (typeof title !== 'string' || typeof content !== 'string') {
-		error(400, 'Title and content are required');
-	}
+  // Check the data is valid
+  if (typeof title !== 'string' || typeof content !== 'string') {
+    error(400, 'Title and content are required')
+  }
 
-	const slug = title.toLowerCase().replace(/ /g, '-');
+  const slug = title.toLowerCase().replace(/ /g, '-')
 
-	// Insert into the database
-	await db.sql`
+  // Insert into the database
+  await db.sql`
 		INSERT INTO post (slug, title, content)
 		VALUES (${slug}, ${title}, ${content})
-	`;
+	`
 
-	// Redirect to the newly created page
-	redirect(303, `/blog/${slug}`);
-});
+  // Redirect to the newly created page
+  redirect(303, `/blog/${slug}`)
+})
 ```
 
 ...and returns an object that can be spread onto a `<form>` element. The callback is called whenever the form is submitted.
@@ -18675,27 +18389,27 @@ export const createPost = form(async (data) => {
 ```svelte
 <!--- file: src/routes/blog/new/+page.svelte --->
 <script>
-	import { createPost } from '../data.remote';
+  import { createPost } from '../data.remote'
 </script>
 
 <h1>Create a new post</h1>
 
 <form {...createPost}>
-	<label>
-		<h2>Title</h2>
-		<input name="title" />
-	</label>
+  <label>
+    <h2>Title</h2>
+    <input name="title" />
+  </label>
 
-	<label>
-		<h2>Write your post</h2>
-		<textarea name="content"></textarea>
-	</label>
+  <label>
+    <h2>Write your post</h2>
+    <textarea name="content"></textarea>
+  </label>
 
-	<button>Publish!</button>
+  <button>Publish!</button>
 </form>
 ```
 
-The form object contains `method` and `action` properties that allow it to work without JavaScript (i.e. it submits data and reloads the page). It also has an `onsubmit` handler that progressively enhances the form when JavaScript is available, submitting data *without* reloading the entire page.
+The form object contains `method` and `action` properties that allow it to work without JavaScript (i.e. it submits data and reloads the page). It also has an `onsubmit` handler that progressively enhances the form when JavaScript is available, submitting data _without_ reloading the entire page.
 
 ### Single-flight mutations
 
@@ -18735,42 +18449,46 @@ The example above uses [`redirect(...)`](@sveltejs-kit#redirect), which sends th
 /// file: src/routes/blog/data.remote.js
 // @filename: ambient.d.ts
 declare module '$lib/server/database' {
-	export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]>;
+  export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]>
 }
 
 declare module '$lib/server/auth' {
-	interface User {
-		name: string;
-	}
+  interface User {
+    name: string
+  }
 
-	/**
-	 * Gets a user's info from their cookies, using `getRequestEvent`
-	 */
-	export function getUser(): Promise<User | null>;
+  /**
+   * Gets a user's info from their cookies, using `getRequestEvent`
+   */
+  export function getUser(): Promise<User | null>
 }
 // @filename: index.js
-import * as v from 'valibot';
-import { error, redirect } from '@sveltejs/kit';
-import { query, form } from '$app/server';
-import * as db from '$lib/server/database';
-import * as auth from '$lib/server/auth';
+import * as v from 'valibot'
+import { error, redirect } from '@sveltejs/kit'
+import { query, form } from '$app/server'
+import * as db from '$lib/server/database'
+import * as auth from '$lib/server/auth'
 
-export const getPosts = query(async () => { /* ... */ });
+export const getPosts = query(async () => {
+  /* ... */
+})
 
-export const getPost = query(v.string(), async (slug) => { /* ... */ });
+export const getPost = query(v.string(), async (slug) => {
+  /* ... */
+})
 
 // ---cut---
 export const createPost = form(async (data) => {
-	// ...
+  // ...
 
-	return { success: true };
-});
+  return { success: true }
+})
 ```
 
 ```svelte
 <!--- file: src/routes/blog/new/+page.svelte --->
 <script>
-	import { createPost } from '../data.remote';
+  import { createPost } from '../data.remote'
 </script>
 
 <h1>Create a new post</h1>
@@ -18778,7 +18496,7 @@ export const createPost = form(async (data) => {
 <form {...createPost}><!-- ... --></form>
 
 {#if createPost.result?.success}
-	<p>Successfully published!</p>
+  <p>Successfully published!</p>
 {/if}
 ```
 
@@ -18795,25 +18513,27 @@ We can customize what happens when the form is submitted with the `enhance` meth
 ```svelte
 <!--- file: src/routes/blog/new/+page.svelte --->
 <script>
-	import { createPost } from '../data.remote';
-	import { showToast } from '$lib/toast';
+  import { createPost } from '../data.remote'
+  import { showToast } from '$lib/toast'
 </script>
 
 <h1>Create a new post</h1>
 
-<form {...createPost.enhance(async ({ form, data, submit }) => {
-	try {
-		await submit();
-		form.reset();
+<form
+  {...createPost.enhance(async ({ form, data, submit }) => {
+    try {
+      await submit()
+      form.reset()
 
-		showToast('Successfully published!');
-	} catch (error) {
-		showToast('Oh no! Something went wrong');
-	}
-})}>
-	<input name="title" />
-	<textarea name="content"></textarea>
-	<button>publish</button>
+      showToast('Successfully published!')
+    } catch (error) {
+      showToast('Oh no! Something went wrong')
+    }
+  })}
+>
+  <input name="title" />
+  <textarea name="content"></textarea>
+  <button>publish</button>
 </form>
 ```
 
@@ -18822,32 +18542,30 @@ The callback receives the `form` element, the `data` it contains, and a `submit`
 To enable client-driven [single-flight mutations](#form-Single-flight-mutations), use `submit().updates(...)`. For example, if the `getPosts()` query was used on this page, we could refresh it like so:
 
 ```ts
-import type { RemoteQuery, RemoteQueryOverride } from '@sveltejs/kit';
+import type { RemoteQuery, RemoteQueryOverride } from '@sveltejs/kit'
 interface Post {}
 declare function submit(): Promise<any> & {
-	updates(...queries: Array<RemoteQuery<any> | RemoteQueryOverride>): Promise<any>;
+  updates(...queries: Array<RemoteQuery<any> | RemoteQueryOverride>): Promise<any>
 }
 
-declare function getPosts(): RemoteQuery<Post[]>;
+declare function getPosts(): RemoteQuery<Post[]>
 // ---cut---
-await submit().updates(getPosts());
+await submit().updates(getPosts())
 ```
 
 We can also _override_ the current data while the submission is ongoing:
 
 ```ts
-import type { RemoteQuery, RemoteQueryOverride } from '@sveltejs/kit';
+import type { RemoteQuery, RemoteQueryOverride } from '@sveltejs/kit'
 interface Post {}
 declare function submit(): Promise<any> & {
-	updates(...queries: Array<RemoteQuery<any> | RemoteQueryOverride>): Promise<any>;
+  updates(...queries: Array<RemoteQuery<any> | RemoteQueryOverride>): Promise<any>
 }
 
-declare function getPosts(): RemoteQuery<Post[]>;
-declare const newPost: Post;
+declare function getPosts(): RemoteQuery<Post[]>
+declare const newPost: Post
 // ---cut---
-await submit().updates(
-	getPosts().withOverride((posts) => [newPost, ...posts])
-);
+await submit().updates(getPosts().withOverride((posts) => [newPost, ...posts]))
 ```
 
 The override will be applied immediately, and released when the submission completes (or fails).
@@ -18863,22 +18581,22 @@ This attribute exists on the `buttonProps` property of a form object:
 ```svelte
 <!--- file: src/routes/login/+page.svelte --->
 <script>
-	import { login, register } from '$lib/auth';
+  import { login, register } from '$lib/auth'
 </script>
 
 <form {...login}>
-	<label>
-		Your username
-		<input name="username" />
-	</label>
+  <label>
+    Your username
+    <input name="username" />
+  </label>
 
-	<label>
-		Your password
-		<input name="password" type="password" />
-	</label>
+  <label>
+    Your password
+    <input name="password" type="password" />
+  </label>
 
-	<button>login</button>
-	<button {...register.buttonProps}>register</button>
+  <button>login</button>
+  <button {...register.buttonProps}>register</button>
 </form>
 ```
 
@@ -18896,31 +18614,31 @@ As with `query`, if the function accepts an argument, it should be [validated](#
 /// file: likes.remote.js
 // @filename: ambient.d.ts
 declare module '$lib/server/database' {
-	export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]>;
+  export function sql(strings: TemplateStringsArray, ...values: any[]): Promise<any[]>
 }
 // @filename: index.js
 // ---cut---
-import * as v from 'valibot';
-import { query, command } from '$app/server';
-import * as db from '$lib/server/database';
+import * as v from 'valibot'
+import { query, command } from '$app/server'
+import * as db from '$lib/server/database'
 
 export const getLikes = query(v.string(), async (id) => {
-	const [row] = await db.sql`
+  const [row] = await db.sql`
 		SELECT likes
 		FROM item
 		WHERE id = ${id}
-	`;
+	`
 
-	return row.likes;
-});
+  return row.likes
+})
 
 export const addLike = command(v.string(), async (id) => {
-	await db.sql`
+  await db.sql`
 		UPDATE item
 		SET likes = likes + 1
 		WHERE id = ${id}
-	`;
-});
+	`
+})
 ```
 
 Now simply call `addLike`, from (for example) an event handler:
@@ -18928,22 +18646,22 @@ Now simply call `addLike`, from (for example) an event handler:
 ```svelte
 <!--- file: +page.svelte --->
 <script>
-	import { getLikes, addLike } from './likes.remote';
-	import { showToast } from '$lib/toast';
+  import { getLikes, addLike } from './likes.remote'
+  import { showToast } from '$lib/toast'
 
-	let { item } = $props();
+  let { item } = $props()
 </script>
 
 <button
-	onclick={async () => {
-		try {
-			await addLike(item.id);
-		} catch (error) {
-			showToast('Something went wrong!');
-		}
-	}}
+  onclick={async () => {
+    try {
+      await addLike(item.id)
+    } catch (error) {
+      showToast('Something went wrong!')
+    }
+  }}
 >
-	add like
+  add like
 </button>
 
 <p>likes: {await getLikes(item.id)}</p>
@@ -19089,21 +18807,19 @@ Any calls to `getPost(...)` found by SvelteKit's crawler while [prerendering pag
 
 ```js
 /// file: src/routes/blog/data.remote.js
-import * as v from 'valibot';
-import { prerender } from '$app/server';
+import * as v from 'valibot'
+import { prerender } from '$app/server'
 // ---cut---
 
 export const getPost = prerender(
-	v.string(),
-	async (slug) => { /* ... */ },
-	{
-		inputs: () => [
-			'first-post',
-			'second-post',
-			'third-post'
-		]
-	}
-);
+  v.string(),
+  async (slug) => {
+    /* ... */
+  },
+  {
+    inputs: () => ['first-post', 'second-post', 'third-post']
+  }
+)
 ```
 
 > [!NOTE] Svelte does not yet support asynchronous server-side rendering, so it's likely that you're only calling remote functions from the browser, rather than during prerendering. Because of this, you will need to use `inputs`, for now. We're actively working on this roadblock.
@@ -19143,9 +18859,9 @@ In the second case, we don't want to give the attacker any help, so SvelteKit wi
 /// file: src/hooks.server.ts
 /** @type {import('@sveltejs/kit').HandleValidationError} */
 export function handleValidationError({ event, issues }) {
-	return {
-		message: 'Nice try, hacker!'
-	};
+  return {
+    message: 'Nice try, hacker!'
+  }
 }
 ```
 
@@ -19153,12 +18869,12 @@ If you know what you're doing and want to opt out of validation, you can pass th
 
 ```ts
 /// file: data.remote.ts
-import { query } from '$app/server';
+import { query } from '$app/server'
 
 export const getStuff = query('unchecked', async ({ id }: { id: string }) => {
-	// the shape might not actually be what TypeScript thinks
-	// since bad actors might call this function with other arguments
-});
+  // the shape might not actually be what TypeScript thinks
+  // since bad actors might call this function with other arguments
+})
 ```
 
 > [!NOTE] `form` does not accept a schema since you are always passed a `FormData` object. You are free to parse and validate this as you see fit.
@@ -19169,24 +18885,24 @@ Inside `query`, `form` and `command` you can use [`getRequestEvent`]($app-server
 
 ```ts
 /// file: user.remote.ts
-import { getRequestEvent, query } from '$app/server';
-import { findUser } from '$lib/server/database';
+import { getRequestEvent, query } from '$app/server'
+import { findUser } from '$lib/server/database'
 
 export const getProfile = query(async () => {
-	const user = await getUser();
+  const user = await getUser()
 
-	return {
-		name: user.name,
-		avatar: user.avatar
-	};
-});
+  return {
+    name: user.name,
+    avatar: user.avatar
+  }
+})
 
 // this function could be called from multiple places
 function getUser() {
-	const { cookies, locals } = getRequestEvent();
+  const { cookies, locals } = getRequestEvent()
 
-	locals.userPromise ??= findUser(cookies.get('session_id'));
-	return await locals.userPromise;
+  locals.userPromise ??= findUser(cookies.get('session_id'))
+  return await locals.userPromise
 }
 ```
 
@@ -19194,7 +18910,7 @@ Note that some properties of `RequestEvent` are different inside remote function
 
 ## Redirects
 
-Inside `query`, `form` and `prerender` functions it is possible to use the [`redirect(...)`](@sveltejs-kit#redirect) function. It is *not* possible inside `command` functions, as you should avoid redirecting here. (If you absolutely have to, you can return a `{ redirect: location }` object and deal with it in the client.)
+Inside `query`, `form` and `prerender` functions it is possible to use the [`redirect(...)`](@sveltejs-kit#redirect) function. It is _not_ possible inside `command` functions, as you should avoid redirecting here. (If you absolutely have to, you can return a `{ redirect: location }` object and deal with it in the client.)
 
 # Building your app
 
@@ -19303,16 +19019,16 @@ Install with `npm i -D @sveltejs/adapter-node`, then add the adapter to your `sv
 ```js
 // @errors: 2307
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-node';
+import adapter from '@sveltejs/adapter-node'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter()
-	}
-};
+  kit: {
+    adapter: adapter()
+  }
+}
 
-export default config;
+export default config
 ```
 
 ## Deploying
@@ -19439,21 +19155,21 @@ The adapter can be configured with various options:
 ```js
 // @errors: 2307
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-node';
+import adapter from '@sveltejs/adapter-node'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			// default options are shown
-			out: 'build',
-			precompress: true,
-			envPrefix: ''
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      // default options are shown
+      out: 'build',
+      precompress: true,
+      envPrefix: ''
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ### out
@@ -19469,7 +19185,7 @@ Enables precompressing using gzip and brotli for assets and prerendered pages. I
 If you need to change the name of the environment variables used to configure the deployment (for example, to deconflict with environment variables you don't control), you can specify a prefix:
 
 ```js
-envPrefix: 'MY_CUSTOM_';
+envPrefix: 'MY_CUSTOM_'
 ```
 
 ```sh
@@ -19494,9 +19210,9 @@ You can listen to the `sveltekit:shutdown` event which is emitted after the HTTP
 ```js
 // @errors: 2304
 process.on('sveltekit:shutdown', async (reason) => {
-  await jobs.stop();
-  await db.close();
-});
+  await jobs.stop()
+  await db.close()
+})
 ```
 
 The parameter `reason` has one of the following values:
@@ -19544,22 +19260,22 @@ Alternatively, you can import the `handler.js` file, which exports a handler sui
 ```js
 // @errors: 2307 7006
 /// file: my-server.js
-import { handler } from './build/handler.js';
-import express from 'express';
+import { handler } from './build/handler.js'
+import express from 'express'
 
-const app = express();
+const app = express()
 
 // add a route that lives separately from the SvelteKit app
 app.get('/healthcheck', (req, res) => {
-	res.end('ok');
-});
+  res.end('ok')
+})
 
 // let SvelteKit handle everything else, including serving prerendered pages and static assets
-app.use(handler);
+app.use(handler)
 
 app.listen(3000, () => {
-	console.log('listening on port 3000');
-});
+  console.log('listening on port 3000')
+})
 ```
 
 # Static site generation
@@ -19574,24 +19290,24 @@ Install with `npm i -D @sveltejs/adapter-static`, then add the adapter to your `
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-static'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			// default options are shown. On some platforms
-			// these options are set automatically — see below
-			pages: 'build',
-			assets: 'build',
-			fallback: undefined,
-			precompress: false,
-			strict: true
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      // default options are shown. On some platforms
+      // these options are set automatically — see below
+      pages: 'build',
+      assets: 'build',
+      fallback: undefined,
+      precompress: false,
+      strict: true
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ...and add the [`prerender`](page-options#prerender) option to your root layout:
@@ -19601,7 +19317,7 @@ export default config;
 // If you're using a fallback (i.e. SPA mode) you don't need to prerender all
 // pages by setting this here, but should prerender as many as possible to
 // avoid large performance and SEO impacts
-export const prerender = true;
+export const prerender = true
 ```
 
 > [!NOTE] You must ensure SvelteKit's [`trailingSlash`](page-options#trailingSlash) option is set appropriately for your environment. If your host does not render `/a.html` upon receiving a request for `/a` then you will need to set `trailingSlash: 'always'` in your root layout to create `/a/index.html` instead.
@@ -19640,7 +19356,7 @@ The directory to write static assets (the contents of `static`, plus client-side
 
 ### fallback
 
-To create a [single page app (SPA)](single-page-apps) you must specify the name of the fallback page to be generated by SvelteKit, which is used as the entry point for URLs that have not been prerendered. This is commonly `200.html`, but can vary depending on your deployment platform. You should avoid `index.html` where possible to avoid conflicting with a prerendered homepage. 
+To create a [single page app (SPA)](single-page-apps) you must specify the name of the fallback page to be generated by SvelteKit, which is used as the entry point for URLs that have not been prerendered. This is commonly `200.html`, but can vary depending on your deployment platform. You should avoid `index.html` where possible to avoid conflicting with a prerendered homepage.
 
 > This option has large negative performance and SEO impacts. It is only recommended in certain circumstances such as wrapping the site in a mobile app. See the [single page apps](single-page-apps) documentation for more details and alternatives.
 
@@ -19663,21 +19379,21 @@ A config for GitHub Pages might look like the following:
 ```js
 // @errors: 2322
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-static'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			fallback: '404.html'
-		}),
-		paths: {
-			base: process.argv.includes('dev') ? '' : process.env.BASE_PATH
-		}
-	}
-};
+  kit: {
+    adapter: adapter({
+      fallback: '404.html'
+    }),
+    paths: {
+      base: process.argv.includes('dev') ? '' : process.env.BASE_PATH
+    }
+  }
+}
 
-export default config;
+export default config
 ```
 
 You can use GitHub actions to automatically deploy your site to GitHub Pages when you make a change. Here's an example workflow:
@@ -19755,27 +19471,28 @@ You can turn a SvelteKit app into a fully client-rendered single-page app (SPA) 
 ## Usage
 
 First, disable SSR for the pages you don't want to prerender. These pages will be served via the fallback page. E.g. to serve all pages via the fallback by default, you can update the root layout as shown below. You should [opt back into prerendering individual pages and directories](#Prerendering-individual-pages) where possible.
+
 ```js
 /// file: src/routes/+layout.js
-export const ssr = false;
+export const ssr = false
 ```
 
 If you don't have any server-side logic (i.e. `+page.server.js`, `+layout.server.js` or `+server.js` files) you can use [`adapter-static`](adapter-static) to create your SPA. Install `adapter-static` with `npm i -D @sveltejs/adapter-static` and add it to your `svelte.config.js` with the `fallback` option:
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-static'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			fallback: '200.html' // may differ from host to host
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      fallback: '200.html' // may differ from host to host
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 The `fallback` page is an HTML page created by SvelteKit from your page template (e.g. `app.html`) that loads your app and navigates to the correct route. For example [Surge](https://surge.sh/help/adding-a-200-page-for-client-side-routing), a static web host, lets you add a `200.html` file that will handle any requests that don't correspond to static assets or prerendered pages.
@@ -19790,8 +19507,8 @@ If you want certain pages to be prerendered, you can re-enable `ssr` alongside `
 
 ```js
 /// file: src/routes/my-prerendered-page/+page.js
-export const prerender = true;
-export const ssr = true;
+export const prerender = true
+export const ssr = true
 ```
 
 You won't need a Node server or server capable of running JavaScript to deploy this page. It will only server render your page while building your project for the purposes of outputting an `.html` page that can be served from any static web host.
@@ -19829,29 +19546,29 @@ Install with `npm i -D @sveltejs/adapter-cloudflare`, then add the adapter to yo
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-cloudflare';
+import adapter from '@sveltejs/adapter-cloudflare'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			// See below for an explanation of these options
-			config: undefined,
-			platformProxy: {
-				configPath: undefined,
-				environment: undefined,
-				persist: undefined
-			},
-			fallback: 'plaintext',
-			routes: {
-				include: ['/*'],
-				exclude: ['<all>']
-			}
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      // See below for an explanation of these options
+      config: undefined,
+      platformProxy: {
+        configPath: undefined,
+        environment: undefined,
+        persist: undefined
+      },
+      fallback: 'plaintext',
+      routes: {
+        include: ['/*'],
+        exclude: ['<all>']
+      }
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ## Options
@@ -19884,10 +19601,10 @@ Only for Cloudflare Pages. Allows you to customise the [`_routes.json`](https://
 
 - `include` defines routes that will invoke a function, and defaults to `['/*']`
 - `exclude` defines routes that will _not_ invoke a function — this is a faster and cheaper way to serve your app's static assets. This array can include the following special values:
-	- `<build>` contains your app's build artifacts (the files generated by Vite)
-	- `<files>` contains the contents of your `static` directory
-	- `<prerendered>` contains a list of prerendered pages
-	- `<all>` (the default) contains all of the above
+  - `<build>` contains your app's build artifacts (the files generated by Vite)
+  - `<files>` contains the contents of your `static` directory
+  - `<prerendered>` contains a list of prerendered pages
+  - `<all>` (the default) contains all of the above
 
 You can have up to 100 `include` and `exclude` rules combined. Generally you can omit the `routes` options, but if (for example) your `<prerendered>` paths exceed that limit, you may find it helpful to manually create an `exclude` list that includes `'/articles/*'` instead of the auto-generated `['/articles/foo', '/articles/bar', '/articles/baz', ...]`.
 
@@ -19900,13 +19617,13 @@ When building for Cloudflare Workers, this adapter expects to find a [Wrangler c
 ```jsonc
 /// file: wrangler.jsonc
 {
-	"name": "<any-name-you-want>",
-	"main": ".svelte-kit/cloudflare/_worker.js",
-	"compatibility_date": "2025-01-01",
-	"assets": {
-		"binding": "ASSETS",
-		"directory": ".svelte-kit/cloudflare",
-	}
+  "name": "<any-name-you-want>",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare"
+  }
 }
 ```
 
@@ -20004,7 +19721,7 @@ If you would like to enable [Node.js compatibility](https://developers.cloudflar
 ```jsonc
 /// file: wrangler.jsonc
 {
-	"compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"]
 }
 ```
 
@@ -20079,18 +19796,18 @@ Install with `npm i -D @sveltejs/adapter-cloudflare-workers`, then add the adapt
 ```js
 // @errors: 2307
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-cloudflare-workers';
+import adapter from '@sveltejs/adapter-cloudflare-workers'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			// see below for options that can be set here
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      // see below for options that can be set here
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ## Options
@@ -20110,16 +19827,16 @@ This adapter expects to find a [Wrangler configuration file](https://developers.
 ```jsonc
 /// file: wrangler.jsonc
 {
-	"name": "<your-service-name>",
-	"account_id": "<your-account-id>",
-	"main": "./.cloudflare/worker.js",
-	"site": {
-		"bucket": "./.cloudflare/public"
-	},
-	"build": {
-		"command": "npm run build"
-	},
-	"compatibility_date": "2021-11-12"
+  "name": "<your-service-name>",
+  "account_id": "<your-account-id>",
+  "main": "./.cloudflare/worker.js",
+  "site": {
+    "bucket": "./.cloudflare/public"
+  },
+  "build": {
+    "command": "npm run build"
+  },
+  "compatibility_date": "2021-11-12"
 }
 ```
 
@@ -20208,7 +19925,7 @@ If you would like to enable [Node.js compatibility](https://developers.cloudflar
 ```jsonc
 /// file: wrangler.jsonc
 {
-	"compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"]
 }
 ```
 
@@ -20232,26 +19949,26 @@ Install with `npm i -D @sveltejs/adapter-netlify`, then add the adapter to your 
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-netlify';
+import adapter from '@sveltejs/adapter-netlify'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		// default options are shown
-		adapter: adapter({
-			// if true, will create a Netlify Edge Function rather
-			// than using standard Node-based functions
-			edge: false,
+  kit: {
+    // default options are shown
+    adapter: adapter({
+      // if true, will create a Netlify Edge Function rather
+      // than using standard Node-based functions
+      edge: false,
 
-			// if true, will split your app into multiple functions
-			// instead of creating a single one for the entire app.
-			// if `edge` is true, this option cannot be used
-			split: false
-		})
-	}
-};
+      // if true, will split your app into multiple functions
+      // instead of creating a single one for the entire app.
+      // if `edge` is true, this option cannot be used
+      split: false
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 Then, make sure you have a [netlify.toml](https://docs.netlify.com/configure-builds/file-based-configuration) file in the project root. This will determine where to write static assets based on the `build.publish` settings, as per this sample configuration:
@@ -20274,20 +19991,20 @@ SvelteKit supports [Netlify Edge Functions](https://docs.netlify.com/netlify-lab
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-netlify';
+import adapter from '@sveltejs/adapter-netlify'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			// will create a Netlify Edge Function using Deno-based
-			// rather than using standard Node-based functions
-			edge: true
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      // will create a Netlify Edge Function using Deno-based
+      // rather than using standard Node-based functions
+      edge: true
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ## Netlify alternatives to SvelteKit functionality
@@ -20324,9 +20041,9 @@ With this adapter, SvelteKit endpoints are hosted as [Netlify Functions](https:/
 /// file: +page.server.js
 /** @type {import('./$types').PageServerLoad} */
 export const load = async (event) => {
-	const context = event.platform?.context;
-	console.log(context); // shows up in your functions log in the Netlify app
-};
+  const context = event.platform?.context
+  console.log(context) // shows up in your functions log in the Netlify app
+}
 ```
 
 Additionally, you can add your own Netlify functions by creating a directory for them and adding the configuration to your `netlify.toml` file. For example:
@@ -20362,18 +20079,18 @@ Install with `npm i -D @sveltejs/adapter-vercel`, then add the adapter to your `
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-vercel';
+import adapter from '@sveltejs/adapter-vercel'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			// see below for options that can be set here
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      // see below for options that can be set here
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ## Deployment configuration
@@ -20386,8 +20103,8 @@ For example you could deploy one specific route as an individual serverless func
 /// file: about/+page.js
 /** @type {import('@sveltejs/adapter-vercel').Config} */
 export const config = {
-	split: true
-};
+  split: true
+}
 ```
 
 The following options apply to all functions:
@@ -20398,9 +20115,11 @@ The following options apply to all functions:
 - `split`: if `true`, causes a route to be deployed as an individual function. If `split` is set to `true` at the adapter level, all routes will be deployed as individual functions
 
 Additionally, the following option applies to edge functions:
+
 - `external`: an array of dependencies that esbuild should treat as external when bundling functions. This should only be used to exclude optional dependencies that will not run outside Node
 
 And the following option apply to serverless functions:
+
 - `memory`: the amount of memory available to the function. Defaults to `1024` Mb, and can be decreased to `128` Mb or [increased](https://vercel.com/docs/concepts/limits/overview#serverless-function-memory) in 64Mb increments up to `3008` Mb on Pro or Enterprise accounts
 - `maxDuration`: [maximum execution duration](https://vercel.com/docs/functions/runtimes#max-duration) of the function. Defaults to `10` seconds for Hobby accounts, `15` for Pro and `900` for Enterprise
 - `isr`: configuration Incremental Static Regeneration, described below
@@ -20415,23 +20134,23 @@ You may set the `images` config to control how Vercel builds your images. See th
 
 ```js
 /// file: svelte.config.js
-import adapter from '@sveltejs/adapter-vercel';
+import adapter from '@sveltejs/adapter-vercel'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		adapter: adapter({
-			images: {
-				sizes: [640, 828, 1200, 1920, 3840],
-				formats: ['image/avif', 'image/webp'],
-				minimumCacheTTL: 300,
-				domains: ['example-app.vercel.app'],
-			}
-		})
-	}
-};
+  kit: {
+    adapter: adapter({
+      images: {
+        sizes: [640, 828, 1200, 1920, 3840],
+        formats: ['image/avif', 'image/webp'],
+        minimumCacheTTL: 300,
+        domains: ['example-app.vercel.app']
+      }
+    })
+  }
+}
 
-export default config;
+export default config
 ```
 
 ## Incremental Static Regeneration
@@ -20443,16 +20162,16 @@ Vercel supports [Incremental Static Regeneration](https://vercel.com/docs/increm
 To add ISR to a route, include the `isr` property in your `config` object:
 
 ```js
-import { BYPASS_TOKEN } from '$env/static/private';
+import { BYPASS_TOKEN } from '$env/static/private'
 
 /** @type {import('@sveltejs/adapter-vercel').Config} */
 export const config = {
-	isr: {
-		expiration: 60,
-		bypassToken: BYPASS_TOKEN,
-		allowQuery: ['search']
-	}
-};
+  isr: {
+    expiration: 60,
+    bypassToken: BYPASS_TOKEN,
+    allowQuery: ['search']
+  }
+}
 ```
 
 > [!NOTE] Using ISR on a route with `export const prerender = true` will have no effect, since the route is prerendered at build time
@@ -20472,7 +20191,7 @@ Making a `GET` or `HEAD` request with `x-prerender-revalidate: <token>` will for
 Note that the `BYPASS_TOKEN` string must be at least 32 characters long. You could generate one using the JavaScript console like so:
 
 ```js
-crypto.randomUUID();
+crypto.randomUUID()
 ```
 
 Set this string as an environment variable on Vercel by logging in and going to your project then Settings > Environment Variables. For "Key" put `BYPASS_TOKEN` and for "value" use the string generated above, then hit "Save".
@@ -20487,7 +20206,7 @@ vercel env pull .env.development.local
 
 A list of valid query parameters that contribute to the cache key. Other parameters (such as utm tracking codes) will be ignored, ensuring that they do not result in content being re-generated unnecessarily. By default, query parameters are ignored.
 
-> [!NOTE] Pages that are  [prerendered](page-options#prerender) will ignore ISR configuration.
+> [!NOTE] Pages that are [prerendered](page-options#prerender) will ignore ISR configuration.
 
 ## Environment variables
 
@@ -20495,21 +20214,21 @@ Vercel makes a set of [deployment-specific environment variables](https://vercel
 
 ```js
 /// file: +layout.server.js
-import { VERCEL_COMMIT_REF } from '$env/static/private';
+import { VERCEL_COMMIT_REF } from '$env/static/private'
 
 /** @type {import('./$types').LayoutServerLoad} */
 export function load() {
-	return {
-		deploymentGitBranch: VERCEL_COMMIT_REF
-	};
+  return {
+    deploymentGitBranch: VERCEL_COMMIT_REF
+  }
 }
 ```
 
 ```svelte
 <!--- file: +layout.svelte --->
 <script>
-	/** @type {import('./$types').LayoutProps} */
-	let { data } = $props();
+  /** @type {import('./$types').LayoutProps} */
+  let { data } = $props()
 </script>
 
 <p>This staging environment was deployed from {data.deploymentGitBranch}.</p>
@@ -20602,11 +20321,11 @@ Within the `adapt` method, there are a number of things that an adapter should d
 - Clear out the build directory
 - Write SvelteKit output with `builder.writeClient`, `builder.writeServer`, and `builder.writePrerendered`
 - Output code that:
-	- Imports `Server` from `${builder.getServerDirectory()}/index.js`
-	- Instantiates the app with a manifest generated with `builder.generateManifest({ relativePath })`
-	- Listens for requests from the platform, converts them to a standard [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request) if necessary, calls the `server.respond(request, { getClientAddress })` function to generate a [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response) and responds with it
-	- expose any platform-specific information to SvelteKit via the `platform` option passed to `server.respond`
-	- Globally shims `fetch` to work on the target platform, if necessary. SvelteKit provides a `@sveltejs/kit/node/polyfills` helper for platforms that can use `undici`
+  - Imports `Server` from `${builder.getServerDirectory()}/index.js`
+  - Instantiates the app with a manifest generated with `builder.generateManifest({ relativePath })`
+  - Listens for requests from the platform, converts them to a standard [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request) if necessary, calls the `server.respond(request, { getClientAddress })` function to generate a [`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response) and responds with it
+  - expose any platform-specific information to SvelteKit via the `platform` option passed to `server.respond`
+  - Globally shims `fetch` to work on the target platform, if necessary. SvelteKit provides a `@sveltejs/kit/node/polyfills` helper for platforms that can use `undici`
 - Bundle the output to avoid needing to install dependencies on the target platform, if necessary
 - Put the user's static files and the generated JS/CSS in the correct location for the target platform
 
@@ -20665,11 +20384,11 @@ src/routes/
 
 ```js
 /// file: src/routes/marx-brothers/[...path]/+page.js
-import { error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit'
 
 /** @type {import('./$types').PageLoad} */
 export function load(event) {
-	error(404, 'Not Found');
+  error(404, 'Not Found')
 }
 ```
 
@@ -20693,7 +20412,7 @@ A route like `src/routes/fruits/[page]` would match `/fruits/apple`, but it woul
  * @satisfies {import('@sveltejs/kit').ParamMatcher}
  */
 export function match(param) {
-	return param === 'apple' || param === 'orange';
+  return param === 'apple' || param === 'orange'
 }
 ```
 
@@ -20765,7 +20484,7 @@ For example, to create a `/smileys/:-)` route, you would create a `src/routes/sm
 You can determine the hexadecimal code for a character with JavaScript:
 
 ```js
-':'.charCodeAt(0).toString(16); // '3a', hence '[x+3a]'
+':'.charCodeAt(0).toString(16) // '3a', hence '[x+3a]'
 ```
 
 You can also use Unicode escape sequences. Generally you won't need to as you can use the unencoded character directly, but if — for some reason — you can't have a filename with an emoji in it, for example, then you can use the escaped characters. In other words, these are equivalent:
@@ -20871,12 +20590,12 @@ Not all use cases are suited for layout grouping, nor should you feel compelled 
 ```svelte
 <!--- file: src/routes/nested/route/+layout@.svelte --->
 <script>
-	import ReusableLayout from '$lib/ReusableLayout.svelte';
-	let { data, children } = $props();
+  import ReusableLayout from '$lib/ReusableLayout.svelte'
+  let { data, children } = $props()
 </script>
 
 <ReusableLayout {data}>
-	{@render children()}
+  {@render children()}
 </ReusableLayout>
 ```
 
@@ -20927,12 +20646,12 @@ This function runs every time the SvelteKit server receives a [request](web-stan
 /// file: src/hooks.server.js
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
-	if (event.url.pathname.startsWith('/custom')) {
-		return new Response('custom response');
-	}
+  if (event.url.pathname.startsWith('/custom')) {
+    return new Response('custom response')
+  }
 
-	const response = await resolve(event);
-	return response;
+  const response = await resolve(event)
+  return response
 }
 ```
 
@@ -20993,13 +20712,13 @@ You can define multiple `handle` functions and execute them with [the `sequence`
 /// file: src/hooks.server.js
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
-	const response = await resolve(event, {
-		transformPageChunk: ({ html }) => html.replace('old', 'new'),
-		filterSerializedResponseHeaders: (name) => name.startsWith('x-'),
-		preload: ({ type, path }) => type === 'js' || path.includes('/important/')
-	});
+  const response = await resolve(event, {
+    transformPageChunk: ({ html }) => html.replace('old', 'new'),
+    filterSerializedResponseHeaders: (name) => name.startsWith('x-'),
+    preload: ({ type, path }) => type === 'js' || path.includes('/important/')
+  })
 
-	return response;
+  return response
 }
 ```
 
@@ -21015,15 +20734,15 @@ For example, your `load` function might make a request to a public URL like `htt
 /// file: src/hooks.server.js
 /** @type {import('@sveltejs/kit').HandleFetch} */
 export async function handleFetch({ request, fetch }) {
-	if (request.url.startsWith('https://api.yourapp.com/')) {
-		// clone the original request, but change the URL
-		request = new Request(
-			request.url.replace('https://api.yourapp.com/', 'http://localhost:9999/'),
-			request
-		);
-	}
+  if (request.url.startsWith('https://api.yourapp.com/')) {
+    // clone the original request, but change the URL
+    request = new Request(
+      request.url.replace('https://api.yourapp.com/', 'http://localhost:9999/'),
+      request
+    )
+  }
 
-	return fetch(request);
+  return fetch(request)
 }
 ```
 
@@ -21036,11 +20755,11 @@ There is one caveat: if your app and your API are on sibling subdomains — `www
 // @errors: 2345
 /** @type {import('@sveltejs/kit').HandleFetch} */
 export async function handleFetch({ event, request, fetch }) {
-	if (request.url.startsWith('https://api.my-domain.com/')) {
-		request.headers.set('cookie', event.request.headers.get('cookie'));
-	}
+  if (request.url.startsWith('https://api.my-domain.com/')) {
+    request.headers.set('cookie', event.request.headers.get('cookie'))
+  }
 
-	return fetch(request);
+  return fetch(request)
 }
 ```
 
@@ -21052,12 +20771,12 @@ Say you have a remote function that expects a string as its argument ...
 
 ```js
 /// file: todos.remote.js
-import * as v from 'valibot';
-import { query } from '$app/server';
+import * as v from 'valibot'
+import { query } from '$app/server'
 
 export const getTodo = query(v.string(), (id) => {
-	// implementation...
-});
+  // implementation...
+})
 ```
 
 ...but it is called with something that doesn't match the schema — such as a number (e.g `await getTodos(1)`) — then validation will fail, the server will respond with a [400 status code](https://http.dog/400), and the function will throw with the message 'Bad Request'.
@@ -21068,9 +20787,9 @@ To customise this message and add additional properties to the error object, imp
 /// file: src/hooks.server.js
 /** @type {import('@sveltejs/kit').HandleValidationError} */
 export function handleValidationError({ issues }) {
-	return {
-		message: 'No thank you'
-	};
+  return {
+    message: 'No thank you'
+  }
 }
 ```
 
@@ -21094,15 +20813,15 @@ To add more information to the `$page.error` object in a type-safe way, you can 
 ```ts
 /// file: src/app.d.ts
 declare global {
-	namespace App {
-		interface Error {
-			message: string;
-			errorId: string;
-		}
-	}
+  namespace App {
+    interface Error {
+      message: string
+      errorId: string
+    }
+  }
 }
 
-export {};
+export {}
 ```
 
 ```js
@@ -21184,11 +20903,11 @@ This function runs once, when the server is created or the app starts in the bro
 ```js
 // @errors: 2307
 /// file: src/hooks.server.js
-import * as db from '$lib/server/database';
+import * as db from '$lib/server/database'
 
 /** @type {import('@sveltejs/kit').ServerInit} */
 export async function init() {
-	await db.connect();
+  await db.connect()
 }
 ```
 
@@ -21211,16 +20930,16 @@ For example, you might have a `src/routes/[[lang]]/about/+page.svelte` page, whi
 
 /** @type {Record<string, string>} */
 const translated = {
-	'/en/about': '/en/about',
-	'/de/ueber-uns': '/de/about',
-	'/fr/a-propos': '/fr/about',
-};
+  '/en/about': '/en/about',
+  '/de/ueber-uns': '/de/about',
+  '/fr/a-propos': '/fr/about'
+}
 
 /** @type {import('@sveltejs/kit').Reroute} */
 export function reroute({ url }) {
-	if (url.pathname in translated) {
-		return translated[url.pathname];
-	}
+  if (url.pathname in translated) {
+    return translated[url.pathname]
+  }
 }
 ```
 
@@ -21236,17 +20955,16 @@ Since version 2.18, the `reroute` hook can be asynchronous, allowing it to (for 
 
 /** @type {import('@sveltejs/kit').Reroute} */
 export async function reroute({ url, fetch }) {
-	// Ask a special endpoint within your app about the destination
-	if (url.pathname === '/api/reroute') return;
+  // Ask a special endpoint within your app about the destination
+  if (url.pathname === '/api/reroute') return
 
-	const api = new URL('/api/reroute', url);
-	api.searchParams.set('pathname', url.pathname);
+  const api = new URL('/api/reroute', url)
+  api.searchParams.set('pathname', url.pathname)
 
-	const result = await fetch(api).then(r => r.json());
-	return result.pathname;
+  const result = await fetch(api).then((r) => r.json())
+  return result.pathname
 }
 ```
-
 
 > [!NOTE] `reroute` is considered a pure, idempotent function. As such, it must always return the same output for the same input and not have side effects. Under these assumptions, SvelteKit caches the result of `reroute` on the client so it is only called once per unique URL.
 
@@ -21257,17 +20975,16 @@ This is a collection of _transporters_, which allow you to pass custom types —
 ```js
 // @errors: 2307
 /// file: src/hooks.js
-import { Vector } from '$lib/math';
+import { Vector } from '$lib/math'
 
 /** @type {import('@sveltejs/kit').Transport} */
 export const transport = {
-	Vector: {
-		encode: (value) => value instanceof Vector && [value.x, value.y],
-		decode: ([x, y]) => new Vector(x, y)
-	}
-};
+  Vector: {
+    encode: (value) => value instanceof Vector && [value.x, value.y],
+    decode: ([x, y]) => new Vector(x, y)
+  }
+}
 ```
-
 
 ## Further reading
 
@@ -21281,7 +20998,7 @@ Errors are an inevitable fact of software development. SvelteKit handles errors 
 
 SvelteKit distinguishes between expected and unexpected errors, both of which are represented as simple `{ message: string }` objects by default.
 
-You can add additional properties, like a `code` or a tracking `id`, as shown in the examples below. (When using TypeScript this requires you to redefine the `Error` type as described in  [type safety](errors#Type-safety)).
+You can add additional properties, like a `code` or a tracking `id`, as shown in the examples below. (When using TypeScript this requires you to redefine the `Error` type as described in [type safety](errors#Type-safety)).
 
 ## Expected errors
 
@@ -21318,7 +21035,7 @@ This throws an exception that SvelteKit catches, causing it to set the response 
 ```svelte
 <!--- file: src/routes/+error.svelte --->
 <script>
-	import { page } from '$app/state';
+  import { page } from '$app/state'
 </script>
 
 <h1>{page.error.message}</h1>
@@ -21382,15 +21099,15 @@ You can customise the fallback error page by adding a `src/error.html` file:
 ```html
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<title>%sveltekit.error.message%</title>
-	</head>
-	<body>
-		<h1>My custom error page</h1>
-		<p>Status: %sveltekit.status%</p>
-		<p>Message: %sveltekit.error.message%</p>
-	</body>
+  <head>
+    <meta charset="utf-8" />
+    <title>%sveltekit.error.message%</title>
+  </head>
+  <body>
+    <h1>My custom error page</h1>
+    <p>Status: %sveltekit.status%</p>
+    <p>Message: %sveltekit.error.message%</p>
+  </body>
 </html>
 ```
 
@@ -21448,7 +21165,7 @@ The default project template has a `data-sveltekit-preload-data="hover"` attribu
 
 ```html
 <body data-sveltekit-preload-data="hover">
-	<div style="display: contents">%sveltekit.body%</div>
+  <div style="display: contents">%sveltekit.body%</div>
 </body>
 ```
 
@@ -21457,9 +21174,7 @@ Sometimes, calling `load` when the user hovers over a link might be undesirable,
 In these cases, you can specify the `"tap"` value, which causes SvelteKit to call `load` only when the user taps or clicks on a link:
 
 ```html
-<a data-sveltekit-preload-data="tap" href="/stonks">
-	Get current stonk values
-</a>
+<a data-sveltekit-preload-data="tap" href="/stonks"> Get current stonk values </a>
 ```
 
 > [!NOTE] You can also programmatically invoke `preloadData` from `$app/navigation`.
@@ -21505,11 +21220,11 @@ Sometimes you don't want navigation to create a new entry in the browser's sessi
 
 ## data-sveltekit-keepfocus
 
-Sometimes you don't want [focus to be reset](accessibility#Focus-management) after navigation. For example, maybe you have a search form that submits as the user is typing, and you want to keep focus on the text input.  Adding a `data-sveltekit-keepfocus` attribute to it...
+Sometimes you don't want [focus to be reset](accessibility#Focus-management) after navigation. For example, maybe you have a search form that submits as the user is typing, and you want to keep focus on the text input. Adding a `data-sveltekit-keepfocus` attribute to it...
 
 ```html
 <form data-sveltekit-keepfocus>
-	<input type="text" name="query">
+  <input type="text" name="query" />
 </form>
 ```
 
@@ -21533,17 +21248,17 @@ To disable any of these options inside an element where they have been enabled, 
 
 ```html
 <div data-sveltekit-preload-data>
-	<!-- these links will be preloaded -->
-	<a href="/a">a</a>
-	<a href="/b">b</a>
-	<a href="/c">c</a>
+  <!-- these links will be preloaded -->
+  <a href="/a">a</a>
+  <a href="/b">b</a>
+  <a href="/c">c</a>
 
-	<div data-sveltekit-preload-data="false">
-		<!-- these links will NOT be preloaded -->
-		<a href="/d">d</a>
-		<a href="/e">e</a>
-		<a href="/f">f</a>
-	</div>
+  <div data-sveltekit-preload-data="false">
+    <!-- these links will NOT be preloaded -->
+    <a href="/d">d</a>
+    <a href="/e">e</a>
+    <a href="/f">f</a>
+  </div>
 </div>
 ```
 
@@ -21563,9 +21278,9 @@ You can [disable automatic registration](configuration#serviceWorker) if you nee
 
 ```js
 if ('serviceWorker' in navigator) {
-	addEventListener('load', function () {
-		navigator.serviceWorker.register('./path/to/service-worker.js');
-	});
+  addEventListener('load', function () {
+    navigator.serviceWorker.register('./path/to/service-worker.js')
+  })
 }
 ```
 
@@ -21589,88 +21304,88 @@ The following example caches the built app and any files in `static` eagerly, an
 // Only necessary if you have an import from `$env/static/public`
 /// <reference types="../.svelte-kit/ambient.d.ts" />
 
-import { build, files, version } from '$service-worker';
+import { build, files, version } from '$service-worker'
 
 // This gives `self` the correct types
-const self = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (globalThis.self));
+const self = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (globalThis.self))
 
 // Create a unique cache name for this deployment
-const CACHE = `cache-${version}`;
+const CACHE = `cache-${version}`
 
 const ASSETS = [
-	...build, // the app itself
-	...files  // everything in `static`
-];
+  ...build, // the app itself
+  ...files // everything in `static`
+]
 
 self.addEventListener('install', (event) => {
-	// Create a new cache and add all files to it
-	async function addFilesToCache() {
-		const cache = await caches.open(CACHE);
-		await cache.addAll(ASSETS);
-	}
+  // Create a new cache and add all files to it
+  async function addFilesToCache() {
+    const cache = await caches.open(CACHE)
+    await cache.addAll(ASSETS)
+  }
 
-	event.waitUntil(addFilesToCache());
-});
+  event.waitUntil(addFilesToCache())
+})
 
 self.addEventListener('activate', (event) => {
-	// Remove previous cached data from disk
-	async function deleteOldCaches() {
-		for (const key of await caches.keys()) {
-			if (key !== CACHE) await caches.delete(key);
-		}
-	}
+  // Remove previous cached data from disk
+  async function deleteOldCaches() {
+    for (const key of await caches.keys()) {
+      if (key !== CACHE) await caches.delete(key)
+    }
+  }
 
-	event.waitUntil(deleteOldCaches());
-});
+  event.waitUntil(deleteOldCaches())
+})
 
 self.addEventListener('fetch', (event) => {
-	// ignore POST requests etc
-	if (event.request.method !== 'GET') return;
+  // ignore POST requests etc
+  if (event.request.method !== 'GET') return
 
-	async function respond() {
-		const url = new URL(event.request.url);
-		const cache = await caches.open(CACHE);
+  async function respond() {
+    const url = new URL(event.request.url)
+    const cache = await caches.open(CACHE)
 
-		// `build`/`files` can always be served from the cache
-		if (ASSETS.includes(url.pathname)) {
-			const response = await cache.match(url.pathname);
+    // `build`/`files` can always be served from the cache
+    if (ASSETS.includes(url.pathname)) {
+      const response = await cache.match(url.pathname)
 
-			if (response) {
-				return response;
-			}
-		}
+      if (response) {
+        return response
+      }
+    }
 
-		// for everything else, try the network first, but
-		// fall back to the cache if we're offline
-		try {
-			const response = await fetch(event.request);
+    // for everything else, try the network first, but
+    // fall back to the cache if we're offline
+    try {
+      const response = await fetch(event.request)
 
-			// if we're offline, fetch can return a value that is not a Response
-			// instead of throwing - and we can't pass this non-Response to respondWith
-			if (!(response instanceof Response)) {
-				throw new Error('invalid response from fetch');
-			}
+      // if we're offline, fetch can return a value that is not a Response
+      // instead of throwing - and we can't pass this non-Response to respondWith
+      if (!(response instanceof Response)) {
+        throw new Error('invalid response from fetch')
+      }
 
-			if (response.status === 200) {
-				cache.put(event.request, response.clone());
-			}
+      if (response.status === 200) {
+        cache.put(event.request, response.clone())
+      }
 
-			return response;
-		} catch (err) {
-			const response = await cache.match(event.request);
+      return response
+    } catch (err) {
+      const response = await cache.match(event.request)
 
-			if (response) {
-				return response;
-			}
+      if (response) {
+        return response
+      }
 
-			// if there's no cache, then just error out
-			// as there is nothing we can do to respond to this request
-			throw err;
-		}
-	}
+      // if there's no cache, then just error out
+      // as there is nothing we can do to respond to this request
+      throw err
+    }
+  }
 
-	event.respondWith(respond());
-});
+  event.respondWith(respond())
+})
 ```
 
 > [!NOTE] Be careful when caching! In some cases, stale data might be worse than data that's unavailable while offline. Since browsers will empty caches if they get too full, you should also be careful about caching large assets like video files.
@@ -21680,11 +21395,11 @@ self.addEventListener('fetch', (event) => {
 The service worker is bundled for production, but not during development. For that reason, only browsers that support [modules in service workers](https://web.dev/es-modules-in-sw) will be able to use them at dev time. If you are manually registering your service worker, you will need to pass the `{ type: 'module' }` option in development:
 
 ```js
-import { dev } from '$app/environment';
+import { dev } from '$app/environment'
 
 navigator.serviceWorker.register('/service-worker.js', {
-	type: dev ? 'module' : 'classic'
-});
+  type: dev ? 'module' : 'classic'
+})
 ```
 
 > [!NOTE] `build` and `prerendered` are empty arrays during development
@@ -21723,21 +21438,23 @@ Any time you have public-facing code that imports server-only code (whether dire
 ```js
 // @errors: 7005
 /// file: $lib/server/secrets.js
-export const atlantisCoordinates = [/* redacted */];
+export const atlantisCoordinates = [
+  /* redacted */
+]
 ```
 
 ```js
 // @errors: 2307 7006 7005
 /// file: src/routes/utils.js
-export { atlantisCoordinates } from '$lib/server/secrets.js';
+export { atlantisCoordinates } from '$lib/server/secrets.js'
 
-export const add = (a, b) => a + b;
+export const add = (a, b) => a + b
 ```
 
 ```html
 /// file: src/routes/+page.svelte
 <script>
-	import { add } from './utils.js';
+  import { add } from './utils.js'
 </script>
 ```
 
@@ -21774,19 +21491,19 @@ To do this, export a `snapshot` object with `capture` and `restore` methods from
 ```svelte
 <!--- file: +page.svelte --->
 <script>
-	let comment = $state('');
+  let comment = $state('')
 
-	/** @type {import('./$types').Snapshot<string>} */
-	export const snapshot = {
-		capture: () => comment,
-		restore: (value) => comment = value
-	};
+  /** @type {import('./$types').Snapshot<string>} */
+  export const snapshot = {
+    capture: () => comment,
+    restore: (value) => (comment = value)
+  }
 </script>
 
 <form method="POST">
-	<label for="comment">Comment</label>
-	<textarea id="comment" bind:value={comment} />
-	<button>Post comment</button>
+  <label for="comment">Comment</label>
+  <textarea id="comment" bind:value={comment} />
+  <button>Post comment</button>
 </form>
 ```
 
@@ -21807,19 +21524,19 @@ SvelteKit makes this possible with the [`pushState`]($app-navigation#pushState) 
 ```svelte
 <!--- file: +page.svelte --->
 <script>
-	import { pushState } from '$app/navigation';
-	import { page } from '$app/state';
-	import Modal from './Modal.svelte';
+  import { pushState } from '$app/navigation'
+  import { page } from '$app/state'
+  import Modal from './Modal.svelte'
 
-	function showModal() {
-		pushState('', {
-			showModal: true
-		});
-	}
+  function showModal() {
+    pushState('', {
+      showModal: true
+    })
+  }
 </script>
 
 {#if page.state.showModal}
-	<Modal close={() => history.back()} />
+  <Modal close={() => history.back()} />
 {/if}
 ```
 
@@ -21845,51 +21562,54 @@ For this to work, you need to load the data that the `+page.svelte` expects. A c
 ```svelte
 <!--- file: src/routes/photos/+page.svelte --->
 <script>
-	import { preloadData, pushState, goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import Modal from './Modal.svelte';
-	import PhotoPage from './[id]/+page.svelte';
+  import { preloadData, pushState, goto } from '$app/navigation'
+  import { page } from '$app/state'
+  import Modal from './Modal.svelte'
+  import PhotoPage from './[id]/+page.svelte'
 
-	let { data } = $props();
+  let { data } = $props()
 </script>
 
 {#each data.thumbnails as thumbnail}
-	<a
-		href="/photos/{thumbnail.id}"
-		onclick={async (e) => {
-			if (innerWidth < 640        // bail if the screen is too small
-				|| e.shiftKey             // or the link is opened in a new window
-				|| e.metaKey || e.ctrlKey // or a new tab (mac: metaKey, win/linux: ctrlKey)
-				// should also consider clicking with a mouse scroll wheel
-			) return;
+  <a
+    href="/photos/{thumbnail.id}"
+    onclick={async (e) => {
+      if (
+        innerWidth < 640 || // bail if the screen is too small
+        e.shiftKey || // or the link is opened in a new window
+        e.metaKey ||
+        e.ctrlKey // or a new tab (mac: metaKey, win/linux: ctrlKey)
+        // should also consider clicking with a mouse scroll wheel
+      )
+        return
 
-			// prevent navigation
-			e.preventDefault();
+      // prevent navigation
+      e.preventDefault()
 
-			const { href } = e.currentTarget;
+      const { href } = e.currentTarget
 
-			// run `load` functions (or rather, get the result of the `load` functions
-			// that are already running because of `data-sveltekit-preload-data`)
-			const result = await preloadData(href);
+      // run `load` functions (or rather, get the result of the `load` functions
+      // that are already running because of `data-sveltekit-preload-data`)
+      const result = await preloadData(href)
 
-			if (result.type === 'loaded' && result.status === 200) {
-				pushState(href, { selected: result.data });
-			} else {
-				// something bad happened! try navigating
-				goto(href);
-			}
-		}}
-	>
-		<img alt={thumbnail.alt} src={thumbnail.src} />
-	</a>
+      if (result.type === 'loaded' && result.status === 200) {
+        pushState(href, { selected: result.data })
+      } else {
+        // something bad happened! try navigating
+        goto(href)
+      }
+    }}
+  >
+    <img alt={thumbnail.alt} src={thumbnail.src} />
+  </a>
 {/each}
 
 {#if page.state.selected}
-	<Modal onclose={() => history.back()}>
-		<!-- pass page data to the +page.svelte component,
+  <Modal onclose={() => history.back()}>
+    <!-- pass page data to the +page.svelte component,
 		     just like SvelteKit would on navigation -->
-		<PhotoPage data={page.state.selected} />
-	</Modal>
+    <PhotoPage data={page.state.selected} />
+  </Modal>
 {/if}
 ```
 
@@ -21974,22 +21694,22 @@ To view your first trace, you'll need to set up a local collector. We'll use [Ja
 
 ```js
 /// file: src/instrumentation.server.js
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
-import { createAddHookMessageChannel } from 'import-in-the-middle';
-import { register } from 'node:module';
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
+import { createAddHookMessageChannel } from 'import-in-the-middle'
+import { register } from 'node:module'
 
-const { registerOptions } = createAddHookMessageChannel();
-register('import-in-the-middle/hook.mjs', import.meta.url, registerOptions);
+const { registerOptions } = createAddHookMessageChannel()
+register('import-in-the-middle/hook.mjs', import.meta.url, registerOptions)
 
 const sdk = new NodeSDK({
-	serviceName: 'test-sveltekit-tracing',
-	traceExporter: new OTLPTraceExporter(),
-	instrumentations: [getNodeAutoInstrumentations()]
-});
+  serviceName: 'test-sveltekit-tracing',
+  traceExporter: new OTLPTraceExporter(),
+  instrumentations: [getNodeAutoInstrumentations()]
+})
 
-sdk.start();
+sdk.start()
 ```
 
 Now, server-side requests will begin generating traces, which you can view in Jaeger's web console at [localhost:16686](http://localhost:16686).
@@ -22023,7 +21743,7 @@ This is the name of your package. It will be available for others to install usi
 
 ```json
 {
-	"name": "your-library"
+  "name": "your-library"
 }
 ```
 
@@ -22035,7 +21755,7 @@ Every package should have a license field so people know how they are allowed to
 
 ```json
 {
-	"license": "MIT"
+  "license": "MIT"
 }
 ```
 
@@ -22047,7 +21767,7 @@ This tells npm which files it will pack up and upload to npm. It should contain 
 
 ```json
 {
-	"files": ["dist"]
+  "files": ["dist"]
 }
 ```
 
@@ -22061,12 +21781,12 @@ The `"exports"` field contains the package's entry points. If you set up a new l
 
 ```json
 {
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"svelte": "./dist/index.js"
-		}
-	}
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./dist/index.js"
+    }
+  }
 }
 ```
 
@@ -22074,7 +21794,7 @@ This tells bundlers and tooling that your package only has one entry point, the 
 
 ```js
 // @errors: 2307
-import { Something } from 'your-library';
+import { Something } from 'your-library'
 ```
 
 The `types` and `svelte` keys are [export conditions](https://nodejs.org/api/packages.html#conditional-exports). They tell tooling what file to import when they look up the `your-library` import:
@@ -22088,12 +21808,12 @@ You can adjust `exports` to your liking and provide more entry points. For examp
 
 ```json
 {
-	"exports": {
-		"./Foo.svelte": {
-			"types": "./dist/Foo.svelte.d.ts",
-			"svelte": "./dist/Foo.svelte"
-		}
-	}
+  "exports": {
+    "./Foo.svelte": {
+      "types": "./dist/Foo.svelte.d.ts",
+      "svelte": "./dist/Foo.svelte"
+    }
+  }
 }
 ```
 
@@ -22120,7 +21840,7 @@ This is a legacy field that enabled tooling to recognise Svelte component librar
 
 ```json
 {
-	"svelte": "./dist/index.js"
+  "svelte": "./dist/index.js"
 }
 ```
 
@@ -22133,7 +21853,7 @@ Setting the `sideEffects` field in `package.json` can help the bundler to be mor
 ```json
 /// file: package.json
 {
-	"sideEffects": ["**/*.css"]
+  "sideEffects": ["**/*.css"]
 }
 ```
 
@@ -22144,10 +21864,7 @@ If your package has files with side effects, you can specify them in an array:
 ```json
 /// file: package.json
 {
-    "sideEffects": [
-    	"**/*.css",
-    	"./dist/sideEffectfulFile.js"
-    ]
+  "sideEffects": ["**/*.css", "./dist/sideEffectfulFile.js"]
 }
 ```
 
@@ -22165,17 +21882,17 @@ The second option is to (ab)use the `typesVersions` feature from TypeScript to w
 
 ```json
 {
-	"exports": {
-		"./foo": {
-			"types": "./dist/foo.d.ts",
-			"svelte": "./dist/foo.js"
-		}
-	},
-	"typesVersions": {
-		">4.0": {
-			"foo": ["./dist/foo.d.ts"]
-		}
-	}
+  "exports": {
+    "./foo": {
+      "types": "./dist/foo.d.ts",
+      "svelte": "./dist/foo.js"
+    }
+  },
+  "typesVersions": {
+    ">4.0": {
+      "foo": ["./dist/foo.d.ts"]
+    }
+  }
 }
 ```
 
@@ -22258,7 +21975,7 @@ All relative file imports need to be fully specified, adhering to Node's ESM alg
 
 ```js
 // @errors: 2307
-import { something } from './something+++/index.js+++';
+import { something } from './something+++/index.js+++'
 ```
 
 If you are using TypeScript, you need to import `.ts` files the same way, but using a `.js` file ending, _not_ a `.ts` file ending. (This is a TypeScript design decision outside our control.) Setting `"moduleResolution": "NodeNext"` in your `tsconfig.json` or `jsconfig.json` will help you with this.
@@ -22309,10 +22026,10 @@ Google's [PageSpeed Insights](https://pagespeed.web.dev/) and (for more advanced
 
 Your browser also includes useful developer tools for analysing your site, whether deployed or running locally:
 
-* Chrome - [Lighthouse](https://developer.chrome.com/docs/lighthouse/overview#devtools), [Network](https://developer.chrome.com/docs/devtools/network), and [Performance](https://developer.chrome.com/docs/devtools/performance) devtools
-* Edge - [Lighthouse](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/lighthouse/lighthouse-tool), [Network](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/network/), and [Performance](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/evaluate-performance/) devtools
-* Firefox - [Network](https://firefox-source-docs.mozilla.org/devtools-user/network_monitor/) and [Performance](https://hacks.mozilla.org/2022/03/performance-tool-in-firefox-devtools-reloaded/) devtools
-* Safari - [enhancing the performance of your webpage](https://developer.apple.com/library/archive/documentation/NetworkingInternetWeb/Conceptual/Web_Inspector_Tutorial/EnhancingyourWebpagesPerformance/EnhancingyourWebpagesPerformance.html)
+- Chrome - [Lighthouse](https://developer.chrome.com/docs/lighthouse/overview#devtools), [Network](https://developer.chrome.com/docs/devtools/network), and [Performance](https://developer.chrome.com/docs/devtools/performance) devtools
+- Edge - [Lighthouse](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/lighthouse/lighthouse-tool), [Network](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/network/), and [Performance](https://learn.microsoft.com/en-us/microsoft-edge/devtools-guide-chromium/evaluate-performance/) devtools
+- Firefox - [Network](https://firefox-source-docs.mozilla.org/devtools-user/network_monitor/) and [Performance](https://hacks.mozilla.org/2022/03/performance-tool-in-firefox-devtools-reloaded/) devtools
+- Safari - [enhancing the performance of your webpage](https://developer.apple.com/library/archive/documentation/NetworkingInternetWeb/Conceptual/Web_Inspector_Tutorial/EnhancingyourWebpagesPerformance/EnhancingyourWebpagesPerformance.html)
 
 Note that your site running locally in `dev` mode will exhibit different behaviour than your production app, so you should do performance testing in [preview](building-your-app#Preview-your-app) mode after building.
 
@@ -22375,10 +22092,12 @@ For slow-loading data that isn't needed immediately, the object returned from yo
 One of the biggest performance killers is what is referred to as a _waterfall_, which is a series of requests that is made sequentially. This can happen on the server or in the browser, but is especially costly when dealing with data that has to travel further or across slower networks, such as a mobile user making a call to a distant server.
 
 In the browser, waterfalls can occur when your HTML kicks off request chains such as requesting JS which requests CSS which requests a background image and web font. SvelteKit will largely solve this class of problems for you by adding [`modulepreload`](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/modulepreload) tags or headers, but you should view [the network tab in your devtools](#Diagnosing-issues) to check whether additional resources need to be preloaded.
+
 - Pay special attention to this if you use [web fonts](#Optimizing-assets-Fonts) since they need to be handled manually.
 - Enabling [single page app (SPA) mode](single-page-apps) will cause such waterfalls. With SPA mode, an empty page is generated, which fetches JavaScript, which ultimately loads and renders the page. This results in extra network round trips before a single pixel can be displayed.
 
 Waterfalls can also occur on calls to the backend whether made from the browser or server. E.g. if a universal `load` function makes an API call to fetch the current user, then uses the details from that response to fetch a list of saved items, and then uses _that_ response to fetch the details for each item, the browser will end up making multiple sequential requests. This is deadly for performance, especially for users that are physically located far from your backend.
+
 - Avoid this issue by using [server `load` functions](load#Universal-vs-server) to make requests to backend services that are dependencies from the server rather than from the browser. Note, however, that server `load` functions are also not immune to waterfalls (though they are much less costly since they rarely involve round trips with high latency). For example, if you query a database to get the current user and then use that data to make a second query for a list of saved items, it will typically be more performant to issue a single query with a database join.
 
 ## Hosting
@@ -22417,7 +22136,7 @@ Doing this manually is tedious. There are a variety of techniques you can use, d
 
 ```svelte
 <script>
-	import logo from '$lib/assets/logo.png';
+  import logo from '$lib/assets/logo.png'
 </script>
 
 <img alt="The project logo" src={logo} />
@@ -22474,7 +22193,7 @@ You can also manually import an image asset and pass it to an `<enhanced:img>`. 
 
 ```svelte
 <script>
-	import MyImage from './path/to/your/image.jpg?enhanced';
+  import MyImage from './path/to/your/image.jpg?enhanced'
 </script>
 
 <enhanced:img src={MyImage} alt="some alt text" />
@@ -22484,19 +22203,19 @@ You can also use [Vite's `import.meta.glob`](https://vitejs.dev/guide/features.h
 
 ```svelte
 <script>
-	const imageModules = import.meta.glob(
-		'/path/to/assets/*.{avif,gif,heif,jpeg,jpg,png,tiff,webp,svg}',
-		{
-			eager: true,
-			query: {
-				enhanced: true
-			}
-		}
-	)
+  const imageModules = import.meta.glob(
+    '/path/to/assets/*.{avif,gif,heif,jpeg,jpg,png,tiff,webp,svg}',
+    {
+      eager: true,
+      query: {
+        enhanced: true
+      }
+    }
+  )
 </script>
 
 {#each Object.entries(imageModules) as [_path, module]}
-	<enhanced:img src={module.default} alt="some alt text" />
+  <enhanced:img src={module.default} alt="some alt text" />
 {/each}
 ```
 
@@ -22506,10 +22225,10 @@ You can also use [Vite's `import.meta.glob`](https://vitejs.dev/guide/features.h
 
 ```svelte
 <style>
-	.hero-image img {
-		width: var(--size);
-		height: auto;
-	}
+  .hero-image img {
+    width: var(--size);
+    height: auto;
+  }
 </style>
 ```
 
@@ -22518,12 +22237,13 @@ You can also use [Vite's `import.meta.glob`](https://vitejs.dev/guide/features.h
 If you have a large image, such as a hero image taking the width of the design, you should specify `sizes` so that smaller versions are requested on smaller devices. E.g. if you have a 1280px image you may want to specify something like:
 
 ```svelte
-<enhanced:img src="./image.png" sizes="min(1280px, 100vw)"/>
+<enhanced:img src="./image.png" sizes="min(1280px, 100vw)" />
 ```
 
 If `sizes` is specified, `<enhanced:img>` will generate small images for smaller devices and populate the `srcset` attribute.
 
 The smallest picture generated automatically will have a width of 540px. If you'd like smaller images or would otherwise like to specify custom widths, you can do that with the `w` query parameter:
+
 ```svelte
 <enhanced:img
   src="./image.png?w=1280;640;400"
@@ -22581,7 +22301,7 @@ Because of this behavior, every page in your app should have a unique, descripti
 ```svelte
 <!--- file: src/routes/+page.svelte --->
 <svelte:head>
-	<title>Todo List</title>
+  <title>Todo List</title>
 </svelte:head>
 ```
 
@@ -22598,13 +22318,13 @@ If you want to customize SvelteKit's focus management, you can use the `afterNav
 ```js
 /// <reference types="@sveltejs/kit" />
 // ---cut---
-import { afterNavigate } from '$app/navigation';
+import { afterNavigate } from '$app/navigation'
 
 afterNavigate(() => {
-	/** @type {HTMLElement | null} */
-	const to_focus = document.querySelector('.focus-me');
-	to_focus?.focus();
-});
+  /** @type {HTMLElement | null} */
+  const to_focus = document.querySelector('.focus-me')
+  to_focus?.focus()
+})
 ```
 
 You can also programmatically navigate to a different page using the [`goto`]($app-navigation#goto) function. By default, this will have the same client-side routing behavior as clicking on a link. However, `goto` also accepts a `keepFocus` option that will preserve the currently-focused element instead of resetting focus. If you enable this option, make sure the currently-focused element still exists on the page after navigation. If the element no longer exists, the user's focus will be lost, making for a confusing experience for assistive technology users.
@@ -22615,14 +22335,14 @@ By default, SvelteKit's page template sets the default language of the document 
 
 ```html
 /// file: src/app.html
-<html lang="de">
+<html lang="de"></html>
 ```
 
 If your content is available in multiple languages, you should set the `lang` attribute based on the language of the current page. You can do this with SvelteKit's [handle hook](hooks#Server-hooks-handle):
 
 ```html
 /// file: src/app.html
-<html lang="%lang%">
+<html lang="%lang%"></html>
 ```
 
 ```js
@@ -22631,14 +22351,14 @@ If your content is available in multiple languages, you should set the `lang` at
  * @param {import('@sveltejs/kit').RequestEvent} event
  */
 function get_lang(event) {
-	return 'en';
+  return 'en'
 }
 // ---cut---
 /** @type {import('@sveltejs/kit').Handle} */
 export function handle({ event, resolve }) {
-	return resolve(event, {
-		transformPageChunk: ({ html }) => html.replace('%lang%', get_lang(event))
-	});
+  return resolve(event, {
+    transformPageChunk: ({ html }) => html.replace('%lang%', get_lang(event))
+  })
 }
 ```
 
@@ -22685,8 +22405,8 @@ Every page should have well-written and unique `<title>` and `<meta name="descri
 ```js
 /// file: src/routes/sitemap.xml/+server.js
 export async function GET() {
-	return new Response(
-		`
+  return new Response(
+    `
 		<?xml version="1.0" encoding="UTF-8" ?>
 		<urlset
 			xmlns="https://www.sitemaps.org/schemas/sitemap/0.9"
@@ -22698,12 +22418,12 @@ export async function GET() {
 		>
 			<!-- <url> elements go here -->
 		</urlset>`.trim(),
-		{
-			headers: {
-				'Content-Type': 'application/xml'
-			}
-		}
-	);
+    {
+      headers: {
+        'Content-Type': 'application/xml'
+      }
+    }
+  )
 }
 ```
 
@@ -22715,45 +22435,46 @@ An unfortunate reality of modern web development is that it is sometimes necessa
 /// file: svelte.config.js
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		// since <link rel="stylesheet"> isn't
-		// allowed, inline all styles
-		inlineStyleThreshold: Infinity
-	}
-};
+  kit: {
+    // since <link rel="stylesheet"> isn't
+    // allowed, inline all styles
+    inlineStyleThreshold: Infinity
+  }
+}
 
-export default config;
+export default config
 ```
 
 ...disabling `csr` in your root `+layout.js`/`+layout.server.js`...
 
 ```js
 /// file: src/routes/+layout.server.js
-export const csr = false;
+export const csr = false
 ```
 
 ...adding `amp` to your `app.html`
 
 ```html
 <html amp>
-...
+  ...
+</html>
 ```
 
 ...and transforming the HTML using `transformPageChunk` along with `transform` imported from `@sveltejs/amp`:
 
 ```js
 /// file: src/hooks.server.js
-import * as amp from '@sveltejs/amp';
+import * as amp from '@sveltejs/amp'
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
-	let buffer = '';
-	return await resolve(event, {
-		transformPageChunk: ({ html, done }) => {
-			buffer += html;
-			if (done) return amp.transform(buffer);
-		}
-	});
+  let buffer = ''
+  return await resolve(event, {
+    transformPageChunk: ({ html, done }) => {
+      buffer += html
+      if (done) return amp.transform(buffer)
+    }
+  })
 }
 ```
 
@@ -22816,7 +22537,7 @@ If you'd like to include your application's version number or other information 
 ```ts
 // @errors: 2732
 /// file: svelte.config.js
-import pkg from './package.json' with { type: 'json' };
+import pkg from './package.json' with { type: 'json' }
 ```
 
 ## How do I fix the error I'm getting trying to include a package?
@@ -22840,18 +22561,18 @@ While SvelteKit does not have any specific integration with [view transitions](h
 
 ```js
 // @errors: 2339 2810
-import { onNavigate } from '$app/navigation';
+import { onNavigate } from '$app/navigation'
 
 onNavigate((navigation) => {
-	if (!document.startViewTransition) return;
+  if (!document.startViewTransition) return
 
-	return new Promise((resolve) => {
-		document.startViewTransition(async () => {
-			resolve();
-			await navigation.complete;
-		});
-	});
-});
+  return new Promise((resolve) => {
+    document.startViewTransition(async () => {
+      resolve()
+      await navigation.complete
+    })
+  })
+})
 ```
 
 For more, see ["Unlocking view transitions"](/blog/view-transitions) on the Svelte blog.
@@ -22869,10 +22590,10 @@ If you need access to the `document` or `window` variables or otherwise need cod
 ```js
 /// <reference types="@sveltejs/kit" />
 // ---cut---
-import { browser } from '$app/environment';
+import { browser } from '$app/environment'
 
 if (browser) {
-	// client-only code here
+  // client-only code here
 }
 ```
 
@@ -22911,22 +22632,23 @@ onMount(() => {
 ```
 
 Finally, you may also consider using an `{#await}` block:
+
 ```svelte
 <!--- file: index.svelte --->
 <script>
-	import { browser } from '$app/environment';
+  import { browser } from '$app/environment'
 
-	const ComponentConstructor = browser ?
-		import('some-browser-only-library').then((module) => module.Component) :
-		new Promise(() => {});
+  const ComponentConstructor = browser
+    ? import('some-browser-only-library').then((module) => module.Component)
+    : new Promise(() => {})
 </script>
 
 {#await ComponentConstructor}
-	<p>Loading...</p>
+  <p>Loading...</p>
 {:then component}
-	<svelte:component this={component} />
+  <svelte:component this={component} />
 {:catch error}
-	<p>Something went wrong: {error.message}</p>
+  <p>Something went wrong: {error.message}</p>
 {/await}
 ```
 
@@ -22942,7 +22664,7 @@ How to setup rewrites in production will depend on your deployment platform. If 
 /// file: src/routes/api/[...path]/+server.js
 /** @type {import('./$types').RequestHandler} */
 export function GET({ params, url }) {
-	return fetch(`https://my-api-server.com/${params.path + url.search}`);
+  return fetch(`https://my-api-server.com/${params.path + url.search}`)
 }
 ```
 
@@ -23022,14 +22744,14 @@ Including [`vitePreprocess`](https://github.com/sveltejs/vite-plugin-svelte/blob
 
 ```js
 // svelte.config.js
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: [vitePreprocess()]
-};
+}
 
-export default config;
+export default config
 ```
 
 You will also need to use a preprocessor if you're using TypeScript with Svelte 4. TypeScript is supported natively in Svelte 5 if you're using only the type syntax. To use more complex TypeScript syntax in Svelte 5, you will need still need a preprocessor and can use `vitePreprocess({ script: true })`.
@@ -23037,6 +22759,7 @@ You will also need to use a preprocessor if you're using TypeScript with Svelte 
 ## Adders
 
 Run [`npx sv add`](/docs/cli/sv-add) to setup many different complex integrations with a single command including:
+
 - prettier (formatting)
 - eslint (linting)
 - vitest (unit testing)
@@ -23097,15 +22820,15 @@ Here's an example `launch.json`:
 
 ```json
 {
-	"version": "0.2.0",
-	"configurations": [
-		{
-			"command": "npm run dev",
-			"name": "Run development server",
-			"request": "launch",
-			"type": "node-terminal"
-		}
-	]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "command": "npm run dev",
+      "name": "Run development server",
+      "request": "launch",
+      "type": "node-terminal"
+    }
+  ]
 }
 ```
 
@@ -23321,8 +23044,7 @@ As a consequence, `$app/stores` is deprecated and subject to be removed in Svelt
 	+++import { page } from '$app/state';+++
 </script>
 
----{$page.data}---
-+++{page.data}+++
+---{$page.data}--- +++{page.data}+++
 ```
 
 Use `npx sv migrate app-state` to auto-migrate most of your `$app/stores` usages inside `.svelte` components.
@@ -23621,18 +23343,18 @@ In SvelteKit, pages are server-side rendered by default. You can disable SSR wit
 ```js
 // @noErrors
 import {
-	Server,
-	VERSION,
-	error,
-	fail,
-	isActionFailure,
-	isHttpError,
-	isRedirect,
-	json,
-	normalizeUrl,
-	redirect,
-	text
-} from '@sveltejs/kit';
+  Server,
+  VERSION,
+  error,
+  fail,
+  isActionFailure,
+  isHttpError,
+  isRedirect,
+  json,
+  normalizeUrl,
+  redirect,
+  text
+} from '@sveltejs/kit'
 ```
 
 ## Server
@@ -23670,8 +23392,6 @@ respond(request: Request, options: RequestOptions): Promise<Response>;
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## VERSION
 
 <div class="ts-block">
@@ -23681,8 +23401,6 @@ const VERSION: string;
 ```
 
 </div>
-
-
 
 ## error
 
@@ -23714,8 +23432,6 @@ function error(
 
 </div>
 
-
-
 ## fail
 
 Create an `ActionFailure` object. Call when form submission fails.
@@ -23739,8 +23455,6 @@ function fail<T = undefined>(
 
 </div>
 
-
-
 ## isActionFailure
 
 Checks whether this is an action failure thrown by `fail`.
@@ -23752,8 +23466,6 @@ function isActionFailure(e: unknown): e is ActionFailure;
 ```
 
 </div>
-
-
 
 ## isHttpError
 
@@ -23772,8 +23484,6 @@ function isHttpError<T extends number>(
 
 </div>
 
-
-
 ## isRedirect
 
 Checks whether this is a redirect thrown by `redirect`.
@@ -23785,8 +23495,6 @@ function isRedirect(e: unknown): e is Redirect_1;
 ```
 
 </div>
-
-
 
 ## json
 
@@ -23800,8 +23508,6 @@ function json(data: any, init?: ResponseInit): Response;
 
 </div>
 
-
-
 ## normalizeUrl
 
 <blockquote class="since note">
@@ -23813,13 +23519,14 @@ Available since 2.18.0
 Strips possible SvelteKit-internal suffixes and trailing slashes from the URL pathname.
 Returns the normalized URL as well as a method for adding the potential suffix back
 based on a new pathname (possibly including search) or URL.
+
 ```js
 // @errors: 7031
-import { normalizeUrl } from '@sveltejs/kit';
+import { normalizeUrl } from '@sveltejs/kit'
 
-const { url, denormalize } = normalizeUrl('/blog/post/__data.json');
-console.log(url.pathname); // /blog/post
-console.log(denormalize('/blog/post/a')); // /blog/post/a/__data.json
+const { url, denormalize } = normalizeUrl('/blog/post/__data.json')
+console.log(url.pathname) // /blog/post
+console.log(denormalize('/blog/post/a')) // /blog/post/a/__data.json
 ```
 
 <div class="ts-block">
@@ -23834,17 +23541,16 @@ function normalizeUrl(url: URL | string): {
 
 </div>
 
-
-
 ## redirect
 
 Redirect a request. When called during request handling, SvelteKit will return a redirect response.
 Make sure you're not catching the thrown redirect, which would prevent SvelteKit from handling it.
 
 Most common status codes:
- * `303 See Other`: redirect as a GET request (often used after a form POST request)
- * `307 Temporary Redirect`: redirect will keep the request method
- * `308 Permanent Redirect`: redirect will keep the request method, SEO will be transferred to the new page
+
+- `303 See Other`: redirect as a GET request (often used after a form POST request)
+- `307 Temporary Redirect`: redirect will keep the request method
+- `308 Permanent Redirect`: redirect will keep the request method, SEO will be transferred to the new page
 
 [See all redirect status codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status#redirection_messages)
 
@@ -23869,8 +23575,6 @@ function redirect(
 
 </div>
 
-
-
 ## text
 
 Create a `Response` object from the supplied body.
@@ -23882,8 +23586,6 @@ function text(body: string, init?: ResponseInit): Response;
 ```
 
 </div>
-
-
 
 ## Action
 
@@ -23946,6 +23648,7 @@ data: T;
 ## ActionResult
 
 When calling a form action via fetch, the response will be one of these shapes.
+
 ```svelte
 <form method="post" use:enhance={() => {
 	return ({ result }) => {
@@ -24119,6 +23822,7 @@ type: Exclude<NavigationType, 'leave'>;
 <div class="ts-block-property-details">
 
 The type of navigation:
+
 - `enter`: The app has hydrated/started
 - `form`: The user submitted a `<form method="GET">`
 - `link`: Navigation was triggered by a link click
@@ -24555,6 +24259,7 @@ Renames `entrypoint` to `start` and creates a new module at
 the module hooks necessary for instrumentation libraries to be loaded prior to any application code.
 
 Caveats:
+
 - "Live exports" will not work. If your adapter uses live exports, your users will need to manually import the server instrumentation on startup.
 - If `tla` is `false`, OTEL auto-instrumentation may not work properly. Use it if your environment supports it.
 - Use `hasServerInstrumentationFile` to check if the user has a server instrumentation file; if they don't, you shouldn't do this.
@@ -25008,15 +24713,15 @@ If you need to set headers for the response, you can do so using the this method
 // @errors: 7031
 /// file: src/routes/blog/+page.js
 export async function load({ fetch, setHeaders }) {
-	const url = `https://cms.example.com/articles.json`;
-	const response = await fetch(url);
+  const url = `https://cms.example.com/articles.json`
+  const response = await fetch(url)
 
-	setHeaders({
-		age: response.headers.get('age'),
-		'cache-control': response.headers.get('cache-control')
-	});
+  setHeaders({
+    age: response.headers.get('age'),
+    'cache-control': response.headers.get('cache-control')
+  })
 
-	return response.json();
+  return response.json()
 }
 ```
 
@@ -25066,28 +24771,30 @@ The following example shows how to use `depends` to register a dependency on a c
 ```js
 // @errors: 7031
 /// file: src/routes/+page.js
-let count = 0;
+let count = 0
 export async function load({ depends }) {
-	depends('increase:count');
+  depends('increase:count')
 
-	return { count: count++ };
+  return { count: count++ }
 }
 ```
 
 ```html
 /// file: src/routes/+page.svelte
 <script>
-	import { invalidate } from '$app/navigation';
+  import { invalidate } from '$app/navigation'
 
-	let { data } = $props();
+  let { data } = $props()
 
-	const increase = async () => {
-		await invalidate('increase:count');
-	}
+  const increase = async () => {
+    await invalidate('increase:count')
+  }
 </script>
 
-<p>{data.count}<p>
-<button on:click={increase}>Increase Count</button>
+<p>{data.count}</p>
+<p>
+  <button on:click="{increase}">Increase Count</button>
+</p>
 ```
 
 </div>
@@ -25107,10 +24814,10 @@ Use this function to opt out of dependency tracking for everything that is synch
 // @errors: 7031
 /// file: src/routes/+page.server.js
 export async function load({ untrack, url }) {
-	// Untrack url.pathname so that path changes don't trigger a rerun
-	if (untrack(() => url.pathname === '/')) {
-		return { message: 'Welcome!' };
-	}
+  // Untrack url.pathname so that path changes don't trigger a rerun
+  if (untrack(() => url.pathname === '/')) {
+    return { message: 'Welcome!' }
+  }
 }
 ```
 
@@ -25232,6 +24939,7 @@ type: Exclude<NavigationType, 'enter'>;
 <div class="ts-block-property-details">
 
 The type of navigation:
+
 - `form`: The user submitted a `<form method="GET">`
 - `leave`: The app is being left either because the tab is being closed or a navigation to a different document is occurring
 - `link`: Navigation was triggered by a link click
@@ -25467,6 +25175,7 @@ type: Exclude<NavigationType, 'enter' | 'leave'>;
 <div class="ts-block-property-details">
 
 The type of navigation:
+
 - `form`: The user submitted a `<form method="GET">`
 - `link`: Navigation was triggered by a link click
 - `goto`: Navigation was triggered by a `goto(...)` call or a redirect
@@ -25705,7 +25414,7 @@ The return value of a remote `form` function. See [Remote functions](/docs/kit/r
 
 <div class="ts-block">
 
-```dts
+````dts
 type RemoteForm<Result> = {
 	method: 'POST';
 	/** The URL to send the form to. */
@@ -25780,7 +25489,7 @@ type RemoteForm<Result> = {
 		get pending(): number;
 	};
 };
-```
+````
 
 </div>
 
@@ -25802,7 +25511,7 @@ type RemotePrerenderFunction<Input, Output> = (
 
 <div class="ts-block">
 
-```dts
+````dts
 type RemoteQuery<T> = RemoteResource<T> & {
 	/**
 	 * On the client, this function will re-fetch the query from the server.
@@ -25834,7 +25543,7 @@ type RemoteQuery<T> = RemoteResource<T> & {
 		update: (current: Awaited<T>) => Awaited<T>
 	): RemoteQueryOverride;
 };
-```
+````
 
 </div>
 
@@ -26055,15 +25764,15 @@ If you need to set headers for the response, you can do so using the this method
 // @errors: 7031
 /// file: src/routes/blog/+page.js
 export async function load({ fetch, setHeaders }) {
-	const url = `https://cms.example.com/articles.json`;
-	const response = await fetch(url);
+  const url = `https://cms.example.com/articles.json`
+  const response = await fetch(url)
 
-	setHeaders({
-		age: response.headers.get('age'),
-		'cache-control': response.headers.get('cache-control')
-	});
+  setHeaders({
+    age: response.headers.get('age'),
+    'cache-control': response.headers.get('cache-control')
+  })
 
-	return response.json();
+  return response.json()
 }
 ```
 
@@ -26636,28 +26345,30 @@ The following example shows how to use `depends` to register a dependency on a c
 ```js
 // @errors: 7031
 /// file: src/routes/+page.js
-let count = 0;
+let count = 0
 export async function load({ depends }) {
-	depends('increase:count');
+  depends('increase:count')
 
-	return { count: count++ };
+  return { count: count++ }
 }
 ```
 
 ```html
 /// file: src/routes/+page.svelte
 <script>
-	import { invalidate } from '$app/navigation';
+  import { invalidate } from '$app/navigation'
 
-	let { data } = $props();
+  let { data } = $props()
 
-	const increase = async () => {
-		await invalidate('increase:count');
-	}
+  const increase = async () => {
+    await invalidate('increase:count')
+  }
 </script>
 
-<p>{data.count}<p>
-<button on:click={increase}>Increase Count</button>
+<p>{data.count}</p>
+<p>
+  <button on:click="{increase}">Increase Count</button>
+</p>
 ```
 
 </div>
@@ -26677,10 +26388,10 @@ Use this function to opt out of dependency tracking for everything that is synch
 // @errors: 7031
 /// file: src/routes/+page.js
 export async function load({ untrack, url }) {
-	// Untrack url.pathname so that path changes don't trigger a rerun
-	if (untrack(() => url.pathname === '/')) {
-		return { message: 'Welcome!' };
-	}
+  // Untrack url.pathname so that path changes don't trigger a rerun
+  if (untrack(() => url.pathname === '/')) {
+    return { message: 'Welcome!' }
+  }
 }
 ```
 
@@ -26827,19 +26538,19 @@ Each transporter has a pair of `encode` and `decode` functions. On the server, `
 In the browser, `decode` turns the encoding back into an instance of the custom type.
 
 ```ts
-import type { Transport } from '@sveltejs/kit';
+import type { Transport } from '@sveltejs/kit'
 
 declare class MyCustomType {
-	data: any
+  data: any
 }
 
 // hooks.js
 export const transport: Transport = {
-	MyCustomType: {
-		encode: (value) => value instanceof MyCustomType && [value.data],
-		decode: ([data]) => new MyCustomType(data)
-	}
-};
+  MyCustomType: {
+    encode: (value) => value instanceof MyCustomType && [value.data],
+    decode: ([data]) => new MyCustomType(data)
+  }
+}
 ```
 
 <div class="ts-block">
@@ -26884,8 +26595,6 @@ decode: (data: U) => T;
 <div class="ts-block-property-details"></div>
 </div></div>
 
-
-
 ## Private types
 
 The following are referenced by the public types documented above, but cannot be imported directly:
@@ -26908,7 +26617,7 @@ id: string;
 
 A string that uniquely identifies an HTTP service (e.g. serverless function) and is used for deduplication.
 For example, `/foo/a-[b]` and `/foo/[c]` are different routes, but would both
-be represented in a Netlify _redirects file as `/foo/:param`, so they share an ID
+be represented in a Netlify \_redirects file as `/foo/:param`, so they share an ID
 
 </div>
 </div>
@@ -26925,6 +26634,7 @@ A function that compares the candidate route with the current route to determine
 if it should be grouped with the current route.
 
 Use cases:
+
 - Fallback pages: `/foo/[c]` is a fallback for `/foo/a-[b]`, and `/[...catchall]` is a fallback for all routes
 - Grouping routes that share a common `config`: `/foo` should be deployed to the edge, `/bar` and `/baz` should be deployed to a serverless function
 
@@ -27265,7 +26975,7 @@ sandbox?: Array<
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 
 </div>
 
@@ -27282,7 +26992,7 @@ sandbox?: Array<
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 
 </div>
 
@@ -27299,7 +27009,7 @@ sandbox?: Array<
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 
 </div>
 
@@ -27326,7 +27036,7 @@ referrer?: Array<
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 
 </div>
 
@@ -27725,13 +27435,14 @@ type TrailingSlash = 'never' | 'always' | 'ignore';
 
 ```js
 // @noErrors
-import { sequence } from '@sveltejs/kit/hooks';
+import { sequence } from '@sveltejs/kit/hooks'
 ```
 
 ## sequence
 
 A helper function for sequencing multiple `handle` calls in a middleware-like manner.
 The behavior for the `handle` options is as follows:
+
 - `transformPageChunk` is applied in reverse order and merged
 - `preload` is applied in forward order, the first option "wins" and no `preload` options after it are called
 - `filterSerializedResponseHeaders` behaves the same as `preload`
@@ -27739,50 +27450,50 @@ The behavior for the `handle` options is as follows:
 ```js
 // @errors: 7031
 /// file: src/hooks.server.js
-import { sequence } from '@sveltejs/kit/hooks';
+import { sequence } from '@sveltejs/kit/hooks'
 
 /** @type {import('@sveltejs/kit').Handle} */
 async function first({ event, resolve }) {
-	console.log('first pre-processing');
-	const result = await resolve(event, {
-		transformPageChunk: ({ html }) => {
-			// transforms are applied in reverse order
-			console.log('first transform');
-			return html;
-		},
-		preload: () => {
-			// this one wins as it's the first defined in the chain
-			console.log('first preload');
-			return true;
-		}
-	});
-	console.log('first post-processing');
-	return result;
+  console.log('first pre-processing')
+  const result = await resolve(event, {
+    transformPageChunk: ({ html }) => {
+      // transforms are applied in reverse order
+      console.log('first transform')
+      return html
+    },
+    preload: () => {
+      // this one wins as it's the first defined in the chain
+      console.log('first preload')
+      return true
+    }
+  })
+  console.log('first post-processing')
+  return result
 }
 
 /** @type {import('@sveltejs/kit').Handle} */
 async function second({ event, resolve }) {
-	console.log('second pre-processing');
-	const result = await resolve(event, {
-		transformPageChunk: ({ html }) => {
-			console.log('second transform');
-			return html;
-		},
-		preload: () => {
-			console.log('second preload');
-			return true;
-		},
-		filterSerializedResponseHeaders: () => {
-			// this one wins as it's the first defined in the chain
-			console.log('second filterSerializedResponseHeaders');
-			return true;
-		}
-	});
-	console.log('second post-processing');
-	return result;
+  console.log('second pre-processing')
+  const result = await resolve(event, {
+    transformPageChunk: ({ html }) => {
+      console.log('second transform')
+      return html
+    },
+    preload: () => {
+      console.log('second preload')
+      return true
+    },
+    filterSerializedResponseHeaders: () => {
+      // this one wins as it's the first defined in the chain
+      console.log('second filterSerializedResponseHeaders')
+      return true
+    }
+  })
+  console.log('second post-processing')
+  return result
 }
 
-export const handle = sequence(first, second);
+export const handle = sequence(first, second)
 ```
 
 The example above would print:
@@ -27810,12 +27521,13 @@ function sequence(...handlers: Handle[]): Handle;
 
 ```js
 // @noErrors
-import { installPolyfills } from '@sveltejs/kit/node/polyfills';
+import { installPolyfills } from '@sveltejs/kit/node/polyfills'
 ```
 
 ## installPolyfills
 
 Make various web APIs available as globals:
+
 - `crypto`
 - `File`
 
@@ -27831,11 +27543,7 @@ function installPolyfills(): void;
 
 ```js
 // @noErrors
-import {
-	createReadableStream,
-	getRequest,
-	setResponse
-} from '@sveltejs/kit/node';
+import { createReadableStream, getRequest, setResponse } from '@sveltejs/kit/node'
 ```
 
 ## createReadableStream
@@ -27856,8 +27564,6 @@ function createReadableStream(file: string): ReadableStream;
 
 </div>
 
-
-
 ## getRequest
 
 <div class="ts-block">
@@ -27876,8 +27582,6 @@ function getRequest({
 
 </div>
 
-
-
 ## setResponse
 
 <div class="ts-block">
@@ -27895,7 +27599,7 @@ function setResponse(
 
 ```js
 // @noErrors
-import { sveltekit } from '@sveltejs/kit/vite';
+import { sveltekit } from '@sveltejs/kit/vite'
 ```
 
 ## sveltekit
@@ -27914,7 +27618,7 @@ function sveltekit(): Promise<import('vite').Plugin[]>;
 
 ```js
 // @noErrors
-import { browser, building, dev, version } from '$app/environment';
+import { browser, building, dev, version } from '$app/environment'
 ```
 
 ## browser
@@ -27929,8 +27633,6 @@ const browser: boolean;
 
 </div>
 
-
-
 ## building
 
 SvelteKit analyses your app during the `build` step by running it. During this process, `building` is `true`. This also applies during prerendering.
@@ -27943,8 +27645,6 @@ const building: boolean;
 
 </div>
 
-
-
 ## dev
 
 Whether the dev server is running. This is not guaranteed to correspond to `NODE_ENV` or `MODE`.
@@ -27956,8 +27656,6 @@ const dev: boolean;
 ```
 
 </div>
-
-
 
 ## version
 
@@ -27975,7 +27673,7 @@ const version: string;
 
 ```js
 // @noErrors
-import { applyAction, deserialize, enhance } from '$app/forms';
+import { applyAction, deserialize, enhance } from '$app/forms'
 ```
 
 ## applyAction
@@ -27999,8 +27697,6 @@ function applyAction<
 
 </div>
 
-
-
 ## deserialize
 
 Use this function to deserialize the response from a form submission.
@@ -28008,16 +27704,16 @@ Usage:
 
 ```js
 // @errors: 7031
-import { deserialize } from '$app/forms';
+import { deserialize } from '$app/forms'
 
 async function handleSubmit(event) {
-	const response = await fetch('/form?/action', {
-		method: 'POST',
-		body: new FormData(event.target)
-	});
+  const response = await fetch('/form?/action', {
+    method: 'POST',
+    body: new FormData(event.target)
+  })
 
-	const result = deserialize(await response.text());
-	// ...
+  const result = deserialize(await response.text())
+  // ...
 }
 ```
 
@@ -28034,8 +27730,6 @@ function deserialize<
 
 </div>
 
-
-
 ## enhance
 
 This action enhances a `<form>` element that otherwise would work without JavaScript.
@@ -28047,6 +27741,7 @@ If a function is returned, that function is called with the response from the se
 If nothing is returned, the fallback will be used.
 
 If this function or its return value isn't set, it
+
 - falls back to updating the `form` prop with the returned data if the action is on the same page as the form
 - updates `page.status`
 - resets the `<form>` element and invalidates all data in case of successful submission with no redirect response
@@ -28055,6 +27750,7 @@ If this function or its return value isn't set, it
 
 If you provide a custom function with a callback and want to use the default behavior, invoke `update` in your callback.
 It accepts an options object
+
 - `reset: false` if you don't want the `<form>` values to be reset after a successful submission
 - `invalidateAll: false` if you don't want the action to call `invalidateAll` after submission
 
@@ -28082,19 +27778,19 @@ function enhance<
 ```js
 // @noErrors
 import {
-	afterNavigate,
-	beforeNavigate,
-	disableScrollHandling,
-	goto,
-	invalidate,
-	invalidateAll,
-	onNavigate,
-	preloadCode,
-	preloadData,
-	pushState,
-	refreshAll,
-	replaceState
-} from '$app/navigation';
+  afterNavigate,
+  beforeNavigate,
+  disableScrollHandling,
+  goto,
+  invalidate,
+  invalidateAll,
+  onNavigate,
+  preloadCode,
+  preloadData,
+  pushState,
+  refreshAll,
+  replaceState
+} from '$app/navigation'
 ```
 
 ## afterNavigate
@@ -28114,8 +27810,6 @@ function afterNavigate(
 ```
 
 </div>
-
-
 
 ## beforeNavigate
 
@@ -28141,8 +27835,6 @@ function beforeNavigate(
 
 </div>
 
-
-
 ## disableScrollHandling
 
 If called when the page is being updated following a navigation (in `onMount` or `afterNavigate` or an action, for example), this disables SvelteKit's built-in scroll handling.
@@ -28155,8 +27847,6 @@ function disableScrollHandling(): void;
 ```
 
 </div>
-
-
 
 ## goto
 
@@ -28185,8 +27875,6 @@ function goto(
 
 </div>
 
-
-
 ## invalidate
 
 Causes any `load` functions belonging to the currently active page to re-run if they depend on the `url` in question, via `fetch` or `depends`. Returns a `Promise` that resolves when the page is subsequently updated.
@@ -28199,9 +27887,9 @@ This can be useful if you want to invalidate based on a pattern instead of a exa
 
 ```ts
 // Example: Match '/path' regardless of the query parameters
-import { invalidate } from '$app/navigation';
+import { invalidate } from '$app/navigation'
 
-invalidate((url) => url.pathname === '/path');
+invalidate((url) => url.pathname === '/path')
 ```
 
 <div class="ts-block">
@@ -28214,8 +27902,6 @@ function invalidate(
 
 </div>
 
-
-
 ## invalidateAll
 
 Causes all `load` functions belonging to the currently active page to re-run. Returns a `Promise` that resolves when the page is subsequently updated.
@@ -28227,8 +27913,6 @@ function invalidateAll(): Promise<void>;
 ```
 
 </div>
-
-
 
 ## onNavigate
 
@@ -28252,8 +27936,6 @@ function onNavigate(
 
 </div>
 
-
-
 ## preloadCode
 
 Programmatically imports the code for routes that haven't yet been fetched.
@@ -28272,13 +27954,12 @@ function preloadCode(pathname: string): Promise<void>;
 
 </div>
 
-
-
 ## preloadData
 
 Programmatically preloads the given page, which means
- 1. ensuring that the code for the page is loaded, and
- 2. calling the page's load function with the appropriate options.
+
+1.  ensuring that the code for the page is loaded, and
+2.  calling the page's load function with the appropriate options.
 
 This is the same behaviour that SvelteKit triggers when the user taps or mouses over an `<a>` element with `data-sveltekit-preload-data`.
 If the next navigation is to `href`, the values returned from load will be used, making navigation instantaneous.
@@ -28302,8 +27983,6 @@ function preloadData(href: string): Promise<
 
 </div>
 
-
-
 ## pushState
 
 Programmatically create a new history entry with the given `page.state`. To use the current URL, you can pass `''` as the first argument. Used for [shallow routing](/docs/kit/shallow-routing).
@@ -28318,8 +27997,6 @@ function pushState(
 ```
 
 </div>
-
-
 
 ## refreshAll
 
@@ -28337,8 +28014,6 @@ function refreshAll({
 ```
 
 </div>
-
-
 
 ## replaceState
 
@@ -28359,7 +28034,7 @@ function replaceState(
 
 ```js
 // @noErrors
-import { asset, assets, base, resolve, resolveRoute } from '$app/paths';
+import { asset, assets, base, resolve, resolveRoute } from '$app/paths'
 ```
 
 ## asset
@@ -28376,7 +28051,7 @@ During server rendering, the base path is relative and depends on the page curre
 
 ```svelte
 <script>
-	import { asset } from '$app/paths';
+  import { asset } from '$app/paths'
 </script>
 
 <img alt="a potato" src={asset('/potato.jpg')} />
@@ -28389,8 +28064,6 @@ function asset(file: Asset): string;
 ```
 
 </div>
-
-
 
 ## assets
 
@@ -28416,8 +28089,6 @@ let assets:
 
 </div>
 
-
-
 ## base
 
 <blockquote class="tag deprecated note">
@@ -28438,8 +28109,6 @@ let base: '' | `/${string}`;
 
 </div>
 
-
-
 ## resolve
 
 <blockquote class="since note">
@@ -28454,15 +28123,15 @@ During server rendering, the base path is relative and depends on the page curre
 
 ```js
 // @errors: 7031
-import { resolve } from '$app/paths';
+import { resolve } from '$app/paths'
 
 // using a pathname
-const resolved = resolve(`/blog/hello-world`);
+const resolved = resolve(`/blog/hello-world`)
 
 // using a route ID plus parameters
 const resolved = resolve('/blog/[slug]', {
-	slug: 'hello-world'
-});
+  slug: 'hello-world'
+})
 ```
 
 <div class="ts-block">
@@ -28474,8 +28143,6 @@ function resolve<T extends RouteId | Pathname>(
 ```
 
 </div>
-
-
 
 ## resolveRoute
 
@@ -28499,14 +28166,7 @@ function resolveRoute<T extends RouteId | Pathname>(
 
 ```js
 // @noErrors
-import {
-	command,
-	form,
-	getRequestEvent,
-	prerender,
-	query,
-	read
-} from '$app/server';
+import { command, form, getRequestEvent, prerender, query, read } from '$app/server'
 ```
 
 ## command
@@ -28556,8 +28216,6 @@ function command<Schema extends StandardSchemaV1, Output>(
 
 </div>
 
-
-
 ## form
 
 <blockquote class="since note">
@@ -28580,8 +28238,6 @@ function form<T>(
 
 </div>
 
-
-
 ## getRequestEvent
 
 <blockquote class="since note">
@@ -28601,8 +28257,6 @@ function getRequestEvent(): RequestEvent;
 ```
 
 </div>
-
-
 
 ## prerender
 
@@ -28673,8 +28327,6 @@ function prerender<Schema extends StandardSchemaV1, Output>(
 
 </div>
 
-
-
 ## query
 
 <blockquote class="since note">
@@ -28724,8 +28376,6 @@ function query<Schema extends StandardSchemaV1, Output>(
 
 </div>
 
-
-
 ## read
 
 <blockquote class="since note">
@@ -28738,11 +28388,11 @@ Read the contents of an imported asset from the filesystem
 
 ```js
 // @errors: 7031
-import { read } from '$app/server';
-import somefile from './somefile.txt';
+import { read } from '$app/server'
+import somefile from './somefile.txt'
 
-const asset = read(somefile);
-const text = await asset.text();
+const asset = read(somefile)
+const text = await asset.text()
 ```
 
 <div class="ts-block">
@@ -28760,11 +28410,9 @@ SvelteKit makes three read-only state objects available via the `$app/state` mod
 > [!NOTE]
 > This module was added in 2.12. If you're using an earlier version of SvelteKit, use [`$app/stores`]($app-stores) instead.
 
-
-
 ```js
 // @noErrors
-import { navigating, page, updated } from '$app/state';
+import { navigating, page, updated } from '$app/state'
 ```
 
 ## navigating
@@ -28789,11 +28437,10 @@ const navigating:
 
 </div>
 
-
-
 ## page
 
 A read-only reactive object with information about the current page, serving several use cases:
+
 - retrieving the combined `data` of all pages/layouts anywhere in your component tree (also see [loading data](/docs/kit/load))
 - retrieving the current value of the `form` prop anywhere in your component tree (also see [form actions](/docs/kit/form-actions))
 - retrieving the page state that was set through `goto`, `pushState` or `replaceState` (also see [goto](/docs/kit/$app-navigation#goto) and [shallow routing](/docs/kit/shallow-routing))
@@ -28802,15 +28449,15 @@ A read-only reactive object with information about the current page, serving sev
 ```svelte
 <!--- file: +layout.svelte --->
 <script>
-	import { page } from '$app/state';
+  import { page } from '$app/state'
 </script>
 
 <p>Currently at {page.url.pathname}</p>
 
 {#if page.error}
-	<span class="red">Problem detected</span>
+  <span class="red">Problem detected</span>
 {:else}
-	<span class="small">All systems operational</span>
+  <span class="small">All systems operational</span>
 {/if}
 ```
 
@@ -28819,9 +28466,9 @@ Changes to `page` are available exclusively with runes. (The legacy reactivity s
 ```svelte
 <!--- file: +page.svelte --->
 <script>
-	import { page } from '$app/state';
-	const id = $derived(page.params.id); // This will correctly update id for usage on this page
-	$: badId = page.params.id; // Do not use; will never update after initial load
+  import { page } from '$app/state'
+  const id = $derived(page.params.id) // This will correctly update id for usage on this page
+  $: badId = page.params.id // Do not use; will never update after initial load
 </script>
 ```
 
@@ -28834,8 +28481,6 @@ const page: import('@sveltejs/kit').Page;
 ```
 
 </div>
-
-
 
 ## updated
 
@@ -28856,11 +28501,9 @@ const updated: {
 
 This module contains store-based equivalents of the exports from [`$app/state`]($app-state). If you're using SvelteKit 2.12 or later, use that module instead.
 
-
-
 ```js
 // @noErrors
-import { getStores, navigating, page, updated } from '$app/stores';
+import { getStores, navigating, page, updated } from '$app/stores'
 ```
 
 ## getStores
@@ -28878,8 +28521,6 @@ function getStores(): {
 ```
 
 </div>
-
-
 
 ## navigating
 
@@ -28905,8 +28546,6 @@ const navigating: import('svelte/store').Readable<
 
 </div>
 
-
-
 ## page
 
 <blockquote class="tag deprecated note">
@@ -28928,8 +28567,6 @@ const page: import('svelte/store').Readable<
 ```
 
 </div>
-
-
 
 ## updated
 
@@ -29020,7 +28657,7 @@ A utility for getting the parameters associated with a given route.
 
 ```ts
 // @errors: 2552
-type BlogParams = RouteParams<'/blog/[slug]'>; // { slug: string }
+type BlogParams = RouteParams<'/blog/[slug]'> // { slug: string }
 ```
 
 <div class="ts-block">
@@ -29050,8 +28687,8 @@ This module provides access to runtime environment variables, as defined by the 
 This module cannot be imported into client-side code.
 
 ```ts
-import { env } from '$env/dynamic/private';
-console.log(env.DEPLOYMENT_SPECIFIC_VARIABLE);
+import { env } from '$env/dynamic/private'
+console.log(env.DEPLOYMENT_SPECIFIC_VARIABLE)
 ```
 
 > [!NOTE] In `dev`, `$env/dynamic` always includes environment variables from `.env`. In `prod`, this behavior will depend on your adapter.
@@ -29063,8 +28700,8 @@ Similar to [`$env/dynamic/private`](/docs/kit/$env-dynamic-private), but only in
 Note that public dynamic environment variables must all be sent from the server to the client, causing larger network requests — when possible, use `$env/static/public` instead.
 
 ```ts
-import { env } from '$env/dynamic/public';
-console.log(env.PUBLIC_DEPLOYMENT_SPECIFIC_VARIABLE);
+import { env } from '$env/dynamic/public'
+console.log(env.PUBLIC_DEPLOYMENT_SPECIFIC_VARIABLE)
 ```
 
 # $env/static/private
@@ -29074,7 +28711,7 @@ Environment variables [loaded by Vite](https://vitejs.dev/guide/env-and-mode.htm
 _Unlike_ [`$env/dynamic/private`](/docs/kit/$env-dynamic-private), the values exported from this module are statically injected into your bundle at build time, enabling optimisations like dead code elimination.
 
 ```ts
-import { API_KEY } from '$env/static/private';
+import { API_KEY } from '$env/static/private'
 ```
 
 Note that all environment variables referenced in your code should be declared (for example in an `.env` file), even if they don't have a value until the app is deployed:
@@ -29096,7 +28733,7 @@ Similar to [`$env/static/private`](/docs/kit/$env-static-private), except that i
 Values are replaced statically at build time.
 
 ```ts
-import { PUBLIC_BASE_URL } from '$env/static/public';
+import { PUBLIC_BASE_URL } from '$env/static/public'
 ```
 
 # $lib
@@ -29111,7 +28748,7 @@ A reusable component
 ```svelte
 <!--- file: src/routes/+page.svelte --->
 <script>
-    import Component from '$lib/Component.svelte';
+  import Component from '$lib/Component.svelte'
 </script>
 
 <Component />
@@ -29121,7 +28758,7 @@ A reusable component
 
 ```js
 // @noErrors
-import { base, build, files, prerendered, version } from '$service-worker';
+import { base, build, files, prerendered, version } from '$service-worker'
 ```
 
 This module is only available to [service workers](/docs/kit/service-workers).
@@ -29139,8 +28776,6 @@ const base: string;
 
 </div>
 
-
-
 ## build
 
 An array of URL strings representing the files generated by Vite, suitable for caching with `cache.addAll(build)`.
@@ -29154,8 +28789,6 @@ const build: string[];
 
 </div>
 
-
-
 ## files
 
 An array of URL strings representing the files in your static directory, or whatever directory is specified by `config.kit.files.assets`. You can customize which files are included from `static` directory using [`config.kit.serviceWorker.files`](/docs/kit/configuration)
@@ -29167,8 +28800,6 @@ const files: string[];
 ```
 
 </div>
-
-
 
 ## prerendered
 
@@ -29182,8 +28813,6 @@ const prerendered: string[];
 ```
 
 </div>
-
-
 
 ## version
 
@@ -29259,8 +28888,6 @@ Any additional options required by tooling that integrates with Svelte.
 </div>
 </div></div>
 
-
-
 ## KitConfig
 
 The `kit` property configures SvelteKit, and can have the following properties:
@@ -29276,8 +28903,6 @@ The `kit` property configures SvelteKit, and can have the following properties:
 Your [adapter](/docs/kit/adapters) is run when executing `vite build`. It determines how the output is converted for different platforms.
 
 <div class="ts-block-property-children">
-
-
 
 </div>
 
@@ -29296,21 +28921,21 @@ An object containing zero or more aliases used to replace values in `import` sta
 /// file: svelte.config.js
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		alias: {
-			// this will match a file
-			'my-file': 'path/to/my-file.js',
+  kit: {
+    alias: {
+      // this will match a file
+      'my-file': 'path/to/my-file.js',
 
-			// this will match a directory and its contents
-			// (`my-directory/x` resolves to `path/to/my-directory/x`)
-			'my-directory': 'path/to/my-directory',
+      // this will match a directory and its contents
+      // (`my-directory/x` resolves to `path/to/my-directory/x`)
+      'my-directory': 'path/to/my-directory',
 
-			// an alias ending /* will only match
-			// the contents of a directory, not the directory itself
-			'my-directory/*': 'path/to/my-directory/*'
-		}
-	}
-};
+      // an alias ending /* will only match
+      // the contents of a directory, not the directory itself
+      'my-directory/*': 'path/to/my-directory/*'
+    }
+  }
+}
 ```
 
 > [!NOTE] The built-in `$lib` alias is controlled by `config.kit.files.lib` as it is used for packaging.
@@ -29318,8 +28943,6 @@ const config = {
 > [!NOTE] You will need to run `npm run dev` to have SvelteKit automatically generate the required alias configuration in `jsconfig.json` or `tsconfig.json`.
 
 <div class="ts-block-property-children">
-
-
 
 </div>
 
@@ -29337,15 +28960,11 @@ If `paths.assets` is specified, there will be two app directories — `${paths.a
 
 <div class="ts-block-property-children">
 
-
-
 </div>
 
 ## csp
 
 <div class="ts-block-property-bullets">
-
-
 
 </div>
 
@@ -29356,21 +28975,21 @@ If `paths.assets` is specified, there will be two app directories — `${paths.a
 /// file: svelte.config.js
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		csp: {
-			directives: {
-				'script-src': ['self']
-			},
-			// must be specified with either the `report-uri` or `report-to` directives, or both
-			reportOnly: {
-				'script-src': ['self'],
-				'report-uri': ['/']
-			}
-		}
-	}
-};
+  kit: {
+    csp: {
+      directives: {
+        'script-src': ['self']
+      },
+      // must be specified with either the `report-uri` or `report-to` directives, or both
+      reportOnly: {
+        'script-src': ['self'],
+        'report-uri': ['/']
+      }
+    }
+  }
+}
 
-export default config;
+export default config
 ```
 
 ...would prevent scripts loading from external sites. SvelteKit will augment the specified directives with nonces or hashes (depending on `mode`) for any inline styles and scripts it generates.
@@ -29432,8 +29051,6 @@ Directives that will be added to `Content-Security-Policy-Report-Only` headers.
 ## csrf
 
 <div class="ts-block-property-bullets">
-
-
 
 </div>
 
@@ -29502,15 +29119,11 @@ Note that it is generally not supported to embed multiple SvelteKit apps on the 
 
 <div class="ts-block-property-children">
 
-
-
 </div>
 
 ## env
 
 <div class="ts-block-property-bullets">
-
-
 
 </div>
 
@@ -29582,8 +29195,6 @@ A prefix that signals that an environment variable is unsafe to expose to client
 ## experimental
 
 <div class="ts-block-property-bullets">
-
-
 
 </div>
 
@@ -29696,7 +29307,7 @@ Whether to enable the experimental remote functions feature. This feature is not
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 
 </div>
 
@@ -29715,7 +29326,7 @@ src?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src"`
 - <span class="tag since">available since</span> v2.28
 
@@ -29736,7 +29347,7 @@ assets?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"static"`
 
 </div>
@@ -29765,7 +29376,7 @@ client?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/hooks.client"`
 
 </div>
@@ -29785,7 +29396,7 @@ server?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/hooks.server"`
 
 </div>
@@ -29805,7 +29416,7 @@ universal?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/hooks"`
 - <span class="tag since">available since</span> v2.3.0
 
@@ -29829,7 +29440,7 @@ lib?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/lib"`
 
 </div>
@@ -29849,7 +29460,7 @@ params?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/params"`
 
 </div>
@@ -29869,7 +29480,7 @@ routes?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/routes"`
 
 </div>
@@ -29889,7 +29500,7 @@ serviceWorker?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/service-worker"`
 
 </div>
@@ -29909,7 +29520,7 @@ appTemplate?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/app.html"`
 
 </div>
@@ -29929,7 +29540,7 @@ errorTemplate?: string;
 
 <div class="ts-block-property-bullets">
 
-- <span class="tag deprecated">deprecated</span> 
+- <span class="tag deprecated">deprecated</span>
 - <span class="tag">default</span> `"src/error.html"`
 
 </div>
@@ -29955,8 +29566,6 @@ Inline CSS inside a `<style>` block at the head of the HTML. This option is a nu
 
 <div class="ts-block-property-children">
 
-
-
 </div>
 
 ## moduleExtensions
@@ -29970,8 +29579,6 @@ Inline CSS inside a `<style>` block at the head of the HTML. This option is a nu
 An array of file extensions that SvelteKit will treat as modules. Files with extensions that match neither `config.extensions` nor `config.kit.moduleExtensions` will be ignored by the router.
 
 <div class="ts-block-property-children">
-
-
 
 </div>
 
@@ -29987,15 +29594,11 @@ The directory that SvelteKit writes files to during `dev` and `build`. You shoul
 
 <div class="ts-block-property-children">
 
-
-
 </div>
 
 ## output
 
 <div class="ts-block-property-bullets">
-
-
 
 </div>
 
@@ -30021,6 +29624,7 @@ preloadStrategy?: 'modulepreload' | 'preload-js' | 'preload-mjs';
 
 SvelteKit will preload the JavaScript modules needed for the initial page to avoid import 'waterfalls', resulting in faster application startup. There
 are three strategies with different trade-offs:
+
 - `modulepreload` - uses `<link rel="modulepreload">`. This delivers the best results in Chromium-based browsers, in Firefox 115+, and Safari 17+. It is ignored in older browsers.
 - `preload-js` - uses `<link rel="preload">`. Prevents waterfalls in Chromium and Safari, but Chromium will parse each module twice (once as a script, once as a module). Causes modules to be requested twice in Firefox. This is a good setting if you want to maximise performance for users on iOS devices at the cost of a very slight degradation for Chromium users.
 - `preload-mjs` - uses `<link rel="preload">` but with the `.mjs` extension which prevents double-parsing in Chromium. Some static webservers will fail to serve .mjs files with a `Content-Type: application/javascript` header, which will cause your application to break. If that doesn't apply to you, this is the option that will deliver the best performance for the largest number of users, until `modulepreload` is more widely supported.
@@ -30044,6 +29648,7 @@ bundleStrategy?: 'split' | 'single' | 'inline';
 </div>
 
 The bundle strategy option affects how your app's JavaScript and CSS files are loaded.
+
 - If `'split'`, splits the app up into multiple .js/.css files so that they are loaded lazily as the user navigates around the app. This is the default, and is recommended for most scenarios.
 - If `'single'`, creates just one .js bundle and one .css file containing code for the entire app.
 - If `'inline'`, inlines all JavaScript and CSS of the entire app into the HTML. The result is usable without a server (i.e. you can just open the file in your browser).
@@ -30055,28 +29660,28 @@ If you want to inline your assets, you'll need to set Vite's [`build.assetsInlin
 ```js
 // @errors: 7031
 /// file: vite.config.js
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { sveltekit } from '@sveltejs/kit/vite'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
-	plugins: [sveltekit()],
-	build: {
-		// inline all imported assets
-		assetsInlineLimit: Infinity
-	}
-});
+  plugins: [sveltekit()],
+  build: {
+    // inline all imported assets
+    assetsInlineLimit: Infinity
+  }
+})
 ```
 
 ```svelte
-/// file: src/routes/+layout.svelte
 <script>
-	// import the asset through Vite
-	import favicon from './favicon.png';
+  // import the asset through Vite
+  import favicon from './favicon.png'
 </script>
 
+/// file: src/routes/+layout.svelte
 <svelte:head>
-	<!-- this asset will be inlined as a base64 URL -->
-	<link rel="icon" href={favicon} />
+  <!-- this asset will be inlined as a base64 URL -->
+  <link rel="icon" href={favicon} />
 </svelte:head>
 ```
 
@@ -30089,11 +29694,7 @@ export default defineConfig({
 
 <div class="ts-block-property-bullets">
 
-
-
 </div>
-
-
 
 <div class="ts-block-property-children">
 
@@ -30171,8 +29772,6 @@ In 1.0, `undefined` was a valid value, which was set by default. In that case, i
 
 <div class="ts-block-property-bullets">
 
-
-
 </div>
 
 See [Prerendering](/docs/kit/page-options#prerender).
@@ -30232,7 +29831,7 @@ entries?: Array<'*' | `/${string}`>;
 
 </div>
 
-An array of pages to prerender, or start crawling from (if `crawl: true`). The `*` string includes all routes containing no required `[parameters]`  with optional parameters included as being empty (since SvelteKit doesn't know what value any parameters should have).
+An array of pages to prerender, or start crawling from (if `crawl: true`). The `*` string includes all routes containing no required `[parameters]` with optional parameters included as being empty (since SvelteKit doesn't know what value any parameters should have).
 
 </div>
 </div>
@@ -30264,20 +29863,20 @@ How to respond to HTTP errors encountered while prerendering the app.
 /// file: svelte.config.js
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	kit: {
-		prerender: {
-			handleHttpError: ({ path, referrer, message }) => {
-				// ignore deliberate link to shiny 404 page
-				if (path === '/not-found' && referrer === '/blog/how-we-built-our-404-page') {
-					return;
-				}
+  kit: {
+    prerender: {
+      handleHttpError: ({ path, referrer, message }) => {
+        // ignore deliberate link to shiny 404 page
+        if (path === '/not-found' && referrer === '/blog/how-we-built-our-404-page') {
+          return
+        }
 
-				// otherwise fail the build
-				throw new Error(message);
-			}
-		}
-	}
-};
+        // otherwise fail the build
+        throw new Error(message)
+      }
+    }
+  }
+}
 ```
 
 </div>
@@ -30386,11 +29985,7 @@ The value of `url.origin` during prerendering; useful if it is included in rende
 
 <div class="ts-block-property-bullets">
 
-
-
 </div>
-
-
 
 <div class="ts-block-property-children">
 
@@ -30411,9 +30006,10 @@ type?: 'pathname' | 'hash';
 </div>
 
 What type of client-side router to use.
+
 - `'pathname'` is the default and means the current URL pathname determines the route
 - `'hash'` means the route is determined by `location.hash`. In this case, SSR and prerendering are disabled. This is only recommended if `pathname` is not an option, for example because you don't control the webserver where your app is deployed.
-	It comes with some caveats: you can't use server-side rendering (or indeed any server logic), and you have to make sure that the links in your app all start with #/, or they won't work. Beyond that, everything works exactly like a normal SvelteKit app.
+  It comes with some caveats: you can't use server-side rendering (or indeed any server logic), and you have to make sure that the links in your app all start with #/, or they won't work. Beyond that, everything works exactly like a normal SvelteKit app.
 
 </div>
 </div>
@@ -30442,6 +30038,7 @@ loaded and parsed before the first navigation can happen, which may have an impa
 
 Alternatively, SvelteKit can determine the route on the server. This means that for every navigation to a path that has not yet been visited, the server will be asked to determine the route.
 This has several advantages:
+
 - The client does not need to load the routing manifest upfront, which can lead to faster initial page loads
 - The list of routes is hidden from public view
 - The server has an opportunity to intercept each navigation (for example through a middleware), enabling (for example) A/B testing opaque to SvelteKit
@@ -30459,15 +30056,9 @@ The drawback is that for unvisited paths, resolution will take slightly longer (
 
 <div class="ts-block-property-bullets">
 
-
-
 </div>
 
-
-
 <div class="ts-block-property-children">
-
-
 
 </div>
 
@@ -30475,11 +30066,7 @@ The drawback is that for unvisited paths, resolution will take slightly longer (
 
 <div class="ts-block-property-bullets">
 
-
-
 </div>
-
-
 
 <div class="ts-block-property-children">
 
@@ -30513,25 +30100,24 @@ Note that any paths configured here should be relative to the generated config f
 
 <div class="ts-block-property-bullets">
 
-
-
 </div>
 
 Client-side navigation can be buggy if you deploy a new version of your app while people are using it. If the code for the new page is already loaded, it may have stale content; if it isn't, the app's route manifest may point to a JavaScript file that no longer exists.
 SvelteKit helps you solve this problem through version management.
 If SvelteKit encounters an error while loading the page and detects that a new version has been deployed (using the `name` specified here, which defaults to a timestamp of the build) it will fall back to traditional full-page navigation.
 Not all navigations will result in an error though, for example if the JavaScript for the next page is already loaded. If you still want to force a full-page navigation in these cases, use techniques such as setting the `pollInterval` and then using `beforeNavigate`:
+
 ```html
 /// file: +layout.svelte
 <script>
-	import { beforeNavigate } from '$app/navigation';
-	import { updated } from '$app/state';
+  import { beforeNavigate } from '$app/navigation'
+  import { updated } from '$app/state'
 
-	beforeNavigate(({ willUnload, to }) => {
-		if (updated.current && !willUnload && to?.url) {
-			location.href = to.url.href;
-		}
-	});
+  beforeNavigate(({ willUnload, to }) => {
+    if (updated.current && !willUnload && to?.url) {
+      location.href = to.url.href
+    }
+  })
 </script>
 ```
 
@@ -30555,15 +30141,15 @@ For example, to use the current commit hash, you could do use `git rev-parse HEA
 ```js
 // @errors: 7031
 /// file: svelte.config.js
-import * as child_process from 'node:child_process';
+import * as child_process from 'node:child_process'
 
 export default {
-	kit: {
-		version: {
-			name: child_process.execSync('git rev-parse HEAD').toString().trim()
-		}
-	}
-};
+  kit: {
+    version: {
+      name: child_process.execSync('git rev-parse HEAD').toString().trim()
+    }
+  }
+}
 ```
 
 </div>
@@ -30619,7 +30205,7 @@ The `RequestHandler` and `Load` types both accept a `Params` argument allowing y
     baz: string
   }>} */
 export async function GET({ params }) {
-	// ...
+  // ...
 }
 ```
 
@@ -30630,16 +30216,16 @@ To solve this problem, SvelteKit generates `.d.ts` files for each of your endpoi
 ```ts
 /// file: .svelte-kit/types/src/routes/[foo]/[bar]/[baz]/$types.d.ts
 /// link: true
-import type * as Kit from '@sveltejs/kit';
+import type * as Kit from '@sveltejs/kit'
 
 type RouteParams = {
-	foo: string;
-	bar: string;
-	baz: string;
-};
+  foo: string
+  bar: string
+  baz: string
+}
 
-export type RequestHandler = Kit.RequestHandler<RouteParams>;
-export type PageLoad = Kit.Load<RouteParams>;
+export type RequestHandler = Kit.RequestHandler<RouteParams>
+export type PageLoad = Kit.Load<RouteParams>
 ```
 
 These files can be imported into your endpoints and pages as siblings, thanks to the [`rootDirs`](https://www.typescriptlang.org/tsconfig#rootDirs) option in your TypeScript configuration:
@@ -30695,29 +30281,31 @@ Starting with version 2.16.0, two additional helper types are provided: `PagePro
 ```svelte
 <!--- file: src/routes/+page.svelte --->
 <script>
-	/** @type {import('./$types').PageProps} */
-	let { data, form } = $props();
+  /** @type {import('./$types').PageProps} */
+  let { data, form } = $props()
 </script>
 ```
 
 > [!LEGACY]
 > Before 2.16.0:
+>
 > ```svelte
 > <!--- file: src/routes/+page.svelte --->
 > <script>
-> 	/** @type {{ data: import('./$types').PageData, form: import('./$types').ActionData }} */
-> 	let { data, form } = $props();
+>   /** @type {{ data: import('./$types').PageData, form: import('./$types').ActionData }} */
+>   let { data, form } = $props()
 > </script>
 > ```
 >
 > Using Svelte 4:
+>
 > ```svelte
 > <!--- file: src/routes/+page.svelte --->
 > <script>
 >   /** @type {import('./$types').PageData} */
->   export let data;
+>   export let data
 >   /** @type {import('./$types').ActionData} */
->   export let form;
+>   export let form
 > </script>
 > ```
 
@@ -30732,35 +30320,35 @@ The generated `.svelte-kit/tsconfig.json` file contains a mixture of options. So
 ```json
 /// file: .svelte-kit/tsconfig.json
 {
-	"compilerOptions": {
-		"paths": {
-			"$lib": ["../src/lib"],
-			"$lib/*": ["../src/lib/*"]
-		},
-		"rootDirs": ["..", "./types"]
-	},
-	"include": [
-		"ambient.d.ts",
-		"non-ambient.d.ts",
-		"./types/**/$types.d.ts",
-		"../vite.config.js",
-		"../vite.config.ts",
-		"../src/**/*.js",
-		"../src/**/*.ts",
-		"../src/**/*.svelte",
-		"../tests/**/*.js",
-		"../tests/**/*.ts",
-		"../tests/**/*.svelte"
-	],
-	"exclude": [
-		"../node_modules/**",
-		"../src/service-worker.js",
-		"../src/service-worker/**/*.js",
-		"../src/service-worker.ts",
-		"../src/service-worker/**/*.ts",
-		"../src/service-worker.d.ts",
-		"../src/service-worker/**/*.d.ts"
-	]
+  "compilerOptions": {
+    "paths": {
+      "$lib": ["../src/lib"],
+      "$lib/*": ["../src/lib/*"]
+    },
+    "rootDirs": ["..", "./types"]
+  },
+  "include": [
+    "ambient.d.ts",
+    "non-ambient.d.ts",
+    "./types/**/$types.d.ts",
+    "../vite.config.js",
+    "../vite.config.ts",
+    "../src/**/*.js",
+    "../src/**/*.ts",
+    "../src/**/*.svelte",
+    "../tests/**/*.js",
+    "../tests/**/*.ts",
+    "../tests/**/*.svelte"
+  ],
+  "exclude": [
+    "../node_modules/**",
+    "../src/service-worker.js",
+    "../src/service-worker/**/*.js",
+    "../src/service-worker.ts",
+    "../src/service-worker/**/*.ts",
+    "../src/service-worker.d.ts",
+    "../src/service-worker/**/*.d.ts"
+  ]
 }
 ```
 
@@ -30769,28 +30357,28 @@ Others are required for SvelteKit to work properly, and should also be left unto
 ```json
 /// file: .svelte-kit/tsconfig.json
 {
-	"compilerOptions": {
-		// this ensures that types are explicitly
-		// imported with `import type`, which is
-		// necessary as Svelte/Vite cannot
-		// otherwise compile components correctly
-		"verbatimModuleSyntax": true,
+  "compilerOptions": {
+    // this ensures that types are explicitly
+    // imported with `import type`, which is
+    // necessary as Svelte/Vite cannot
+    // otherwise compile components correctly
+    "verbatimModuleSyntax": true,
 
-		// Vite compiles one TypeScript module
-		// at a time, rather than compiling
-		// the entire module graph
-		"isolatedModules": true,
+    // Vite compiles one TypeScript module
+    // at a time, rather than compiling
+    // the entire module graph
+    "isolatedModules": true,
 
-		// Tell TS it's used only for type-checking
-		"noEmit": true,
+    // Tell TS it's used only for type-checking
+    "noEmit": true,
 
-		// This ensures both `vite build`
-		// and `svelte-package` work correctly
-		"lib": ["esnext", "DOM", "DOM.Iterable"],
-		"moduleResolution": "bundler",
-		"module": "esnext",
-		"target": "esnext"
-	}
+    // This ensures both `vite build`
+    // and `svelte-package` work correctly
+    "lib": ["esnext", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "target": "esnext"
+  }
 }
 ```
 
@@ -30879,7 +30467,6 @@ interface Platform {}
 
 </div>
 # Start of the Svelte CLI documentation
-
 
 # Overview
 
@@ -31108,6 +30695,7 @@ npx sv check --compiler-warnings "css_unused_selector:ignore,a11y_missing_attrib
 A quoted, comma-separated list of sources that should run diagnostics on your code. By default, all are active:
 
 <!-- TODO would be nice to have a clearer definition of what these are -->
+
 - `js` (includes TypeScript)
 - `svelte`
 - `css`
@@ -31197,6 +30785,7 @@ npx sv migrate
 ```
 
 You can also specify a migration directly via the CLI:
+
 ```sh
 npx sv migrate [migration]
 ```
@@ -31248,14 +30837,14 @@ You can also prevent the web server from issuing a notice regarding the incoming
 
 ```js
 /// file: src/hooks.server.js
-import { dev } from '$app/environment';
+import { dev } from '$app/environment'
 
 export function handle({ event, resolve }) {
-	if (dev && event.url.pathname === '/.well-known/appspecific/com.chrome.devtools.json') {
-		return new Response(undefined, { status: 404 });
-	}
+  if (dev && event.url.pathname === '/.well-known/appspecific/com.chrome.devtools.json') {
+    return new Response(undefined, { status: 404 })
+  }
 
-	return resolve(event);
+  return resolve(event)
 }
 ```
 
