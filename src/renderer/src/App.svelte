@@ -386,12 +386,23 @@
 
   function handleContextMenu(event: MouseEvent): void {
     event.preventDefault()
-    // Check if the right-click was on an object
-    const target = fabCanvas?.findTarget(event, false)
+    if (!fabCanvas) return // Ensure canvas is available
+
+    const target = fabCanvas.findTarget(event, false)
     if (target) {
+      // If the right-clicked object is not already part of the active selection,
+      // clear the current selection and select the new target.
+      if (!target.isActive()) {
+        fabCanvas.discardActiveObject()
+        fabCanvas.setActiveObject(target)
+        fabCanvas.requestRenderAll()
+      }
       contextMenuPosition = { x: event.clientX, y: event.clientY }
       contextMenuVisible = true
     } else {
+      // If right-clicking on the empty canvas, clear selection and hide menu
+      fabCanvas.discardActiveObject()
+      fabCanvas.requestRenderAll()
       contextMenuVisible = false
     }
   }
