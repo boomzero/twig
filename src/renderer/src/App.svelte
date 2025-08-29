@@ -191,9 +191,7 @@
       if (activeObject) {
         const selectedObjectIds =
           activeObject.type === 'activeselection'
-            ? (activeObject as ActiveSelection)
-                .getObjects()
-                .map((o) => (o as DeckFabricObject).id!)
+            ? (activeObject as ActiveSelection).getObjects().map((o) => (o as DeckFabricObject).id!)
             : [(activeObject as DeckFabricObject).id!]
 
         selectionStateToRestore = {
