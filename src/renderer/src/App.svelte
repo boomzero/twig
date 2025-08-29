@@ -388,11 +388,11 @@
     event.preventDefault()
     if (!fabCanvas) return // Ensure canvas is available
 
-    const target = fabCanvas.findTarget(event, false)
+    const target = fabCanvas.findTarget(event)
     if (target) {
       // If the right-clicked object is not already part of the active selection,
       // clear the current selection and select the new target.
-      if (!target.isActive()) {
+      if (!fabCanvas.getActiveObjects().includes(target)) {
         fabCanvas.discardActiveObject()
         fabCanvas.setActiveObject(target)
         fabCanvas.requestRenderAll()
@@ -414,7 +414,7 @@
 
 <svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
 
-<div class="flex flex-col h-screen font-sans" oncontextmenu={handleContextMenu}>
+<div class="flex flex-col h-screen font-sans" oncontextmenu={handleContextMenu} role="application">
   {#if contextMenuVisible}
     <ContextMenu
       x={contextMenuPosition.x}
