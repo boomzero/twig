@@ -8,12 +8,12 @@
     util,
     BaseFabricObject
   } from 'fabric'
-  import { appState, history } from './lib/state.svelte'
+  import { appState } from './lib/state.svelte'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
-  import { PressedKeys } from 'runed'
+  import { PressedKeys, StateHistory } from 'runed'
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
@@ -30,6 +30,17 @@
   let contextMenuPosition = $state({ x: 0, y: 0 })
 
   type DeckFabricObject = FabricObject & { id?: string }
+
+  function deepClone<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj))
+  }
+
+  const history = new StateHistory(
+    () => deepClone(appState.presentation),
+    (p) => {
+      appState.presentation = p
+    }
+  )
 
   //Set the default origin for all Fabric objects to center
   //Ref https://github.com/fabricjs/fabric.js/discussions/9736

@@ -32,8 +32,6 @@ export interface SelectionState {
   selectionEnd?: number
 }
 
-import { StateHistory } from 'runed'
-
 // Use $state to create a reactive object for our presentation
 export const appState = $state({
   presentation: {
@@ -47,14 +45,3 @@ export const appState = $state({
   currentFilePath: null as string | null,
   selectedObjectId: null as string | null
 })
-
-function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj))
-}
-
-export const history = new StateHistory(
-  () => deepClone(appState.presentation),
-  (p) => {
-    appState.presentation = p
-  }
-)
