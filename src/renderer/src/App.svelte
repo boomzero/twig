@@ -13,6 +13,7 @@
   import { v4 as uuid_v4 } from 'uuid'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
+  import { PressedKeys } from 'runed'
 
   let canvasEl: HTMLCanvasElement
   let fabCanvas: Canvas | undefined
@@ -23,6 +24,7 @@
   let isSelectionUnderlined = $state(false)
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
+  const keys = new PressedKeys()
 
   let contextMenuVisible = $state(false)
   let contextMenuPosition = $state({ x: 0, y: 0 })
@@ -245,6 +247,7 @@
       updateStateFromObject(activeTextObject)
     }
   }
+
   function toggleBold(): void {
     console.log('toggleBold called')
     //The logic is now simpler: just toggle based on our reactive state variable
@@ -343,6 +346,10 @@
       await handleSaveAs()
     }
   }
+
+  keys.onKeys(['meta', 's'], () => {
+    handleSave()
+  })
 
   async function handleSaveAs(): Promise<void> {
     // Convert the reactive state to a plain JavaScript object
@@ -478,20 +485,23 @@
         onclick={toggleBold}
         class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionBold}
-        class:text-white={isSelectionBold}>B</button
-      >
+        class:text-white={isSelectionBold}
+      >B
+      </button>
       <button
         onclick={toggleItalic}
         class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionItalic}
-        class:text-white={isSelectionItalic}>I</button
-      >
+        class:text-white={isSelectionItalic}
+      >I
+      </button>
       <button
         onclick={toggleUnderline}
         class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md border border-gray-300 mr-1"
         class:bg-indigo-200={isSelectionUnderlined}
-        class:text-white={isSelectionUnderlined}>U</button
-      >
+        class:text-white={isSelectionUnderlined}
+      >U
+      </button>
       <input
         type="color"
         oninput={changeSelectionColor}

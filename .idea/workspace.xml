@@ -4,8 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="feat: rich text">
+    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="Update rect position">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/App.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/App.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -23,7 +24,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="feat/delete-elements" />
+        <entry key="$PROJECT_DIR$" value="feature/select-all" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -321,7 +322,15 @@
       <option name="project" value="LOCAL" />
       <updated>1754276239840</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="Update rect position">
+      <option name="closed" value="true" />
+      <created>1756452155071</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1756452155071</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -352,14 +361,16 @@
     <MESSAGE value="make eslint happy" />
     <MESSAGE value="feat: store rotation" />
     <MESSAGE value="PropertiesPanel! And some bug fixes" />
-    <option name="LAST_COMMIT_MESSAGE" value="PropertiesPanel! And some bug fixes" />
+    <MESSAGE value="Fix formatting" />
+    <MESSAGE value="Update rect position" />
+    <option name="LAST_COMMIT_MESSAGE" value="Update rect position" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/renderer/src/App.svelte</url>
-          <line>156</line>
+          <line>158</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
