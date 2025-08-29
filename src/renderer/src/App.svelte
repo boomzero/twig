@@ -8,7 +8,7 @@
     util,
     BaseFabricObject
   } from 'fabric'
-  import { appState } from './lib/state.svelte'
+  import { appState, history } from './lib/state.svelte'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
@@ -104,6 +104,7 @@
       // Otherwise, it's a single object
       updateStateFromObject(target as DeckFabricObject)
     }
+    history.log()
   }
 
   function updateStateFromObject(obj: DeckFabricObject): void {
@@ -245,6 +246,7 @@
       handleTextSelectionChange()
       fabCanvas?.renderAll()
       updateStateFromObject(activeTextObject)
+      history.log()
     }
   }
 
@@ -298,6 +300,7 @@
       fill: '#333333'
     }
     appState.presentation.slides[0].elements.push(newText)
+    history.log()
   }
 
   function addRectangle(): void {
@@ -313,6 +316,7 @@
     }
 
     appState.presentation.slides[0].elements.push(newRect)
+    history.log()
   }
 
   function deleteSelectedObject(): void {
@@ -328,6 +332,7 @@
       currentSlide.elements = currentSlide.elements.filter((el) => !idsToDelete.includes(el.id))
       fabCanvas.discardActiveObject()
       // The reactive state change will trigger a re-render via the $effect
+      history.log()
     }
   }
 
@@ -374,6 +379,7 @@
         if (result.path) {
           appState.currentFilePath = result.path
         }
+        history.log()
       } catch (error) {
         console.error('Failed to parse presentation data:', error)
       }
@@ -383,7 +389,19 @@
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
-    if ((event.metaKey || event.ctrlKey) && event.key === 'a') {
+    const isCmdOrCtrl = event.metaKey || event.ctrlKey
+
+    if (isCmdOrCtrl && event.key === 'z') {
+      event.preventDefault()
+      if (event.shiftKey) {
+        history.redo()
+      } else {
+        history.undo()
+      }
+      return
+    }
+
+    if (isCmdOrCtrl && event.key === 'a') {
       event.preventDefault() // Prevent the browser's default select-all behavior
       if (fabCanvas) {
         // Guard against canvas not being initialized
@@ -478,6 +496,21 @@
       class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
     >
       Open
+    </button>
+    <div class="h-6 w-px bg-gray-300 mx-2"></div>
+    <button
+      onclick={history.undo}
+      disabled={!history.canUndo}
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      Undo
+    </button>
+    <button
+      onclick={history.redo}
+      disabled={!history.canRedo}
+      class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      Redo
     </button>
     {#if showRichTextControls}
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
