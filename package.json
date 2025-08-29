@@ -18,7 +18,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "test": "vitest"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -37,6 +38,8 @@
     "@electron-toolkit/eslint-config-ts": "^3.0.0",
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/svelte": "^5.2.8",
     "@types/node": "^22.14.1",
     "@types/uuid": "^10.0.0",
     "electron": "^35.1.5",
@@ -45,11 +48,13 @@
     "electron-vite": "^3.1.0",
     "eslint": "^9.24.0",
     "eslint-plugin-svelte": "^3.5.1",
+    "jsdom": "^26.1.0",
     "prettier": "^3.5.3",
     "prettier-plugin-svelte": "^3.3.3",
     "svelte": "^5.26.1",
     "svelte-check": "^4.1.5",
     "typescript": "^5.8.3",
-    "vite": "^6.2.6"
+    "vite": "^6.2.6",
+    "vitest": "^3.2.4"
   }
 }
