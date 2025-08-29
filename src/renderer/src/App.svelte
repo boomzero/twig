@@ -376,6 +376,20 @@
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'a') {
+      event.preventDefault() // Prevent the browser's default select-all behavior
+      if (fabCanvas) {
+        // Guard against canvas not being initialized
+        const allObjects = fabCanvas.getObjects()
+        if (allObjects.length > 0) {
+          const selection = new ActiveSelection(allObjects, { canvas: fabCanvas })
+          fabCanvas.setActiveObject(selection)
+          fabCanvas.renderAll()
+        }
+      }
+      return // Exit the function after handling select-all
+    }
+
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Check if we're currently editing a text object. If so, don't delete the object.
       if (activeTextObject && activeTextObject.isEditing) {
