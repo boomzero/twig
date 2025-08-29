@@ -301,8 +301,8 @@
     const newRect: DeckElement = {
       type: 'rect',
       id: `rect_${uuid_v4()}`,
-      x: 50,
-      y: 50,
+      x: 100,
+      y: 100,
       width: 150,
       height: 100,
       angle: 0,
