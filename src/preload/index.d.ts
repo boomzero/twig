@@ -12,6 +12,9 @@ declare global {
         presentationJSON: string
       ) => Promise<{ success: boolean; path?: string; error?: string }>
       openDeck: () => Promise<{ success: boolean; data?: string; error?: string; path?: string }>
+      onUndo: (callback: () => void) => () => void
+      onRedo: (callback: () => void) => () => void
+      onSave: (callback: () => void) => () => void
     }
   }
 }

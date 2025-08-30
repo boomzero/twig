@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -52,6 +52,57 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  // Define the application menu
+  const menuTemplate: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
+    {
+      label: 'File',
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Save',
+          accelerator: 'CmdOrCtrl+S',
+          click: (menuItem, browserWindow) => {
+            browserWindow?.webContents.send('save')
+          }
+        },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        {
+          label: 'Undo',
+          accelerator: 'CmdOrCtrl+Z',
+          click: (menuItem, browserWindow) => {
+            browserWindow?.webContents.send('undo')
+          }
+        },
+        {
+          label: 'Redo',
+          accelerator: 'CmdOrCtrl+Shift+Z',
+          click: (menuItem, browserWindow) => {
+            browserWindow?.webContents.send('redo')
+          }
+        },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }]
+    }
+  ]
+
+  const menu = Menu.buildFromTemplate(menuTemplate)
+  Menu.setApplicationMenu(menu)
 
   createWindow()
 

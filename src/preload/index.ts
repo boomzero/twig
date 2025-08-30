@@ -6,7 +6,22 @@ const api = {
   saveDeck: (presentationJSON: string, filePath: string) =>
     ipcRenderer.invoke('save-deck', presentationJSON, filePath),
   saveAsDeck: (presentationJSON: string) => ipcRenderer.invoke('save-as-deck', presentationJSON),
-  openDeck: () => ipcRenderer.invoke('open-deck')
+  openDeck: () => ipcRenderer.invoke('open-deck'),
+  onUndo: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('undo', listener)
+    return () => ipcRenderer.removeListener('undo', listener)
+  },
+  onRedo: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('redo', listener)
+    return () => ipcRenderer.removeListener('redo', listener)
+  },
+  onSave: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('save', listener)
+    return () => ipcRenderer.removeListener('save', listener)
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

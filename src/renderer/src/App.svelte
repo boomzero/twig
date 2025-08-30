@@ -13,6 +13,7 @@
   import { v4 as uuid_v4 } from 'uuid'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
+  import { onMount } from 'svelte'
   import { PressedKeys, StateHistory } from 'runed'
 
   let canvasEl: HTMLCanvasElement
@@ -41,6 +42,18 @@
       appState.presentation = p
     }
   )
+
+  onMount(() => {
+    const unsubscribeUndo = window.api.onUndo(history.undo)
+    const unsubscribeRedo = window.api.onRedo(history.redo)
+    const unsubscribeSave = window.api.onSave(handleSave)
+
+    return () => {
+      unsubscribeUndo()
+      unsubscribeRedo()
+      unsubscribeSave()
+    }
+  })
 
   //Set the default origin for all Fabric objects to center
   //Ref https://github.com/fabricjs/fabric.js/discussions/9736
@@ -358,9 +371,6 @@
     }
   }
 
-  keys.onKeys(['meta', 's'], () => {
-    handleSave()
-  })
 
   async function handleSaveAs(): Promise<void> {
     // Convert the reactive state to a plain JavaScript object
@@ -395,16 +405,6 @@
 
   function handleKeyDown(event: KeyboardEvent): void {
     const isCmdOrCtrl = event.metaKey || event.ctrlKey
-
-    if (isCmdOrCtrl && event.key === 'z') {
-      event.preventDefault()
-      if (event.shiftKey) {
-        history.redo()
-      } else {
-        history.undo()
-      }
-      return
-    }
 
     if (isCmdOrCtrl && event.key === 'a') {
       event.preventDefault() // Prevent the browser's default select-all behavior
