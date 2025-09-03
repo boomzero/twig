@@ -37,9 +37,14 @@
   }
 
   const history = new StateHistory(
-    () => deepClone(appState.presentation),
-    (p) => {
-      appState.presentation = p
+    () =>
+      deepClone({
+        presentation: appState.presentation,
+        selectedObjectId: appState.selectedObjectId
+      }),
+    (state) => {
+      appState.presentation = state.presentation
+      appState.selectedObjectId = state.selectedObjectId
     }
   )
 
