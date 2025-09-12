@@ -28,7 +28,7 @@
           type="number"
           id="x"
           bind:value={selectedObject.x}
-          oninput={() => handleUpdate({ x: selectedObject.x })}
+          oninput={(e) => handleUpdate({ x: (e.target as HTMLInputElement).valueAsNumber })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -38,7 +38,7 @@
           type="number"
           id="y"
           bind:value={selectedObject.y}
-          oninput={() => handleUpdate({ y: selectedObject.y })}
+          oninput={(e) => handleUpdate({ y: (e.target as HTMLInputElement).valueAsNumber })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -48,7 +48,7 @@
           type="number"
           id="width"
           bind:value={selectedObject.width}
-          oninput={() => handleUpdate({ width: selectedObject.width })}
+          oninput={(e) => handleUpdate({ width: (e.target as HTMLInputElement).valueAsNumber })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -58,7 +58,7 @@
           type="number"
           id="height"
           bind:value={selectedObject.height}
-          oninput={() => handleUpdate({ height: selectedObject.height })}
+          oninput={(e) => handleUpdate({ height: (e.target as HTMLInputElement).valueAsNumber })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -68,7 +68,7 @@
           type="number"
           id="angle"
           bind:value={selectedObject.angle}
-          oninput={() => handleUpdate({ angle: selectedObject.angle })}
+          oninput={(e) => handleUpdate({ angle: (e.target as HTMLInputElement).valueAsNumber })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -78,7 +78,7 @@
           type="color"
           id="fill"
           bind:value={selectedObject.fill}
-          oninput={() => handleUpdate({ fill: selectedObject.fill })}
+          oninput={(e) => handleUpdate({ fill: (e.target as HTMLInputElement).value })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
       </div>
