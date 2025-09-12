@@ -2,7 +2,7 @@
   import { appState } from '../lib/state.svelte'
 
   const selectedObject = $derived(
-    appState.presentation.slides[0]?.elements.find((el) => el.id === appState.selectedObjectId)
+    appState.activeSlide?.elements.find((el) => el.id === appState.selectedObjectId)
   )
 </script>
 
