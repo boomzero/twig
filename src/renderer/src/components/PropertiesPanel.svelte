@@ -1,9 +1,20 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
+  import type { DeckElement } from '../../../types'
 
   const selectedObject = $derived(
     appState.activeSlide?.elements.find((el) => el.id === appState.selectedObjectId)
   )
+
+  let debounceTimer: ReturnType<typeof setTimeout>
+  function handleUpdate(updates: Partial<DeckElement>) {
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      if (selectedObject) {
+        window.api.updateElement(selectedObject.id, updates)
+      }
+    }, 300)
+  }
 </script>
 
 <div class="p-4 bg-gray-50 border-l border-gray-300 basis-64">
@@ -17,6 +28,7 @@
           type="number"
           id="x"
           bind:value={selectedObject.x}
+          oninput={() => handleUpdate({ x: selectedObject.x })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -26,6 +38,7 @@
           type="number"
           id="y"
           bind:value={selectedObject.y}
+          oninput={() => handleUpdate({ y: selectedObject.y })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -35,6 +48,7 @@
           type="number"
           id="width"
           bind:value={selectedObject.width}
+          oninput={() => handleUpdate({ width: selectedObject.width })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -44,6 +58,7 @@
           type="number"
           id="height"
           bind:value={selectedObject.height}
+          oninput={() => handleUpdate({ height: selectedObject.height })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -53,6 +68,7 @@
           type="number"
           id="angle"
           bind:value={selectedObject.angle}
+          oninput={() => handleUpdate({ angle: selectedObject.angle })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -62,6 +78,7 @@
           type="color"
           id="fill"
           bind:value={selectedObject.fill}
+          oninput={() => handleUpdate({ fill: selectedObject.fill })}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
       </div>
