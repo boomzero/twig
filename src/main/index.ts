@@ -2,10 +2,34 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import AdmZip from 'adm-zip'
+import type { Database } from 'better-sqlite3'
+import {
+  openDb,
+  initDb,
+  getSlides,
+  getElementsForSlide,
+  createSlide,
+  createElement,
+  updateElement,
+  deleteElements,
+  deleteSlide,
+  saveNewPresentation
+} from './db'
+import type { Presentation, DeckElement } from '../types'
+
+let activeDb: Database | null = null
+let activeDbPath: string | null = null
+
+function closeActiveDb(): void {
+  if (activeDb) {
+    activeDb.close()
+    activeDb = null
+    activeDbPath = null
+    console.log('Active database closed.')
+  }
+}
 
 function createWindow(): void {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 670,
@@ -22,13 +46,15 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  mainWindow.on('close', () => {
+    closeActiveDb()
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -36,109 +62,44 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
-
   createWindow()
 
   app.on('activate', function () {
-    // On macOS, it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
+  // The 'close' event on the window will handle closing the DB.
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+// IPC Handlers for granular database operations
 
-// Handler to save a .deck file and the user gets to choose the path
-ipcMain.handle('save-as-deck', async (_event, presentationJSON: string) => {
-  const { filePath } = await dialog.showSaveDialog({
-    title: 'Save Deckhand Presentation',
-    defaultPath: 'presentation.deck',
-    filters: [{ name: 'Deckhand Files', extensions: ['deck'] }]
-  })
-  // noinspection DuplicatedCode
-  if (filePath) {
-    try {
-      const zip = new AdmZip()
-      // Add the presentation.json file to the root of the zip
-      zip.addFile('presentation.json', Buffer.from(presentationJSON))
-      // In the future, you would also add fonts and images here
-      zip.writeZip(filePath)
-      return { success: true, path: filePath }
-    } catch (error) {
-      console.error('Failed to save deck file:', error)
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
-      return { success: false, error: errorMessage }
-    }
-  }
-  return { success: false, error: 'Save was cancelled.' }
-})
-
-// Handler to save a .deck file, but we choose the path
-ipcMain.handle('save-deck', async (_event, presentationJSON: string, filePath: string) => {
-  // noinspection DuplicatedCode
-  if (filePath) {
-    try {
-      const zip = new AdmZip()
-      // Add the presentation.json file to the root of the zip
-      zip.addFile('presentation.json', Buffer.from(presentationJSON))
-      // In the future, you would also add fonts and images here
-      zip.writeZip(filePath)
-      return { success: true, path: filePath }
-    } catch (error) {
-      console.error('Failed to save deck file:', error)
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
-      return { success: false, error: errorMessage }
-    }
-  }
-  return { success: false, error: 'Save was cancelled.' }
-})
-
-// Handler to open a .deck file
 ipcMain.handle('open-deck', async () => {
   const { filePaths } = await dialog.showOpenDialog({
     title: 'Open Deckhand Presentation',
     properties: ['openFile'],
-    filters: [{ name: 'Deckhand Files', extensions: ['deck'] }]
+    filters: [{ name: 'Deckhand SQL Files', extensions: ['decksql'] }]
   })
 
   if (filePaths && filePaths.length > 0) {
     const filePath = filePaths[0]
     try {
-      const zip = new AdmZip(filePath)
-      const zipEntry = zip.getEntry('presentation.json')
-      if (zipEntry) {
-        const presentationJSON = zipEntry.getData().toString('utf8')
-        return { success: true, data: presentationJSON, path: filePath }
-      } else {
-        // noinspection ExceptionCaughtLocallyJS
-        throw new Error('presentation.json not found in the .deck file.')
-      }
+      closeActiveDb() // Close any previously opened database
+      activeDb = openDb(filePath)
+      activeDbPath = filePath
+      const slides = getSlides(activeDb)
+      return { success: true, data: { slides, filePath } }
     } catch (error) {
       console.error('Failed to open deck file:', error)
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
@@ -146,4 +107,109 @@ ipcMain.handle('open-deck', async () => {
     }
   }
   return { success: false, error: 'Open was cancelled.' }
+})
+
+ipcMain.handle('save-as', async (_event, presentation: Presentation | null) => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Save Deckhand Presentation',
+    defaultPath: 'presentation.decksql',
+    filters: [{ name: 'Deckhand SQL Files', extensions: ['decksql'] }]
+  })
+
+  if (!filePath) {
+    return { success: false, error: 'Save was cancelled.' }
+  }
+
+  try {
+    // Case 1: An existing file is open, and we are saving a copy.
+    if (activeDbPath && activeDb) {
+      activeDb.prepare(`VACUUM INTO ?`).run(filePath)
+    }
+    // Case 2: This is a new, unsaved presentation.
+    else if (presentation) {
+      const newDb = openDb(filePath)
+      initDb(newDb)
+      saveNewPresentation(newDb, presentation)
+      newDb.close() // Close connection after saving
+    } else {
+      throw new Error('Invalid state for Save As operation.')
+    }
+
+    // After saving, make the new file the active database.
+    closeActiveDb()
+    activeDb = openDb(filePath)
+    activeDbPath = filePath
+
+    return { success: true, path: filePath }
+  } catch (error) {
+    console.error('Failed to save deck file:', error)
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
+})
+
+ipcMain.handle('get-elements-for-slide', (_event, slideId: string) => {
+  if (!activeDb) return { success: false, error: 'No active database.' }
+  try {
+    const elements = getElementsForSlide(activeDb, slideId)
+    return { success: true, data: elements }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
+})
+
+ipcMain.handle('create-slide', (_event, id: string, slideNumber: number) => {
+  if (!activeDb) return { success: false, error: 'No active database.' }
+  try {
+    createSlide(activeDb, id, slideNumber)
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
+})
+
+ipcMain.handle('create-element', (_event, slideId: string, element: DeckElement) => {
+  if (!activeDb) return { success: false, error: 'No active database.' }
+  try {
+    createElement(activeDb, slideId, element)
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
+})
+
+ipcMain.handle('update-element', (_event, elementId: string, updates: Partial<DeckElement>) => {
+  if (!activeDb) return { success: false, error: 'No active database.' }
+  try {
+    updateElement(activeDb, elementId, updates)
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
+})
+
+ipcMain.handle('delete-elements', (_event, elementIds: string[]) => {
+  if (!activeDb) return { success: false, error: 'No active database.' }
+  try {
+    deleteElements(activeDb, elementIds)
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
+})
+
+ipcMain.handle('delete-slide', (_event, slideId: string) => {
+  if (!activeDb) return { success: false, error: 'No active database.' }
+  try {
+    deleteSlide(activeDb, slideId)
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+    return { success: false, error: errorMessage }
+  }
 })

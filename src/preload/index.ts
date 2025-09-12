@@ -1,12 +1,21 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { Presentation, DeckElement } from '../types'
 
 // Custom APIs for renderer
 const api = {
-  saveDeck: (presentationJSON: string, filePath: string) =>
-    ipcRenderer.invoke('save-deck', presentationJSON, filePath),
-  saveAsDeck: (presentationJSON: string) => ipcRenderer.invoke('save-as-deck', presentationJSON),
-  openDeck: () => ipcRenderer.invoke('open-deck')
+  openDeck: () => ipcRenderer.invoke('open-deck'),
+  saveAs: (presentation: Presentation | null) => ipcRenderer.invoke('save-as', presentation),
+  getElementsForSlide: (slideId: string) =>
+    ipcRenderer.invoke('get-elements-for-slide', slideId),
+  createSlide: (id: string, slideNumber: number) =>
+    ipcRenderer.invoke('create-slide', id, slideNumber),
+  createElement: (slideId: string, element: DeckElement) =>
+    ipcRenderer.invoke('create-element', slideId, element),
+  updateElement: (elementId: string, updates: Partial<DeckElement>) =>
+    ipcRenderer.invoke('update-element', elementId, updates),
+  deleteElements: (elementIds: string[]) => ipcRenderer.invoke('delete-elements', elementIds),
+  deleteSlide: (slideId: string) => ipcRenderer.invoke('delete-slide', slideId)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
