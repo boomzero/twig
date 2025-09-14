@@ -182,6 +182,7 @@ ipcMain.handle('create-element', (_event, slideId: string, element: DeckElement)
 })
 
 ipcMain.handle('update-element', (_event, elementId: string, updates: Partial<DeckElement>) => {
+  console.log(`[IPC] Received update for element ${elementId} with data:`, updates)
   if (!activeDb) return { success: false, error: 'No active database.' }
   try {
     updateElement(activeDb, elementId, updates)

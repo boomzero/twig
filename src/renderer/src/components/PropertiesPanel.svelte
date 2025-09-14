@@ -8,9 +8,11 @@
 
   let debounceTimer: ReturnType<typeof setTimeout>
   function handleUpdate(updates: Partial<DeckElement>) {
+    console.log('handleUpdate called with:', updates)
     clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       if (selectedObject) {
+        console.log(`Debounced: Firing update for ${selectedObject.id} with`, updates)
         window.api.updateElement(selectedObject.id, updates)
       }
     }, 300)
