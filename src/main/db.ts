@@ -124,8 +124,6 @@ export function updateElement(
 
   params.push(elementId)
   const sql = `UPDATE elements SET ${setClauses.join(', ')} WHERE id = ?`
-  console.log('[DB] Executing SQL:', sql)
-  console.log('[DB] With params:', params)
   db.prepare(sql).run(...params)
 }
 

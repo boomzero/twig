@@ -8,11 +8,9 @@
 
   let debounceTimer: ReturnType<typeof setTimeout>
   function handleUpdate(updates: Partial<DeckElement>) {
-    console.log('handleUpdate called with:', updates)
     clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       if (selectedObject) {
-        console.log(`Debounced: Firing update for ${selectedObject.id} with`, updates)
         window.api.updateElement(selectedObject.id, updates)
       }
     }, 300)
@@ -29,8 +27,12 @@
         <input
           type="number"
           id="x"
-          bind:value={selectedObject.x}
-          oninput={(e) => handleUpdate({ x: (e.target as HTMLInputElement).valueAsNumber })}
+          value={selectedObject.x}
+          oninput={(e) => {
+            const newValue = (e.target as HTMLInputElement).valueAsNumber
+            selectedObject.x = newValue
+            handleUpdate({ x: newValue })
+          }}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -39,8 +41,12 @@
         <input
           type="number"
           id="y"
-          bind:value={selectedObject.y}
-          oninput={(e) => handleUpdate({ y: (e.target as HTMLInputElement).valueAsNumber })}
+          value={selectedObject.y}
+          oninput={(e) => {
+            const newValue = (e.target as HTMLInputElement).valueAsNumber
+            selectedObject.y = newValue
+            handleUpdate({ y: newValue })
+          }}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -49,8 +55,12 @@
         <input
           type="number"
           id="width"
-          bind:value={selectedObject.width}
-          oninput={(e) => handleUpdate({ width: (e.target as HTMLInputElement).valueAsNumber })}
+          value={selectedObject.width}
+          oninput={(e) => {
+            const newValue = (e.target as HTMLInputElement).valueAsNumber
+            selectedObject.width = newValue
+            handleUpdate({ width: newValue })
+          }}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -59,8 +69,12 @@
         <input
           type="number"
           id="height"
-          bind:value={selectedObject.height}
-          oninput={(e) => handleUpdate({ height: (e.target as HTMLInputElement).valueAsNumber })}
+          value={selectedObject.height}
+          oninput={(e) => {
+            const newValue = (e.target as HTMLInputElement).valueAsNumber
+            selectedObject.height = newValue
+            handleUpdate({ height: newValue })
+          }}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -69,8 +83,12 @@
         <input
           type="number"
           id="angle"
-          bind:value={selectedObject.angle}
-          oninput={(e) => handleUpdate({ angle: (e.target as HTMLInputElement).valueAsNumber })}
+          value={selectedObject.angle}
+          oninput={(e) => {
+            const newValue = (e.target as HTMLInputElement).valueAsNumber
+            selectedObject.angle = newValue
+            handleUpdate({ angle: newValue })
+          }}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -79,8 +97,12 @@
         <input
           type="color"
           id="fill"
-          bind:value={selectedObject.fill}
-          oninput={(e) => handleUpdate({ fill: (e.target as HTMLInputElement).value })}
+          value={selectedObject.fill}
+          oninput={(e) => {
+            const newValue = (e.target as HTMLInputElement).value
+            selectedObject.fill = newValue
+            handleUpdate({ fill: newValue })
+          }}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
       </div>
