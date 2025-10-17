@@ -1,3 +1,15 @@
+<!--
+  Context Menu Component
+
+  Displays a right-click context menu at the specified position.
+  Currently supports delete operation for selected canvas objects.
+
+  Props:
+  - x: X coordinate for menu position
+  - y: Y coordinate for menu position
+  - onDelete: Callback function to execute when Delete is clicked
+-->
+
 <script lang="ts">
   export let x: number
   export let y: number

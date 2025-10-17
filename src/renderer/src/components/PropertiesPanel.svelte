@@ -1,8 +1,21 @@
+<!--
+  Properties Panel Component
+
+  Displays and allows editing of properties for the selected canvas object.
+  Shows position, size, rotation, color, and text-specific properties.
+
+  The panel automatically shows/hides based on whether an object is selected.
+  All changes are automatically synced to the application state and trigger
+  canvas re-renders.
+-->
+
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
 
+  // Reactively compute the currently selected object from app state
+  // This will automatically update when the selection changes
   const selectedObject = $derived(
-    appState.presentation.slides[0]?.elements.find((el) => el.id === appState.selectedObjectId)
+    appState.currentSlide?.elements.find((el) => el.id === appState.selectedObjectId)
   )
 </script>
 
@@ -10,6 +23,7 @@
   <h3 class="text-lg font-semibold mb-4">Properties</h3>
 
   {#if selectedObject}
+    <!-- Property controls for the selected object -->
     <div class="space-y-3">
       <div>
         <label for="x" class="block text-sm font-medium text-gray-600">X Position</label>
@@ -65,6 +79,18 @@
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
       </div>
+      {#if selectedObject.type === 'text'}
+        <!-- Text-specific properties -->
+        <div>
+          <label for="fontSize" class="block text-sm font-medium text-gray-600">Font Size</label>
+          <input
+            type="number"
+            id="fontSize"
+            bind:value={selectedObject.fontSize}
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          />
+        </div>
+      {/if}
     </div>
   {:else}
     <p class="text-sm text-gray-500">No object selected.</p>
