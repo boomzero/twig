@@ -88,16 +88,17 @@
   /**
    * Reactive effect that tracks changes to the current slide.
    * Marks the presentation as "dirty" (unsaved) when the slide is modified.
-   * Uses a flag to avoid marking as dirty during initial render.
+   * Tracks the last loaded slide ID to avoid marking as dirty when switching slides.
    */
-  let isInitialSlideLoad = true
+  let lastLoadedSlideId: string | null = null
   $effect(() => {
     if (appState.currentSlide) {
-      if (isInitialSlideLoad) {
-        isInitialSlideLoad = false
-        // Don't mark dirty on initial render
-      } else {
+      if (lastLoadedSlideId === appState.currentSlide.id) {
+        // Same slide reloading - mark as dirty (user made changes)
         appState.isDirty = true
+      } else {
+        // Different slide loaded - don't mark dirty (just switching slides)
+        lastLoadedSlideId = appState.currentSlide.id
       }
     }
   })
