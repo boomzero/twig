@@ -4,9 +4,20 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="Update rect position">
+    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="SQL update">
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_2025_8_29,_14_51_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_2025_8_29__14_51__Changes_.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_2025_8_29__15_16__Changes_.xml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/preload/index.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/preload/index.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/preload/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/preload/index.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/renderer/src/App.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/App.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/components/ContextMenu.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/components/ContextMenu.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/components/PropertiesPanel.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/components/PropertiesPanel.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/renderer/src/lib/state.svelte.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/lib/state.svelte.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -24,7 +35,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="feature/select-all" />
+        <entry key="$PROJECT_DIR$" value="main" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -62,7 +73,7 @@
     &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;sqlrew&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
@@ -78,7 +89,7 @@
     &quot;npm.typecheck.executor&quot;: &quot;Run&quot;,
     &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/chenqi/Desktop/OSS/Deckhand/node_modules/prettier&quot;,
     &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;settings.javascript.linters.eslint&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
     &quot;ts.external.directory.path&quot;: &quot;/Users/chenqi/Desktop/OSS/Deckhand/node_modules/typescript/lib&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
@@ -154,18 +165,18 @@
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="npm.svelte-check" />
+        <item itemvalue="npm.typecheck" />
         <item itemvalue="npm.build:mac" />
         <item itemvalue="npm.build" />
         <item itemvalue="npm.lint" />
-        <item itemvalue="npm.typecheck" />
-        <item itemvalue="npm.svelte-check" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-WS-252.23892.411" />
+        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-WS-252.26830.93" />
       </set>
     </attachedChunks>
   </component>
@@ -217,6 +228,22 @@
       <workItem from="1755749433689" duration="1134000" />
       <workItem from="1755767397084" duration="1516000" />
       <workItem from="1755783968236" duration="1299000" />
+      <workItem from="1758837314904" duration="597000" />
+      <workItem from="1758861324673" duration="6117000" />
+      <workItem from="1758880870184" duration="6409000" />
+      <workItem from="1758937641047" duration="10000" />
+      <workItem from="1759237917692" duration="2885000" />
+      <workItem from="1759310080927" duration="108000" />
+      <workItem from="1759500087193" duration="1505000" />
+      <workItem from="1759546999705" duration="25000" />
+      <workItem from="1759588172641" duration="950000" />
+      <workItem from="1759656716952" duration="2000" />
+      <workItem from="1759658274710" duration="1401000" />
+      <workItem from="1759830177511" duration="16000" />
+      <workItem from="1760189712429" duration="250000" />
+      <workItem from="1760189972874" duration="26000" />
+      <workItem from="1760190010342" duration="10118000" />
+      <workItem from="1760667127973" duration="13790000" />
     </task>
     <task id="LOCAL-00001" summary="init">
       <option name="closed" value="true" />
@@ -363,14 +390,15 @@
     <MESSAGE value="PropertiesPanel! And some bug fixes" />
     <MESSAGE value="Fix formatting" />
     <MESSAGE value="Update rect position" />
-    <option name="LAST_COMMIT_MESSAGE" value="Update rect position" />
+    <MESSAGE value="SQL update" />
+    <option name="LAST_COMMIT_MESSAGE" value="SQL update" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/renderer/src/App.svelte</url>
-          <line>158</line>
+          <line>345</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
