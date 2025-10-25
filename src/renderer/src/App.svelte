@@ -55,6 +55,7 @@
   let isSelectionBold = $state(false)
   let isSelectionItalic = $state(false)
   let isSelectionUnderlined = $state(false)
+  let selectionFontSize = $state(40)
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
 
@@ -373,6 +374,7 @@
     isSelectionBold = false
     isSelectionItalic = false
     isSelectionUnderlined = false
+    selectionFontSize = 40
     wasEditing = false
   }
 
@@ -388,7 +390,9 @@
       activeTextObject.setSelectionStyles(style)
       handleTextSelectionChange()
       fabCanvas?.renderAll()
-      updateStateFromObject(activeTextObject)
+      // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
+      // which loses the text selection and input focus. The state will be updated when the
+      // user finishes editing via the object:modified event handler.
     }
   }
 
@@ -413,6 +417,16 @@
     applyStyleToSelection({ fill: color })
   }
 
+  /** Changes the font size of the selected text */
+  function changeFontSize(event: Event): void {
+    const size = parseInt((event.target as HTMLInputElement).value)
+    if (!isNaN(size) && size > 0 && activeTextObject) {
+      applyStyleToSelection({ fontSize: size })
+      updateStateFromObject(activeTextObject)
+      fabCanvas?.renderAll()
+    }
+  }
+
   /**
    * Updates the formatting button states based on the current text selection.
    * Checks if the selected text has bold, italic, or underline formatting.
@@ -423,6 +437,13 @@
       isSelectionBold = styles.length > 0 && styles.some((style) => style.fontWeight === 'bold')
       isSelectionItalic = styles.length > 0 && styles.some((style) => style.fontStyle === 'italic')
       isSelectionUnderlined = styles.length > 0 && styles.some((style) => style.underline === true)
+
+      // Get font size from the first character in selection, or default to object's fontSize
+      if (styles.length > 0 && styles[0].fontSize) {
+        selectionFontSize = styles[0].fontSize
+      } else if (activeTextObject.fontSize) {
+        selectionFontSize = activeTextObject.fontSize
+      }
     }
   }
 
@@ -941,6 +962,16 @@
           class:text-white={isSelectionUnderlined}
           >U
         </button>
+        <input
+          type="number"
+          bind:value={selectionFontSize}
+          onchange={changeFontSize}
+          onkeydown={(e) => e.stopPropagation()}
+          min="1"
+          max="500"
+          class="w-16 h-8 px-2 text-sm border border-gray-300 rounded-md mr-1"
+          placeholder="Size"
+        />
         <input
           type="color"
           oninput={changeSelectionColor}
