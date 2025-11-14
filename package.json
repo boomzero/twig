@@ -30,6 +30,7 @@
     "better-sqlite3": "^12.3.0",
     "electron-updater": "^6.3.9",
     "fabric": "^6.7.0",
+    "fontkit": "^2.0.4",
     "runed": "^0.31.1",
     "tailwindcss": "^4.1.11",
     "uuid": "^11.1.0"

@@ -56,8 +56,22 @@
   let isSelectionItalic = $state(false)
   let isSelectionUnderlined = $state(false)
   let selectionFontSize = $state(40)
+  let selectionFontFamily = $state('Arial')
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
+
+  // Font management state
+  let systemFonts: { family: string; path: string; format: string }[] = []
+  let availableFonts = $state(['Arial', 'Helvetica', 'Times New Roman', 'Courier New']) // Default fallbacks
+  let loadedFonts = new Set<string>() // Track which fonts have been loaded via @font-face
+  let pendingFontsToEmbed = new Set<string>() // Track fonts that need to be embedded on next save
+
+  // Custom font dropdown state
+  let fontDropdownOpen = $state(false)
+  let fontDropdownRef: HTMLDivElement | null = null
+  let fontSearchQuery = $state('')
+  let fontLoadingQueue: Set<string> = new Set()
+  let isLoadingFonts = false
 
   // Keyboard shortcut handler
   const keys = new PressedKeys()
@@ -82,7 +96,8 @@
   /**
    * Initialize the app on mount by creating a new presentation.
    */
-  onMount(() => {
+  onMount(async () => {
+    await loadSystemFonts()
     handleNewPresentation()
   })
 
@@ -101,6 +116,15 @@
         // Different slide loaded - don't mark dirty (just switching slides)
         lastLoadedSlideId = appState.currentSlide.id
       }
+    }
+  })
+
+  /**
+   * Reactive effect that loads embedded fonts when a presentation file is opened.
+   */
+  $effect(() => {
+    if (appState.currentFilePath) {
+      loadEmbeddedFonts()
     }
   })
 
@@ -173,6 +197,18 @@
         }
         fabCanvas.setActiveObject(selection)
         fabCanvas.renderAll()
+      }
+    }
+  })
+
+  /**
+   * Effect to handle click outside for closing font dropdown
+   */
+  $effect(() => {
+    if (typeof window !== 'undefined') {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
       }
     }
   })
@@ -329,6 +365,9 @@
       activeTextObject = selection
       showRichTextControls = true
 
+      // Update formatting button states based on the selected text object
+      handleTextSelectionChange()
+
       // If user was editing before, restore editing mode
       if (wasEditing) {
         activeTextObject.enterEditing()
@@ -384,16 +423,55 @@
 
   /**
    * Applies a style to the currently selected text range.
+   * If no text is selected, applies the style to the entire text object.
    */
   function applyStyleToSelection(style: Record<string, string | number | boolean>): void {
-    if (activeTextObject) {
+    if (!activeTextObject) return
+
+    const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
+
+    if (hasSelection) {
+      // Apply to selected text range
       activeTextObject.setSelectionStyles(style)
       handleTextSelectionChange()
-      fabCanvas?.renderAll()
-      // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
-      // which loses the text selection and input focus. The state will be updated when the
-      // user finishes editing via the object:modified event handler.
+    } else {
+      // No selection - apply to entire text object
+      // First select all text temporarily
+      activeTextObject.selectAll()
+      // Apply the style to all characters
+      activeTextObject.setSelectionStyles(style)
+
+      // Also apply to object's base properties so new characters inherit the style
+      Object.keys(style).forEach(key => {
+        activeTextObject[key] = style[key]
+      })
+
+      // Restore no selection state
+      activeTextObject.selectionStart = 0
+      activeTextObject.selectionEnd = 0
+
+      // Update UI state to match what we just applied
+      if (style.fontWeight !== undefined) {
+        isSelectionBold = style.fontWeight === 'bold'
+      }
+      if (style.fontStyle !== undefined) {
+        isSelectionItalic = style.fontStyle === 'italic'
+      }
+      if (style.underline !== undefined) {
+        isSelectionUnderlined = style.underline === true
+      }
+      if (style.fontSize !== undefined) {
+        selectionFontSize = style.fontSize as number
+      }
+      if (style.fontFamily !== undefined) {
+        selectionFontFamily = style.fontFamily as string
+      }
     }
+
+    fabCanvas?.renderAll()
+    // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
+    // which loses the text selection and input focus. The state will be updated when the
+    // user finishes editing via the object:modified event handler.
   }
 
   /** Toggles bold formatting on the selected text */
@@ -427,23 +505,85 @@
     }
   }
 
+  /** Changes the font family of the selected text */
+  async function changeFontFamily(event: Event): Promise<void> {
+    const family = (event.target as HTMLSelectElement).value
+    if (!family || !activeTextObject) return
+
+    // Embed the font if needed
+    await embedFontIfNeeded(family)
+
+    // Apply to selection
+    applyStyleToSelection({ fontFamily: family })
+    updateStateFromObject(activeTextObject)
+    fabCanvas?.renderAll()
+  }
+
   /**
    * Updates the formatting button states based on the current text selection.
-   * Checks if the selected text has bold, italic, or underline formatting.
+   * Checks if the selected text has bold, italic, underline, font size, and font family.
    */
   function handleTextSelectionChange(): void {
-    if (activeTextObject) {
-      const styles = activeTextObject.getSelectionStyles()
-      isSelectionBold = styles.length > 0 && styles.some((style) => style.fontWeight === 'bold')
-      isSelectionItalic = styles.length > 0 && styles.some((style) => style.fontStyle === 'italic')
-      isSelectionUnderlined = styles.length > 0 && styles.some((style) => style.underline === true)
+    if (!activeTextObject) return
 
-      // Get font size from the first character in selection, or default to object's fontSize
+    const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
+
+    if (hasSelection) {
+      // Has text selection - check character-level styles
+      const styles = activeTextObject.getSelectionStyles()
+      isSelectionBold = styles.length > 0 && styles.every((style) => style.fontWeight === 'bold')
+      isSelectionItalic = styles.length > 0 && styles.every((style) => style.fontStyle === 'italic')
+      isSelectionUnderlined = styles.length > 0 && styles.every((style) => style.underline === true)
+
+      // Get font size from first character in selection
       if (styles.length > 0 && styles[0].fontSize) {
         selectionFontSize = styles[0].fontSize
       } else if (activeTextObject.fontSize) {
         selectionFontSize = activeTextObject.fontSize
       }
+
+      // Get font family - check if selection has mixed fonts
+      const fontFamilies = new Set(styles.map(style => style.fontFamily || activeTextObject.fontFamily))
+
+      if (fontFamilies.size > 1) {
+        selectionFontFamily = 'Multiple'
+      } else if (styles.length > 0 && styles[0].fontFamily) {
+        selectionFontFamily = styles[0].fontFamily
+      } else if (activeTextObject.fontFamily) {
+        selectionFontFamily = activeTextObject.fontFamily
+      }
+    } else {
+      // No text selection - check if ALL characters have the same style
+      // Temporarily select all to check styles
+      activeTextObject.selectAll()
+      const allStyles = activeTextObject.getSelectionStyles()
+
+      // Button lights up only if ALL characters have that style
+      isSelectionBold = allStyles.length > 0 && allStyles.every((style) => style.fontWeight === 'bold')
+      isSelectionItalic = allStyles.length > 0 && allStyles.every((style) => style.fontStyle === 'italic')
+      isSelectionUnderlined = allStyles.length > 0 && allStyles.every((style) => style.underline === true)
+
+      // Get font size - use first character or object default
+      if (allStyles.length > 0 && allStyles[0].fontSize) {
+        selectionFontSize = allStyles[0].fontSize
+      } else if (activeTextObject.fontSize) {
+        selectionFontSize = activeTextObject.fontSize
+      }
+
+      // Check for mixed fonts
+      const fontFamilies = new Set(allStyles.map(style => style.fontFamily || activeTextObject.fontFamily))
+
+      if (fontFamilies.size > 1) {
+        selectionFontFamily = 'Multiple'
+      } else if (allStyles.length > 0 && allStyles[0].fontFamily) {
+        selectionFontFamily = allStyles[0].fontFamily
+      } else if (activeTextObject.fontFamily) {
+        selectionFontFamily = activeTextObject.fontFamily
+      }
+
+      // Restore no selection state
+      activeTextObject.selectionStart = 0
+      activeTextObject.selectionEnd = 0
     }
   }
 
@@ -509,15 +649,17 @@
    * Prevents concurrent save operations using the isSaving flag.
    */
   async function handleSave(): Promise<void> {
+    // If no file path, delegate to Save As (it will handle the isSaving flag)
+    if (!appState.currentFilePath) {
+      await handleSaveAs()
+      return
+    }
+
     // Prevent concurrent saves
     if (isSaving) return
     isSaving = true
 
     try {
-      if (!appState.currentFilePath) {
-        await handleSaveAs()
-        return
-      }
       if (!appState.currentSlide || !appState.isDirty) return
 
       // Convert the reactive Svelte state to a plain JS object before sending to IPC
@@ -637,6 +779,14 @@
         throw new Error(`Failed to save presentation: ${errorMessage}`)
       }
 
+      // Embed any pending fonts (from unsaved presentation) before reloading
+      try {
+        await embedPendingFonts(newPath)
+      } catch (fontError) {
+        console.error('Failed to embed fonts:', fontError)
+        // Don't throw - fonts are non-critical, presentation is saved
+      }
+
       // Reload the presentation from the new file
       try {
         await loadPresentation(newPath)
@@ -697,6 +847,367 @@
   })
 
   // ============================================================================
+  // Font Management
+  // ============================================================================
+
+  /**
+   * Loads system fonts and initializes the available fonts list.
+   * Called once on mount.
+   */
+  /**
+   * Determines if a font should be excluded from the user-facing font list.
+   * Based on common patterns used by professional software like LibreOffice.
+   */
+  function shouldExcludeFont(family: string): boolean {
+    // Filter out private system fonts (starting with .)
+    if (family.startsWith('.')) return true
+
+    // Filter out Noto variants for specialized scripts
+    // Keep base "Noto Sans" and "Noto Serif" (without space after)
+    if (family.startsWith('Noto Sans ') || family.startsWith('Noto Serif ')) return true
+
+    // Filter out STIX math symbol variants
+    // Keep only main STIX Two variants
+    if (family.startsWith('STIX') &&
+        !['STIX Two Math', 'STIX Two Text'].includes(family)) return true
+
+    // Symbol and dingbat fonts (cross-platform)
+    const symbolFonts = [
+      'Webdings', 'Wingdings', 'Wingdings 2', 'Wingdings 3',
+      'Zapf Dingbats', 'Symbol',
+      'Apple Symbols', 'Apple Braille',
+      'OpenSymbol', 'Standard Symbols'
+    ]
+    if (symbolFonts.includes(family)) return true
+
+    // Ornamental and decorative variants
+    if (family.includes('Ornaments')) return true
+    if (family.includes('Dingbats')) return true
+
+    // Bitmap fonts (often low quality)
+    if (family.includes('Bitmap')) return true
+
+    // Filter out font variants that are for internal use
+    if (family.includes('UI Font')) return true
+    if (family.includes('System Font')) return true
+
+    return false
+  }
+
+  async function loadSystemFonts(): Promise<void> {
+    try {
+      systemFonts = await window.api.fonts.getSystemFonts()
+      // Extract unique font families, filtering out unwanted fonts
+      const families = Array.from(new Set(systemFonts.map((f) => f.family)))
+        .filter((family) => !shouldExcludeFont(family))
+      availableFonts = [...new Set([...availableFonts, ...families])].sort()
+      console.log(`Loaded ${families.length} system fonts (${systemFonts.length - families.length} filtered out)`)
+    } catch (error) {
+      console.error('Failed to load system fonts:', error)
+      // Continue with default fonts
+    }
+  }
+
+  /**
+   * Loads embedded fonts from the database and injects them via CSS @font-face.
+   * Should be called after opening a presentation file.
+   */
+  async function loadEmbeddedFonts(): Promise<void> {
+    if (!appState.currentFilePath) return
+
+    try {
+      const embeddedFonts = await window.api.fonts.getEmbeddedFonts(appState.currentFilePath)
+
+      // Get unique font families from embedded fonts
+      const embeddedFamilies = Array.from(new Set(embeddedFonts.map((f) => f.fontFamily)))
+
+      // Add embedded fonts to available fonts list if not already present
+      for (const family of embeddedFamilies) {
+        if (!availableFonts.includes(family)) {
+          availableFonts = [...availableFonts, family].sort()
+        }
+      }
+
+      // Inject the fonts into the page
+      for (const font of embeddedFonts) {
+        await injectFontFace(font.fontFamily, font.fontData, font.format, font.variant)
+      }
+
+      if (embeddedFonts.length > 0) {
+        console.log(`Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`)
+      }
+    } catch (error) {
+      console.error('Failed to load embedded fonts:', error)
+    }
+  }
+
+  /**
+   * Injects a font into the page using CSS @font-face.
+   *
+   * @param fontFamily - The font family name
+   * @param fontData - Binary font data as Buffer
+   * @param format - Font format (ttf, otf, woff, woff2)
+   * @param variant - Font variant (e.g., "normal-normal", "bold-italic")
+   */
+  async function injectFontFace(
+    fontFamily: string,
+    fontData: Buffer,
+    format: string,
+    variant: string = 'normal-normal'
+  ): Promise<void> {
+    const key = `${fontFamily}-${variant}`
+    if (loadedFonts.has(key)) {
+      return // Already loaded
+    }
+
+    try {
+      // Convert Buffer to base64 for data URI
+      const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(fontData))))
+
+      // Determine font format for @font-face
+      let fontFormat = format
+      if (format === 'ttf') fontFormat = 'truetype'
+      else if (format === 'otf') fontFormat = 'opentype'
+
+      // Parse variant to get weight and style
+      const [weight, style] = variant.split('-')
+
+      // Create @font-face CSS rule
+      const fontFaceRule = `
+        @font-face {
+          font-family: '${fontFamily}';
+          src: url(data:font/${format};base64,${base64}) format('${fontFormat}');
+          font-weight: ${weight};
+          font-style: ${style};
+        }
+      `
+
+      // Inject into document
+      const styleEl = document.createElement('style')
+      styleEl.textContent = fontFaceRule
+      document.head.appendChild(styleEl)
+
+      loadedFonts.add(key)
+      console.log(`Injected font: ${fontFamily} (${variant})`)
+    } catch (error) {
+      console.error(`Failed to inject font ${fontFamily}:`, error)
+    }
+  }
+
+  /**
+   * Embeds a font file into the database.
+   * Called when a user selects a font that hasn't been embedded yet.
+   *
+   * @param fontFamily - The font family name to embed
+   */
+  async function embedFontIfNeeded(fontFamily: string): Promise<void> {
+    // For unsaved presentations, track fonts that need to be embedded later
+    if (!appState.currentFilePath) {
+      pendingFontsToEmbed.add(fontFamily)
+      console.log(`Font ${fontFamily} will be embedded when presentation is saved`)
+      // Still load the font for preview
+      await loadFontForPreview(fontFamily)
+      return
+    }
+
+    try {
+      // Check if font is already embedded
+      const existingFont = await window.api.fonts.getFontData(
+        appState.currentFilePath,
+        fontFamily,
+        'normal-normal'
+      )
+
+      if (existingFont) {
+        return // Already embedded
+      }
+
+      // Find the system font
+      const systemFont = systemFonts.find((f) => f.family === fontFamily)
+      if (!systemFont) {
+        console.warn(`Font ${fontFamily} not found in system fonts`)
+        return
+      }
+
+      // Embed the font
+      await window.api.fonts.embedFont(
+        appState.currentFilePath,
+        systemFont.path,
+        fontFamily,
+        'normal-normal'
+      )
+
+      // Load the embedded font
+      const fontData = await window.api.fonts.getFontData(
+        appState.currentFilePath,
+        fontFamily,
+        'normal-normal'
+      )
+
+      if (fontData) {
+        await injectFontFace(fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
+        console.log(`Embedded and loaded font: ${fontFamily}`)
+      }
+    } catch (error) {
+      console.error(`Failed to embed font ${fontFamily}:`, error)
+    }
+  }
+
+  /**
+   * Embeds all pending fonts into the database after a file is saved.
+   * Called after Save As to embed fonts that were used in unsaved presentations.
+   *
+   * @param filePath - The path to the database file
+   */
+  async function embedPendingFonts(filePath: string): Promise<void> {
+    if (pendingFontsToEmbed.size === 0) return
+
+    console.log(`Embedding ${pendingFontsToEmbed.size} pending fonts...`)
+
+    for (const fontFamily of pendingFontsToEmbed) {
+      try {
+        // Find the system font
+        const systemFont = systemFonts.find((f) => f.family === fontFamily)
+        if (!systemFont) {
+          console.warn(`Font ${fontFamily} not found in system fonts, skipping embed`)
+          continue
+        }
+
+        // Embed the font
+        await window.api.fonts.embedFont(
+          filePath,
+          systemFont.path,
+          fontFamily,
+          'normal-normal'
+        )
+        console.log(`Embedded pending font: ${fontFamily}`)
+      } catch (error) {
+        console.error(`Failed to embed pending font ${fontFamily}:`, error)
+      }
+    }
+
+    // Clear the pending list
+    pendingFontsToEmbed.clear()
+  }
+
+  /**
+   * Loads a system font for preview in the font dropdown (without embedding in DB).
+   *
+   * @param fontFamily - The font family name to load for preview
+   */
+  async function loadFontForPreview(fontFamily: string): Promise<void> {
+    const key = `${fontFamily}-normal-normal`
+    if (loadedFonts.has(key)) {
+      return // Already loaded
+    }
+
+    try {
+      // Find the system font
+      const systemFont = systemFonts.find((f) => f.family === fontFamily)
+      if (!systemFont) {
+        return // Font not found
+      }
+
+      // Load font data directly from system path
+      const fontData = await window.api.fonts.loadFontFile(systemFont.path)
+      if (fontData) {
+        await injectFontFace(fontFamily, fontData, systemFont.format, 'normal-normal')
+      }
+    } catch (error) {
+      console.error(`Failed to load font for preview ${fontFamily}:`, error)
+    }
+  }
+
+  /**
+   * Queues a font for lazy loading and processes the queue in batches
+   */
+  function queueFontForLoading(fontFamily: string): void {
+    fontLoadingQueue.add(fontFamily)
+    processFontQueue()
+  }
+
+  /**
+   * Processes the font loading queue in batches to avoid blocking the UI
+   */
+  async function processFontQueue(): Promise<void> {
+    if (isLoadingFonts || fontLoadingQueue.size === 0) {
+      return
+    }
+
+    isLoadingFonts = true
+
+    // Process in small batches with breaks between
+    const batch = Array.from(fontLoadingQueue).slice(0, 5)
+    fontLoadingQueue = new Set(Array.from(fontLoadingQueue).slice(5))
+
+    for (const font of batch) {
+      await loadFontForPreview(font)
+      // Small delay to prevent blocking the UI
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+
+    isLoadingFonts = false
+
+    // Continue processing if there are more fonts
+    if (fontLoadingQueue.size > 0) {
+      setTimeout(() => processFontQueue(), 50)
+    }
+  }
+
+  /**
+   * Toggles the custom font dropdown open/closed
+   */
+  function toggleFontDropdown(): void {
+    fontDropdownOpen = !fontDropdownOpen
+    if (fontDropdownOpen) {
+      fontSearchQuery = ''
+      // Load the currently selected font and a few common ones
+      if (selectionFontFamily !== 'Multiple') {
+        queueFontForLoading(selectionFontFamily)
+      }
+      const commonFonts = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana']
+      commonFonts.forEach(font => queueFontForLoading(font))
+    }
+  }
+
+  /**
+   * Selects a font from the custom dropdown
+   */
+  async function selectFontFromDropdown(fontFamily: string): Promise<void> {
+    fontDropdownOpen = false
+    selectionFontFamily = fontFamily
+
+    if (!activeTextObject) return
+
+    // Embed the font if needed
+    await embedFontIfNeeded(fontFamily)
+
+    // Apply to selection
+    applyStyleToSelection({ fontFamily })
+    updateStateFromObject(activeTextObject)
+    fabCanvas?.renderAll()
+  }
+
+  /**
+   * Filters fonts based on search query
+   */
+  function getFilteredFonts(): string[] {
+    if (!fontSearchQuery) return availableFonts
+    const query = fontSearchQuery.toLowerCase()
+    return availableFonts.filter(font => font.toLowerCase().includes(query))
+  }
+
+
+  /**
+   * Handles click outside to close font dropdown
+   */
+  function handleClickOutside(event: MouseEvent): void {
+    if (fontDropdownOpen && fontDropdownRef && !fontDropdownRef.contains(event.target as Node)) {
+      fontDropdownOpen = false
+    }
+  }
+
+  // ============================================================================
   // Slide and Element Creation
   // ============================================================================
 
@@ -715,7 +1226,7 @@
       angle: 0,
       text: 'Double-click to edit',
       fontSize: 40,
-      fontFamily: 'Inter',
+      fontFamily: 'Arial',
       fill: '#333333'
     }
     appState.currentSlide.elements.push(newText)
@@ -916,7 +1427,7 @@
       <button
         onclick={handleSave}
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-        disabled={!appState.isDirty}
+        disabled={!appState.isDirty && appState.currentFilePath !== null}
       >
         Save
       </button>
@@ -972,6 +1483,56 @@
           class="w-16 h-8 px-2 text-sm border border-gray-300 rounded-md mr-1"
           placeholder="Size"
         />
+        <!-- Custom font dropdown with previews -->
+        <div bind:this={fontDropdownRef} class="relative mr-1">
+          <button
+            onclick={toggleFontDropdown}
+            onkeydown={(e) => e.stopPropagation()}
+            class="h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center min-w-[120px] relative"
+            style={selectionFontFamily !== 'Multiple' ? `font-family: ${selectionFontFamily}` : ''}
+          >
+            <span class="truncate" class:italic={selectionFontFamily === 'Multiple'} class:text-gray-500={selectionFontFamily === 'Multiple'}>
+              {selectionFontFamily}
+            </span>
+            <svg class="w-4 h-4 absolute right-1 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+
+          {#if fontDropdownOpen}
+            <div
+              class="absolute z-50 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg"
+              onkeydown={(e) => e.stopPropagation()}
+              style="will-change: scroll-position; contain: layout style paint;"
+            >
+              <!-- Search input -->
+              <div class="sticky top-0 bg-white p-2 border-b border-gray-200 z-10">
+                <input
+                  type="text"
+                  bind:value={fontSearchQuery}
+                  placeholder="Search fonts..."
+                  class="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                  onkeydown={(e) => e.stopPropagation()}
+                />
+              </div>
+
+              <!-- Font list -->
+              <div class="py-1">
+                {#each getFilteredFonts() as font}
+                  <button
+                    onclick={() => selectFontFromDropdown(font)}
+                    onmouseenter={() => queueFontForLoading(font)}
+                    class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
+                    class:bg-blue-100={font === selectionFontFamily}
+                    style="font-family: '{font}'; contain: layout style;"
+                  >
+                    {font}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
         <input
           type="color"
           oninput={changeSelectionColor}

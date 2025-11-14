@@ -9,13 +9,16 @@
  */
 
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join, isAbsolute, normalize } from 'path'
+import { join, isAbsolute, normalize, basename, extname } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Database from 'better-sqlite3'
 import * as dbService from './db'
-import type { Slide } from './db'
+import type { Slide, FontData } from './db'
 import fs from 'fs'
+import os from 'os'
+import crypto from 'crypto'
+import fontkit from 'fontkit'
 
 // ============================================================================
 // Input Validation
@@ -206,6 +209,149 @@ function closeDbConnection(filePath: string): void {
 }
 
 // ============================================================================
+// Font Detection Utility
+// ============================================================================
+
+/**
+ * Represents a system font with its family name and file path
+ */
+interface SystemFont {
+  /** Font family name extracted from filename */
+  family: string
+  /** Absolute path to the font file */
+  path: string
+  /** Font file format (ttf, otf, woff, woff2) */
+  format: string
+}
+
+/**
+ * Gets the platform-specific font directories to scan for system fonts.
+ *
+ * @returns Array of absolute paths to font directories
+ */
+function getFontDirectories(): string[] {
+  const platform = process.platform
+  const homedir = os.homedir()
+
+  if (platform === 'darwin') {
+    // macOS font directories
+    return [
+      '/System/Library/Fonts',
+      '/Library/Fonts',
+      join(homedir, 'Library', 'Fonts')
+    ]
+  } else if (platform === 'win32') {
+    // Windows font directories
+    const windir = process.env.WINDIR || 'C:\\Windows'
+    return [join(windir, 'Fonts')]
+  } else {
+    // Linux font directories
+    return [
+      '/usr/share/fonts',
+      '/usr/local/share/fonts',
+      join(homedir, '.fonts'),
+      join(homedir, '.local', 'share', 'fonts')
+    ]
+  }
+}
+
+/**
+ * Recursively scans a directory for font files.
+ *
+ * @param dir - Directory to scan
+ * @param fonts - Accumulator array for found fonts
+ */
+function scanFontDirectory(dir: string, fonts: SystemFont[]): void {
+  try {
+    if (!fs.existsSync(dir)) {
+      return
+    }
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name)
+
+      if (entry.isDirectory()) {
+        // Recursively scan subdirectories
+        scanFontDirectory(fullPath, fonts)
+      } else if (entry.isFile()) {
+        const ext = extname(entry.name).toLowerCase()
+        // Check if it's a supported font file
+        if (['.ttf', '.otf'].includes(ext)) {
+          try {
+            // Read the actual font family name from the font file metadata
+            const font = fontkit.openSync(fullPath)
+            const familyName = font.familyName
+
+            if (familyName) {
+              fonts.push({
+                family: familyName,
+                path: fullPath,
+                format: ext.substring(1) // Remove the dot
+              })
+            }
+          } catch (fontError) {
+            // Skip fonts that can't be parsed
+            console.debug(`Skipping unparseable font ${fullPath}:`, fontError)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    // Silently skip directories we don't have permission to read
+    console.warn(`Skipping font directory ${dir}:`, error)
+  }
+}
+
+/**
+ * Detects all available system fonts.
+ *
+ * @returns Array of system fonts with their family names and file paths
+ */
+function getSystemFonts(): SystemFont[] {
+  const fonts: SystemFont[] = []
+  const directories = getFontDirectories()
+
+  for (const dir of directories) {
+    scanFontDirectory(dir, fonts)
+  }
+
+  // Group fonts by family name and prefer Regular variants
+  const fontsByFamily = new Map<string, SystemFont>()
+
+  for (const font of fonts) {
+    const existing = fontsByFamily.get(font.family)
+
+    if (!existing) {
+      // First font of this family - keep it
+      fontsByFamily.set(font.family, font)
+    } else {
+      // Check if current font is "Regular" or "Normal" variant (preferred)
+      const filename = basename(font.path).toLowerCase()
+      const isRegular = filename.includes('regular') || filename.includes('normal') || filename.includes('-rg.')
+
+      const existingFilename = basename(existing.path).toLowerCase()
+      const existingIsRegular =
+        existingFilename.includes('regular') ||
+        existingFilename.includes('normal') ||
+        existingFilename.includes('-rg.')
+
+      // Replace if current is regular and existing is not
+      if (isRegular && !existingIsRegular) {
+        fontsByFamily.set(font.family, font)
+      }
+    }
+  }
+
+  // Convert map to array and sort
+  const uniqueFonts = Array.from(fontsByFamily.values())
+  uniqueFonts.sort((a, b) => a.family.localeCompare(b.family))
+
+  return uniqueFonts
+}
+
+// ============================================================================
 // Window Management
 // ============================================================================
 
@@ -270,8 +416,9 @@ app.whenReady().then(() => {
    * Shows a file open dialog for selecting a presentation file.
    * Returns the selected file path or null if cancelled.
    */
-  ipcMain.handle('dialog:show-open-dialog', async () => {
-    const { filePaths } = await dialog.showOpenDialog({
+  ipcMain.handle('dialog:show-open-dialog', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const { filePaths } = await dialog.showOpenDialog(window!, {
       title: 'Open Presentation',
       properties: ['openFile'],
       filters: [{ name: 'Deckhand Files', extensions: ['db'] }]
@@ -283,8 +430,9 @@ app.whenReady().then(() => {
    * Shows a file save dialog for choosing where to save a presentation.
    * Returns the selected file path or undefined if cancelled.
    */
-  ipcMain.handle('dialog:show-save-dialog', async () => {
-    const { filePath } = await dialog.showSaveDialog({
+  ipcMain.handle('dialog:show-save-dialog', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const { filePath } = await dialog.showSaveDialog(window!, {
       title: 'Save Presentation',
       defaultPath: 'presentation.db',
       filters: [{ name: 'Deckhand Files', extensions: ['db'] }]
@@ -407,6 +555,110 @@ app.whenReady().then(() => {
   ipcMain.handle('db:close-connection', (_event, filePath: string): void => {
     validateFilePath(filePath)
     closeDbConnection(filePath)
+  })
+
+  // --------------------------------------------------------------------------
+  // Font Operation Handlers
+  // --------------------------------------------------------------------------
+
+  /**
+   * Returns all available system fonts.
+   */
+  ipcMain.handle('fonts:get-system-fonts', (): SystemFont[] => {
+    try {
+      return getSystemFonts()
+    } catch (error) {
+      console.error('Error in fonts:get-system-fonts:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Embeds a font file into the database.
+   * Reads the font file from the system and stores it in the fonts table.
+   */
+  ipcMain.handle(
+    'fonts:embed-font',
+    (_event, filePath: string, fontPath: string, fontFamily: string, variant: string = 'normal-normal'): void => {
+      try {
+        validateFilePath(filePath)
+
+        // Read the font file
+        const fontData = fs.readFileSync(fontPath)
+
+        // Determine format from file extension
+        const ext = extname(fontPath).toLowerCase()
+        let format = ext.substring(1) // Remove dot
+        if (!['ttf', 'otf', 'woff', 'woff2'].includes(format)) {
+          throw new Error(`Unsupported font format: ${format}`)
+        }
+
+        // Create a unique ID for this font (hash of family + variant)
+        const id = crypto
+          .createHash('sha256')
+          .update(`${fontFamily}-${variant}`)
+          .digest('hex')
+          .substring(0, 16)
+
+        // Store in database
+        const db = getDbConnection(filePath)
+        const font: FontData = {
+          id,
+          fontFamily,
+          fontData: fontData,
+          format,
+          variant
+        }
+        dbService.addFont(db, font)
+      } catch (error) {
+        console.error('Error in fonts:embed-font:', error)
+        throw error
+      }
+    }
+  )
+
+  /**
+   * Retrieves all embedded fonts from the database.
+   */
+  ipcMain.handle('fonts:get-embedded-fonts', (_event, filePath: string): FontData[] => {
+    try {
+      validateFilePath(filePath)
+      const db = getDbConnection(filePath)
+      return dbService.getFonts(db)
+    } catch (error) {
+      console.error('Error in fonts:get-embedded-fonts:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Retrieves a specific font from the database.
+   */
+  ipcMain.handle(
+    'fonts:get-font-data',
+    (_event, filePath: string, fontFamily: string, variant: string = 'normal-normal'): FontData | null => {
+      try {
+        validateFilePath(filePath)
+        const db = getDbConnection(filePath)
+        return dbService.getFontData(db, fontFamily, variant)
+      } catch (error) {
+        console.error('Error in fonts:get-font-data:', error)
+        throw error
+      }
+    }
+  )
+
+  /**
+   * Loads a font file directly from the filesystem for preview purposes.
+   * Does not embed the font in the database.
+   */
+  ipcMain.handle('fonts:load-font-file', (_event, fontPath: string): Buffer => {
+    try {
+      return fs.readFileSync(fontPath)
+    } catch (error) {
+      console.error('Error in fonts:load-font-file:', error)
+      throw error
+    }
   })
 
   // Create the main window

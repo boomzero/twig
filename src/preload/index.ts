@@ -51,6 +51,26 @@ const api = {
 
     /** Close a database connection (used before overwriting files) */
     closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath)
+  },
+
+  // Font operations
+  fonts: {
+    /** Get all available system fonts */
+    getSystemFonts: () => ipcRenderer.invoke('fonts:get-system-fonts'),
+
+    /** Embed a font file into the database */
+    embedFont: (filePath, fontPath, fontFamily, variant) =>
+      ipcRenderer.invoke('fonts:embed-font', filePath, fontPath, fontFamily, variant),
+
+    /** Get all embedded fonts from the database */
+    getEmbeddedFonts: (filePath) => ipcRenderer.invoke('fonts:get-embedded-fonts', filePath),
+
+    /** Get a specific font from the database */
+    getFontData: (filePath, fontFamily, variant) =>
+      ipcRenderer.invoke('fonts:get-font-data', filePath, fontFamily, variant),
+
+    /** Load a font file directly from the filesystem for preview */
+    loadFontFile: (fontPath) => ipcRenderer.invoke('fonts:load-font-file', fontPath)
   }
 }
 

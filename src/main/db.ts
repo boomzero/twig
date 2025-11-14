@@ -59,6 +59,27 @@ export interface Slide {
   elements: DeckElement[]
 }
 
+/**
+ * Represents an embedded font stored in the database.
+ * Fonts are stored as binary data (BLOB) to ensure presentation portability.
+ */
+export interface FontData {
+  /** Unique identifier (hash of fontFamily + variant) */
+  id: string
+
+  /** Font family name (e.g., "Arial", "Roboto") */
+  fontFamily: string
+
+  /** Binary font file data */
+  fontData: Buffer
+
+  /** Font file format (ttf, woff, woff2, otf) */
+  format: string
+
+  /** Font variant identifier combining weight and style (e.g., "normal-normal", "bold-italic") */
+  variant: string
+}
+
 // ============================================================================
 // Database Schema Management
 // ============================================================================
@@ -69,6 +90,7 @@ export interface Slide {
  * Schema consists of:
  * - slides table: Stores slide metadata and ordering
  * - elements table: Stores all properties of shapes and text on each slide
+ * - fonts table: Stores embedded font files for presentation portability
  *
  * @param db - The SQLite database connection to initialize
  */
@@ -99,6 +121,18 @@ export function initializeDatabase(db: Database): void {
       fontFamily TEXT,
       styles TEXT,
       FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
+    )
+  `)
+
+  // Create the fonts table to store embedded font files
+  // Fonts are stored as binary data to ensure presentations are portable across systems
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fonts (
+      id TEXT PRIMARY KEY,
+      fontFamily TEXT NOT NULL,
+      fontData BLOB NOT NULL,
+      format TEXT NOT NULL,
+      variant TEXT NOT NULL
     )
   `)
 }
@@ -411,4 +445,78 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
   // Execute the transaction
   transaction(slides)
+}
+
+// ============================================================================
+// Font Management Functions
+// ============================================================================
+
+/**
+ * Retrieves all embedded fonts from the database.
+ *
+ * @param db - The SQLite database connection
+ * @returns Array of all fonts stored in the database
+ */
+export function getFonts(db: Database): FontData[] {
+  const stmt = db.prepare('SELECT * FROM fonts')
+  const rows = stmt.all() as Array<{
+    id: string
+    fontFamily: string
+    fontData: Buffer
+    format: string
+    variant: string
+  }>
+  return rows
+}
+
+/**
+ * Retrieves a specific font by family name and variant.
+ *
+ * @param db - The SQLite database connection
+ * @param fontFamily - The font family name to retrieve
+ * @param variant - The font variant (e.g., "normal-normal", "bold-italic")
+ * @returns The font data or null if not found
+ */
+export function getFontData(
+  db: Database,
+  fontFamily: string,
+  variant: string = 'normal-normal'
+): FontData | null {
+  const stmt = db.prepare('SELECT * FROM fonts WHERE fontFamily = ? AND variant = ?')
+  const row = stmt.get(fontFamily, variant) as
+    | {
+        id: string
+        fontFamily: string
+        fontData: Buffer
+        format: string
+        variant: string
+      }
+    | undefined
+  return row || null
+}
+
+/**
+ * Adds or updates a font in the database.
+ * If a font with the same family and variant exists, it will be replaced.
+ *
+ * @param db - The SQLite database connection
+ * @param fontData - The font data to add
+ */
+export function addFont(db: Database, fontData: FontData): void {
+  // Check if font already exists
+  const existing = getFontData(db, fontData.fontFamily, fontData.variant)
+
+  if (existing) {
+    // Update existing font
+    const stmt = db.prepare(
+      'UPDATE fonts SET fontData = ?, format = ? WHERE fontFamily = ? AND variant = ?'
+    )
+    stmt.run(fontData.fontData, fontData.format, fontData.fontFamily, fontData.variant)
+  } else {
+    // Insert new font
+    const stmt = db.prepare(
+      'INSERT INTO fonts (id, fontFamily, fontData, format, variant) VALUES (?, ?, ?, ?, ?)'
+    )
+    stmt.run(fontData.id, fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
+  }
 }
