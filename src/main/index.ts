@@ -440,6 +440,60 @@ app.whenReady().then(() => {
     return filePath
   })
 
+  /**
+   * Shows a file open dialog for selecting an image file.
+   * Reads the image and returns it as a base64 data URI along with filename.
+   * Returns null if cancelled.
+   */
+  ipcMain.handle('dialog:show-image-dialog', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const { filePaths } = await dialog.showOpenDialog(window!, {
+      title: 'Insert Image',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }
+      ]
+    })
+
+    if (!filePaths || filePaths.length === 0) {
+      return null
+    }
+
+    const filePath = filePaths[0]
+    const filename = basename(filePath)
+    const ext = extname(filePath).toLowerCase()
+
+    try {
+      // Read the image file as a buffer
+      const imageBuffer = fs.readFileSync(filePath)
+
+      // Determine MIME type based on file extension
+      const mimeTypes: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+        '.bmp': 'image/bmp'
+      }
+
+      const mimeType = mimeTypes[ext] || 'image/png'
+
+      // Convert to base64 data URI
+      const base64 = imageBuffer.toString('base64')
+      const dataUri = `data:${mimeType};base64,${base64}`
+
+      return {
+        src: dataUri,
+        filename: filename
+      }
+    } catch (error) {
+      console.error('Failed to read image file:', error)
+      throw new Error(`Failed to read image file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  })
+
   // --------------------------------------------------------------------------
   // Database Operation Handlers
   // --------------------------------------------------------------------------

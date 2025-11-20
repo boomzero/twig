@@ -29,7 +29,10 @@ const api = {
     showOpenDialog: () => ipcRenderer.invoke('dialog:show-open-dialog'),
 
     /** Show a file save dialog and return the selected path */
-    showSaveDialog: () => ipcRenderer.invoke('dialog:show-save-dialog')
+    showSaveDialog: () => ipcRenderer.invoke('dialog:show-save-dialog'),
+
+    /** Show an image file dialog and return the image as base64 data URI */
+    showImageDialog: () => ipcRenderer.invoke('dialog:show-image-dialog')
   },
 
   // Database operations

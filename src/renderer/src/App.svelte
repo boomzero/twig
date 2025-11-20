@@ -29,6 +29,7 @@
     type FabricObject,
     IText,
     Rect,
+    FabricImage,
     ActiveSelection,
     util,
     BaseFabricObject
@@ -248,7 +249,21 @@
 
     // Clear the canvas and re-create all objects from state
     fabCanvas.clear()
+
+    // Process elements - images need async loading, so handle separately
+    const imageElements: DeckElement[] = []
+    const nonImageElements: DeckElement[] = []
+
     currentSlide.elements.forEach((element) => {
+      if (element.type === 'image') {
+        imageElements.push(element)
+      } else {
+        nonImageElements.push(element)
+      }
+    })
+
+    // Add non-image elements synchronously
+    nonImageElements.forEach((element) => {
       let fabObj: FabricObject | undefined
 
       // Create fabric.js object based on element type
@@ -279,6 +294,34 @@
         fabCanvas.add(fabObj)
       }
     })
+
+    // Add image elements asynchronously
+    imageElements.forEach((element) => {
+      if (element.src) {
+        FabricImage.fromURL(element.src, {
+          crossOrigin: 'anonymous'
+        }).then((img) => {
+          // Calculate scale to match the stored width/height
+          const scaleX = element.width / (img.width || 1)
+          const scaleY = element.height / (img.height || 1)
+
+          img.set({
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            scaleX: scaleX,
+            scaleY: scaleY,
+            id: element.id
+          })
+
+          fabCanvas.add(img)
+          fabCanvas.renderAll()
+        }).catch((error) => {
+          console.error('Failed to load image:', error)
+        })
+      }
+    })
+
     fabCanvas.renderAll()
 
     // Re-attach event listeners
@@ -1252,6 +1295,66 @@
   }
 
   /**
+   * Opens an image file dialog and adds the selected image to the current slide.
+   * The image is loaded as a base64 data URI and stored in the slide data.
+   */
+  async function addImage(): Promise<void> {
+    if (!appState.currentSlide) return
+
+    try {
+      const imageData = await window.api.dialog.showImageDialog()
+
+      if (!imageData) {
+        return // User cancelled
+      }
+
+      // Create a temporary image element to get the natural dimensions
+      const tempImg = new Image()
+      tempImg.src = imageData.src
+
+      await new Promise<void>((resolve, reject) => {
+        tempImg.onload = () => resolve()
+        tempImg.onerror = () => reject(new Error('Failed to load image'))
+      })
+
+      // Calculate default size (max 400px while maintaining aspect ratio)
+      const maxSize = 400
+      let width = tempImg.naturalWidth
+      let height = tempImg.naturalHeight
+
+      if (width > maxSize || height > maxSize) {
+        const aspectRatio = width / height
+        if (width > height) {
+          width = maxSize
+          height = maxSize / aspectRatio
+        } else {
+          height = maxSize
+          width = maxSize * aspectRatio
+        }
+      }
+
+      // Create the image element
+      const newImage: DeckElement = {
+        type: 'image',
+        id: `image_${uuid_v4()}`,
+        x: 400, // Center of default 800px canvas
+        y: 300, // Center of default 600px canvas
+        width: width,
+        height: height,
+        angle: 0,
+        src: imageData.src,
+        filename: imageData.filename
+      }
+
+      appState.currentSlide.elements.push(newImage)
+    } catch (error) {
+      console.error('Failed to add image:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to add image: ${errorMessage}`)
+    }
+  }
+
+  /**
    * Creates a new blank slide and adds it to the presentation.
    * Handles both saved (file-based) and unsaved (in-memory) presentations.
    */
@@ -1496,6 +1599,12 @@
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
       >
         Add Text
+      </button>
+      <button
+        onclick={addImage}
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        Add Image
       </button>
       {#if showRichTextControls}
         <div class="h-6 w-px bg-gray-300 mx-2"></div>

@@ -29,6 +29,16 @@ export interface FontData {
   variant: string
 }
 
+/**
+ * Represents image data returned from the image dialog
+ */
+export interface ImageData {
+  /** Image data as base64 data URI */
+  src: string
+  /** Original filename */
+  filename: string
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -36,6 +46,7 @@ declare global {
       dialog: {
         showOpenDialog: () => Promise<string | null>
         showSaveDialog: () => Promise<string | null>
+        showImageDialog: () => Promise<ImageData | null>
       }
       db: {
         getSlideIds: (filePath: string) => Promise<string[]>

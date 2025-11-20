@@ -15,7 +15,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { appState, loadSlide } from '../lib/state.svelte'
   import type { DeckElement } from '../lib/state.svelte'
-  import { Canvas, IText, Rect, type FabricObject } from 'fabric'
+  import { Canvas, IText, Rect, FabricImage, type FabricObject } from 'fabric'
 
   // Props
   interface Props {
@@ -69,8 +69,20 @@
     // Clear the canvas
     presentationCanvas.clear()
 
-    // Render each element
+    // Process elements - images need async loading, so handle separately
+    const imageElements: DeckElement[] = []
+    const nonImageElements: DeckElement[] = []
+
     appState.currentSlide.elements.forEach((element: DeckElement) => {
+      if (element.type === 'image') {
+        imageElements.push(element)
+      } else {
+        nonImageElements.push(element)
+      }
+    })
+
+    // Render non-image elements synchronously
+    nonImageElements.forEach((element: DeckElement) => {
       let fabObj: FabricObject | undefined
 
       if (element.type === 'rect') {
@@ -106,6 +118,36 @@
           originY: 'center'
         })
         presentationCanvas.add(fabObj)
+      }
+    })
+
+    // Render image elements asynchronously
+    imageElements.forEach((element: DeckElement) => {
+      if (element.src) {
+        FabricImage.fromURL(element.src, {
+          crossOrigin: 'anonymous'
+        }).then((img) => {
+          // Calculate scale to match the stored width/height
+          const scaleX = element.width / (img.width || 1)
+          const scaleY = element.height / (img.height || 1)
+
+          img.set({
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            scaleX: scaleX,
+            scaleY: scaleY,
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+          })
+
+          presentationCanvas.add(img)
+          presentationCanvas.renderAll()
+        }).catch((error) => {
+          console.error('Failed to load image in presentation:', error)
+        })
       }
     })
 

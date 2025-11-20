@@ -6,12 +6,12 @@ import { v4 as uuid_v4 } from 'uuid'
 // ============================================================================
 
 /**
- * Represents a single element (shape or text) on a slide.
- * Elements can be rectangles or text objects with various styling properties.
+ * Represents a single element (shape, text, or image) on a slide.
+ * Elements can be rectangles, text objects, or images with various styling properties.
  */
 export interface DeckElement {
-  /** Type of element - either a rectangle shape or text */
-  type: 'rect' | 'text'
+  /** Type of element - rectangle shape, text, or image */
+  type: 'rect' | 'text' | 'image'
 
   /** Unique identifier for this element */
   id: string
@@ -46,6 +46,12 @@ export interface DeckElement {
   /** Rich text styles object from fabric.js (only for text elements) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>
+
+  /** Image data as base64 data URI (only for image elements) */
+  src?: string
+
+  /** Original image filename (only for image elements) */
+  filename?: string
 }
 
 /**
