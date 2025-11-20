@@ -115,7 +115,10 @@ export const appState = $state({
   selectedObjectId: null as string | null,
 
   /** Whether there are unsaved changes to the current slide */
-  isDirty: false
+  isDirty: false,
+
+  /** Whether the presentation is in presenting mode (fullscreen slideshow) */
+  isPresentingMode: false
 })
 
 /**

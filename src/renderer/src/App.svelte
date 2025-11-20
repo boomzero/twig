@@ -35,6 +35,7 @@
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
+  import PresentationView from './components/PresentationView.svelte'
   import { PressedKeys } from 'runed'
 
   // ============================================================================
@@ -1391,11 +1392,49 @@
   function hideContextMenu(): void {
     contextMenuVisible = false
   }
+
+  // ============================================================================
+  // Presentation Mode
+  // ============================================================================
+
+  /**
+   * Enters presentation mode (fullscreen slideshow).
+   * Saves any pending changes before entering presentation mode.
+   */
+  async function enterPresentationMode(): Promise<void> {
+    // Save any unsaved changes before presenting
+    if (appState.isDirty && appState.currentFilePath) {
+      await handleSave()
+    }
+
+    // Enter presentation mode
+    appState.isPresentingMode = true
+  }
+
+  /**
+   * Exits presentation mode and returns to edit mode.
+   */
+  function exitPresentationMode(): void {
+    appState.isPresentingMode = false
+  }
+
+  /**
+   * Keyboard shortcut handler for F5 (Start Presentation)
+   */
+  keys.onKeys(['F5'], async (event) => {
+    event.preventDefault()
+    if (!appState.isPresentingMode) {
+      await enterPresentationMode()
+    }
+  })
 </script>
 
 <svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
 
-{#if appState.currentSlide}
+{#if appState.isPresentingMode}
+  <!-- Presentation Mode (Fullscreen) -->
+  <PresentationView onExit={exitPresentationMode} />
+{:else if appState.currentSlide}
   <div
     class="flex flex-col h-screen font-sans"
     oncontextmenu={handleContextMenu}
@@ -1436,6 +1475,14 @@
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
       >
         Save As
+      </button>
+      <div class="h-6 w-px bg-gray-300 mx-2"></div>
+      <button
+        onclick={enterPresentationMode}
+        class="px-3 py-1 mr-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-md hover:bg-indigo-700"
+        title="Start presentation (F5)"
+      >
+        Present
       </button>
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
