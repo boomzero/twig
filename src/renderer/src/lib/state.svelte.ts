@@ -10,8 +10,6 @@
  * - When currentFilePath is null: all slides are kept in inMemorySlides array
  */
 
-import type { Slide } from './db'
-
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -66,10 +64,15 @@ export interface DeckElement {
 }
 
 /**
- * Re-export Slide type for convenience.
- * A slide contains an ID and an array of DeckElements.
+ * Represents a single slide containing multiple elements.
  */
-export type { Slide } from './db'
+export interface Slide {
+  /** Unique identifier for this slide */
+  id: string
+
+  /** Array of elements (shapes, text, images) on this slide */
+  elements: DeckElement[]
+}
 
 /**
  * Tracks which objects are selected on the canvas and their text selection ranges.
