@@ -126,6 +126,8 @@ export function initializeDatabase(db: Database): void {
       fontSize REAL,
       fontFamily TEXT,
       styles TEXT,
+      src TEXT,
+      filename TEXT,
       FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
     )
   `)
@@ -141,6 +143,22 @@ export function initializeDatabase(db: Database): void {
       variant TEXT NOT NULL
     )
   `)
+
+  // Migration: Add src and filename columns for image support if they don't exist
+  // This handles existing databases that were created before image support was added
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(elements)").all() as { name: string }[]
+    const columnNames = tableInfo.map(col => col.name)
+
+    if (!columnNames.includes('src')) {
+      db.exec('ALTER TABLE elements ADD COLUMN src TEXT')
+    }
+    if (!columnNames.includes('filename')) {
+      db.exec('ALTER TABLE elements ADD COLUMN filename TEXT')
+    }
+  } catch (error) {
+    console.error('Failed to migrate database schema:', error)
+  }
 }
 
 // ============================================================================
@@ -177,6 +195,8 @@ interface ElementRow {
   fontSize?: number
   fontFamily?: string
   styles?: string | null // Stored as JSON string in database
+  src?: string | null // Image data as base64 data URI
+  filename?: string | null // Original image filename
 }
 
 /**
@@ -200,7 +220,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
   const elements: DeckElement[] = elementRows.map((el) => ({
-    type: el.type as 'rect' | 'text',
+    type: el.type as 'rect' | 'text' | 'image',
     id: el.id,
     x: el.x,
     y: el.y,
@@ -221,7 +241,10 @@ export function getSlide(db: Database, slideId: string): Slide | null {
             return undefined
           }
         })()
-      : undefined
+      : undefined,
+    // Image-specific fields
+    src: el.src || undefined,
+    filename: el.filename || undefined
   }))
 
   return { id: slideRow.id, elements }
@@ -301,7 +324,7 @@ export function saveSlide(db: Database, slide: Slide): void {
 
     // Prepare the element insert statement (reused for all elements for efficiency)
     const elementInsert = db.prepare(
-      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
 
     // Insert all elements for this slide
@@ -331,7 +354,9 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.text,
         el.fontSize,
         el.fontFamily,
-        stylesJson
+        stylesJson,
+        el.src || null,
+        el.filename || null
       )
     })
 
