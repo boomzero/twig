@@ -40,7 +40,8 @@
     if (canvasEl) {
       presentationCanvas = new Canvas(canvasEl, {
         selection: false, // Disable selection in presentation mode
-        interactive: false // Disable all interactions
+        interactive: false, // Disable all interactions
+        backgroundColor: '#ffffff' // White slide background
       })
       renderCurrentSlide()
     }
@@ -310,6 +311,7 @@
     max-width: 100%;
     max-height: 100%;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    background-color: #ffffff;
   }
 
   .slide-counter {
