@@ -448,7 +448,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
       // Prepare the element insert statement (reused for all elements for efficiency)
       const elementInsert = db.prepare(
-        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
 
       // Insert all elements for this slide
@@ -478,7 +478,9 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.text,
           el.fontSize,
           el.fontFamily,
-          stylesJson
+          stylesJson,
+          el.src || null,
+          el.filename || null
         )
       })
     }
