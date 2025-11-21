@@ -595,18 +595,6 @@ app.whenReady().then(() => {
 
       // Create a new database and save all slides in a single transaction
       const db = getDbConnection(filePath)
-
-      // Debug: Log what we're receiving from renderer
-      console.log('[Main] db:save-as: Received', slides.length, 'slides')
-      slides.forEach((slide, i) => {
-        console.log(`[Main]   Slide ${i}: ${slide.elements.length} elements`)
-        slide.elements.forEach(el => {
-          if (el.type === 'image') {
-            console.log(`[Main]     Image ${el.id}: src length = ${el.src?.length || 0}`)
-          }
-        })
-      })
-
       dbService.saveAllSlides(db, slides)
     } catch (error) {
       console.error('Error in db:save-as:', error)

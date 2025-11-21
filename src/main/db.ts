@@ -225,15 +225,6 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
-  // Debug: Log image elements being loaded
-  elementRows.forEach((el) => {
-    if (el.type === 'image') {
-      console.log(`[DB getSlide] Loading image ${el.id}:`)
-      console.log(`[DB getSlide]   src column exists: ${'src' in el}`)
-      console.log(`[DB getSlide]   src type: ${typeof el.src}`)
-      console.log(`[DB getSlide]   src length: ${el.src?.length || 0}`)
-    }
-  })
 
   const elements: DeckElement[] = elementRows.map((el) => ({
     type: el.type as 'rect' | 'text' | 'image',
@@ -459,11 +450,6 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
       // Insert all elements for this slide
       slide.elements.forEach((el) => {
-        // Debug: Log image elements being saved
-        if (el.type === 'image') {
-          console.log(`[DB saveAllSlides] Saving image ${el.id}: src length = ${el.src?.length || 0}`)
-        }
-
         // Serialize styles with error handling
         let stylesJson: string | null = null
         if (el.styles) {
@@ -471,14 +457,9 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
             stylesJson = JSON.stringify(el.styles)
           } catch (error) {
             console.error(`Failed to serialize styles for element ${el.id}:`, error)
-            // Continue without styles rather than failing the entire save
             stylesJson = null
           }
         }
-
-        const srcValue = el.src || null
-        const filenameValue = el.filename || null
-        console.log(`[DB saveAllSlides] INSERT with src length = ${srcValue?.length || 0}`)
 
         elementInsert.run(
           el.id,
@@ -494,8 +475,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.fontSize,
           el.fontFamily,
           stylesJson,
-          srcValue,
-          filenameValue
+          el.src || null,
+          el.filename || null
         )
       })
     }
@@ -508,16 +489,6 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
   // Execute the transaction
   transaction(slides)
-
-  // Verify the save worked by reading back image data
-  slides.forEach((slide) => {
-    slide.elements.forEach((el) => {
-      if (el.type === 'image') {
-        const row = db.prepare('SELECT src FROM elements WHERE id = ?').get(el.id) as { src: string | null } | undefined
-        console.log(`[DB saveAllSlides] VERIFY after save: element ${el.id} src length = ${row?.src?.length || 0}`)
-      }
-    })
-  })
 }
 
 // ============================================================================
