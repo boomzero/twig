@@ -1500,12 +1500,23 @@
   // Presentation Mode
   // ============================================================================
 
+  // Store the slide state before entering presentation mode
+  let slideStateBeforePresentation: { slideId: string; elements: DeckElement[] } | null = null
+
   /**
    * Enters presentation mode (fullscreen slideshow).
-   * Saves any pending changes before entering presentation mode.
+   * Preserves the current slide state for unsaved presentations.
    */
   async function enterPresentationMode(): Promise<void> {
-    // Save any unsaved changes before presenting
+    // Save a snapshot of current slide state (for unsaved presentations)
+    if (appState.currentSlide) {
+      slideStateBeforePresentation = {
+        slideId: appState.currentSlide.id,
+        elements: JSON.parse(JSON.stringify(appState.currentSlide.elements))
+      }
+    }
+
+    // Save to file if dirty and has file path
     if (appState.isDirty && appState.currentFilePath) {
       await handleSave()
     }
@@ -1516,9 +1527,25 @@
 
   /**
    * Exits presentation mode and returns to edit mode.
+   * Restores the slide state that was active before presenting.
    */
   function exitPresentationMode(): void {
     appState.isPresentingMode = false
+
+    // Restore the slide state if we have a snapshot
+    if (slideStateBeforePresentation && appState.currentSlide) {
+      // If we're still on the same slide, restore its elements
+      if (appState.currentSlide.id === slideStateBeforePresentation.slideId) {
+        appState.currentSlide.elements = slideStateBeforePresentation.elements
+      }
+    }
+
+    slideStateBeforePresentation = null
+
+    // Force re-render of the edit canvas by triggering a state update
+    if (fabCanvas && appState.currentSlide) {
+      renderCanvasFromState()
+    }
   }
 
   /**

@@ -6,6 +6,7 @@
 
   Features:
   - Fullscreen display with dark background
+  - Scales to fit screen while maintaining aspect ratio
   - Keyboard navigation (arrow keys, space, escape)
   - Slide counter
   - Designed to support animations in the future
@@ -24,12 +25,20 @@
   let { onExit }: Props = $props()
 
   // Component state
+  let containerEl: HTMLDivElement
   let canvasEl: HTMLCanvasElement
   let presentationCanvas: Canvas | undefined
+
+  // Canvas dimensions
+  const SLIDE_WIDTH = 800
+  const SLIDE_HEIGHT = 600
 
   // Animation state (placeholder for future animation support)
   let isTransitioning = $state(false)
   let transitionDirection: 'forward' | 'backward' = 'forward'
+
+  // Track current slide to detect changes
+  let lastRenderedSlideId: string | null = null
 
   // ============================================================================
   // Lifecycle
@@ -39,22 +48,60 @@
     // Initialize the presentation canvas
     if (canvasEl) {
       presentationCanvas = new Canvas(canvasEl, {
-        selection: false, // Disable selection in presentation mode
-        interactive: false, // Disable all interactions
-        backgroundColor: '#ffffff' // White slide background
+        selection: false,
+        interactive: false,
+        width: SLIDE_WIDTH,
+        height: SLIDE_HEIGHT,
+        backgroundColor: '#ffffff'
       })
+
+      // Initial render
       renderCurrentSlide()
+
+      // Scale to fit screen
+      scaleCanvas()
     }
 
-    // Add keyboard event listener
+    // Add event listeners
     window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', scaleCanvas)
   })
 
   onDestroy(() => {
-    // Clean up
+    // Clean up event listeners first
     window.removeEventListener('keydown', handleKeyDown)
-    presentationCanvas?.dispose()
+    window.removeEventListener('resize', scaleCanvas)
+
+    // Dispose canvas
+    if (presentationCanvas) {
+      presentationCanvas.dispose()
+      presentationCanvas = undefined
+    }
   })
+
+  // ============================================================================
+  // Scaling
+  // ============================================================================
+
+  /**
+   * Scales the canvas container to fit the screen while maintaining aspect ratio
+   */
+  function scaleCanvas(): void {
+    if (!containerEl) return
+
+    const maxWidth = window.innerWidth * 0.9
+    const maxHeight = window.innerHeight * 0.9
+
+    const scaleX = maxWidth / SLIDE_WIDTH
+    const scaleY = maxHeight / SLIDE_HEIGHT
+    const scale = Math.min(scaleX, scaleY)
+
+    const scaledWidth = SLIDE_WIDTH * scale
+    const scaledHeight = SLIDE_HEIGHT * scale
+
+    containerEl.style.width = `${scaledWidth}px`
+    containerEl.style.height = `${scaledHeight}px`
+  }
 
   // ============================================================================
   // Rendering
@@ -62,19 +109,22 @@
 
   /**
    * Renders the current slide onto the presentation canvas.
-   * This is similar to renderCanvasFromState in App.svelte but simplified for presentation.
+   * Creates a read-only view of the slide data.
    */
   function renderCurrentSlide(): void {
     if (!presentationCanvas || !appState.currentSlide) return
 
-    // Clear the canvas
-    presentationCanvas.clear()
+    // Clear canvas objects but preserve background
+    presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
 
-    // Process elements - images need async loading, so handle separately
+    const currentSlide = appState.currentSlide
+    lastRenderedSlideId = currentSlide.id
+
+    // Process elements - images need async loading
     const imageElements: DeckElement[] = []
     const nonImageElements: DeckElement[] = []
 
-    appState.currentSlide.elements.forEach((element: DeckElement) => {
+    currentSlide.elements.forEach((element: DeckElement) => {
       if (element.type === 'image') {
         imageElements.push(element)
       } else {
@@ -94,6 +144,8 @@
           height: element.height,
           angle: element.angle,
           fill: element.fill,
+          originX: 'center',
+          originY: 'center',
           selectable: false,
           evented: false
         })
@@ -106,6 +158,8 @@
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           styles: element.styles || {},
+          originX: 'center',
+          originY: 'center',
           selectable: false,
           evented: false,
           editable: false
@@ -113,12 +167,7 @@
       }
 
       if (fabObj) {
-        // Set center origin for consistent positioning
-        fabObj.set({
-          originX: 'center',
-          originY: 'center'
-        })
-        presentationCanvas.add(fabObj)
+        presentationCanvas!.add(fabObj)
       }
     })
 
@@ -128,7 +177,6 @@
         FabricImage.fromURL(element.src, {
           crossOrigin: 'anonymous'
         }).then((img) => {
-          // Calculate scale to match the stored width/height
           const scaleX = element.width / (img.width || 1)
           const scaleY = element.height / (img.height || 1)
 
@@ -144,8 +192,8 @@
             evented: false
           })
 
-          presentationCanvas.add(img)
-          presentationCanvas.renderAll()
+          presentationCanvas!.add(img)
+          presentationCanvas!.renderAll()
         }).catch((error) => {
           console.error('Failed to load image in presentation:', error)
         })
@@ -159,16 +207,13 @@
    * Reactive effect to re-render when the current slide changes.
    */
   $effect(() => {
-    if (appState.currentSlide && presentationCanvas) {
-      // FUTURE: This is where slide transition animations would be triggered
-      // For now, we just render immediately
+    // Only re-render if the slide actually changed
+    if (appState.currentSlide && presentationCanvas && appState.currentSlide.id !== lastRenderedSlideId) {
       if (isTransitioning) {
-        // Placeholder for animation logic
-        // Example: fade out current slide, load new slide, fade in
         setTimeout(() => {
           renderCurrentSlide()
           isTransitioning = false
-        }, 300) // Animation duration
+        }, 300)
       } else {
         renderCurrentSlide()
       }
@@ -179,35 +224,22 @@
   // Navigation
   // ============================================================================
 
-  /**
-   * Navigates to the next slide with optional animation support.
-   * FUTURE: Add transition parameter for different animation types
-   */
   async function goToNextSlide(): Promise<void> {
     if (appState.currentSlideIndex < appState.slideIds.length - 1) {
       transitionDirection = 'forward'
-      // FUTURE: Set isTransitioning = true to trigger animations
       const nextSlideId = appState.slideIds[appState.currentSlideIndex + 1]
       await loadSlide(nextSlideId)
     }
   }
 
-  /**
-   * Navigates to the previous slide with optional animation support.
-   * FUTURE: Add transition parameter for different animation types
-   */
   async function goToPreviousSlide(): Promise<void> {
     if (appState.currentSlideIndex > 0) {
       transitionDirection = 'backward'
-      // FUTURE: Set isTransitioning = true to trigger animations
       const prevSlideId = appState.slideIds[appState.currentSlideIndex - 1]
       await loadSlide(prevSlideId)
     }
   }
 
-  /**
-   * Handles keyboard navigation in presentation mode.
-   */
   function handleKeyDown(event: KeyboardEvent): void {
     switch (event.key) {
       case 'Escape':
@@ -215,7 +247,7 @@
         onExit()
         break
       case 'ArrowRight':
-      case ' ': // Space bar
+      case ' ':
       case 'PageDown':
         event.preventDefault()
         goToNextSlide()
@@ -239,45 +271,17 @@
         break
     }
   }
-
-  // ============================================================================
-  // Animation Helpers (Placeholder for future implementation)
-  // ============================================================================
-
-  /**
-   * FUTURE: Apply slide transition animation
-   *
-   * @param type - Type of transition (fade, slide, zoom, etc.)
-   * @param direction - Direction of transition (forward, backward)
-   *
-   * Example implementations:
-   * - 'fade': Cross-fade between slides
-   * - 'slide': Slide in from left/right
-   * - 'zoom': Zoom in/out effect
-   * - 'none': Instant transition (current behavior)
-   */
-  function applyTransition(type: 'fade' | 'slide' | 'zoom' | 'none' = 'none'): void {
-    // Placeholder for future animation logic
-    // This function would:
-    // 1. Set isTransitioning = true
-    // 2. Animate the canvas or container
-    // 3. Call renderCurrentSlide() when animation completes
-    // 4. Set isTransitioning = false
-  }
 </script>
 
 <div class="presentation-container">
-  <!-- Fullscreen presentation view -->
-  <div class="presentation-slide">
-    <canvas bind:this={canvasEl} width="800" height="600"></canvas>
+  <div class="presentation-slide" bind:this={containerEl}>
+    <canvas bind:this={canvasEl} width={SLIDE_WIDTH} height={SLIDE_HEIGHT}></canvas>
   </div>
 
-  <!-- Slide counter (bottom right) -->
   <div class="slide-counter">
     {appState.currentSlideIndex + 1} / {appState.slideIds.length}
   </div>
 
-  <!-- Exit button (top right) - subtle, shows on hover -->
   <button class="exit-button" onclick={onExit} title="Exit presentation (Esc)">
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -303,15 +307,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    max-width: 90vw;
-    max-height: 90vh;
+    background-color: #ffffff;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   }
 
   .presentation-slide canvas {
-    max-width: 100%;
-    max-height: 100%;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-    background-color: #ffffff;
+    width: 100% !important;
+    height: 100% !important;
   }
 
   .slide-counter {
@@ -325,7 +327,6 @@
     background: rgba(0, 0, 0, 0.5);
     padding: 8px 16px;
     border-radius: 20px;
-    backdrop-filter: blur(10px);
   }
 
   .exit-button {
@@ -344,7 +345,6 @@
     cursor: pointer;
     opacity: 0;
     transition: all 0.2s ease;
-    backdrop-filter: blur(10px);
   }
 
   .exit-button:hover {
@@ -355,46 +355,5 @@
 
   .presentation-container:hover .exit-button {
     opacity: 0.5;
-  }
-
-  /* Transition animation placeholder */
-  /* FUTURE: Add classes for different transition effects */
-  .slide-transition-fade {
-    animation: fadeIn 0.3s ease-in-out;
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  .slide-transition-slide-forward {
-    animation: slideInRight 0.3s ease-in-out;
-  }
-
-  @keyframes slideInRight {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
-  }
-
-  .slide-transition-slide-backward {
-    animation: slideInLeft 0.3s ease-in-out;
-  }
-
-  @keyframes slideInLeft {
-    from {
-      transform: translateX(-100%);
-    }
-    to {
-      transform: translateX(0);
-    }
   }
 </style>
