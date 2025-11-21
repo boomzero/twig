@@ -219,13 +219,19 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   }
 
   // Load all elements belonging to this slide
-  const elementStmt = db.prepare('SELECT * FROM elements WHERE slide_id = ?')
+  // Explicitly select all columns to ensure we get src and filename
+  const elementStmt = db.prepare(
+    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename FROM elements WHERE slide_id = ?'
+  )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
   // Debug: Log image elements being loaded
   elementRows.forEach((el) => {
     if (el.type === 'image') {
-      console.log(`Loading image element ${el.id}, src length: ${el.src?.length || 0}`)
+      console.log(`[DB getSlide] Loading image ${el.id}:`)
+      console.log(`[DB getSlide]   src column exists: ${'src' in el}`)
+      console.log(`[DB getSlide]   src type: ${typeof el.src}`)
+      console.log(`[DB getSlide]   src length: ${el.src?.length || 0}`)
     }
   })
 
