@@ -453,6 +453,11 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
       // Insert all elements for this slide
       slide.elements.forEach((el) => {
+        // Debug: Log image elements being saved
+        if (el.type === 'image') {
+          console.log(`[DB saveAllSlides] Saving image ${el.id}: src length = ${el.src?.length || 0}`)
+        }
+
         // Serialize styles with error handling
         let stylesJson: string | null = null
         if (el.styles) {
@@ -464,6 +469,10 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
             stylesJson = null
           }
         }
+
+        const srcValue = el.src || null
+        const filenameValue = el.filename || null
+        console.log(`[DB saveAllSlides] INSERT with src length = ${srcValue?.length || 0}`)
 
         elementInsert.run(
           el.id,
@@ -479,8 +488,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.fontSize,
           el.fontFamily,
           stylesJson,
-          el.src || null,
-          el.filename || null
+          srcValue,
+          filenameValue
         )
       })
     }
