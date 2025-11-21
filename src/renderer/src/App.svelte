@@ -822,6 +822,17 @@
         throw new Error('Failed to serialize presentation data. Some elements may contain invalid data.')
       }
 
+      // Debug: Log what we're saving
+      console.log('Save As: Saving', plainSlides.length, 'slides')
+      plainSlides.forEach((slide, i) => {
+        console.log(`  Slide ${i}: ${slide.elements.length} elements`)
+        slide.elements.forEach((el) => {
+          if (el.type === 'image') {
+            console.log(`    Image ${el.id}: src length = ${el.src?.length || 0}`)
+          }
+        })
+      })
+
       // Save to new file
       try {
         await window.api.db.saveAs(newPath, plainSlides)
