@@ -219,6 +219,13 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   const elementStmt = db.prepare('SELECT * FROM elements WHERE slide_id = ?')
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
+  // Debug: Log image elements being loaded
+  elementRows.forEach((el) => {
+    if (el.type === 'image') {
+      console.log(`Loading image element ${el.id}, src length: ${el.src?.length || 0}`)
+    }
+  })
+
   const elements: DeckElement[] = elementRows.map((el) => ({
     type: el.type as 'rect' | 'text' | 'image',
     id: el.id,
@@ -329,6 +336,11 @@ export function saveSlide(db: Database, slide: Slide): void {
 
     // Insert all elements for this slide
     s.elements.forEach((el) => {
+      // Debug: Log image elements being saved
+      if (el.type === 'image') {
+        console.log(`Saving image element ${el.id}, src length: ${el.src?.length || 0}`)
+      }
+
       // Serialize styles with error handling
       let stylesJson: string | null = null
       if (el.styles) {
