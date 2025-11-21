@@ -508,6 +508,16 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
   // Execute the transaction
   transaction(slides)
+
+  // Verify the save worked by reading back image data
+  slides.forEach((slide) => {
+    slide.elements.forEach((el) => {
+      if (el.type === 'image') {
+        const row = db.prepare('SELECT src FROM elements WHERE id = ?').get(el.id) as { src: string | null } | undefined
+        console.log(`[DB saveAllSlides] VERIFY after save: element ${el.id} src length = ${row?.src?.length || 0}`)
+      }
+    })
+  })
 }
 
 // ============================================================================
