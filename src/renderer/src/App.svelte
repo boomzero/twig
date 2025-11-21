@@ -709,6 +709,14 @@
       // Convert the reactive Svelte state to a plain JS object before sending to IPC
       const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
 
+      // Debug: Log what we're saving
+      console.log('Saving slide with elements:', plainSlide.elements.length)
+      plainSlide.elements.forEach((el: DeckElement) => {
+        if (el.type === 'image') {
+          console.log(`  Image ${el.id}: src length = ${el.src?.length || 0}`)
+        }
+      })
+
       // Save just the current slide to the existing file
       await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
 

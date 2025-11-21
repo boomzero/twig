@@ -248,6 +248,13 @@ export async function loadSlide(slideId: string): Promise<void> {
         console.error(`Failed to load slide ${slideId} from database`)
         return
       }
+      // Debug: Log loaded elements
+      console.log('Loaded slide with elements:', newSlide.elements.length)
+      newSlide.elements.forEach((el) => {
+        if (el.type === 'image') {
+          console.log(`  Image ${el.id}: src length = ${el.src?.length || 0}`)
+        }
+      })
     } else {
       // In-memory mode: load from memory
       newSlide = appState.inMemorySlides.find((s) => s.id === slideId) || null
