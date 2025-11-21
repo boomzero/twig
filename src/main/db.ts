@@ -149,11 +149,14 @@ export function initializeDatabase(db: Database): void {
   try {
     const tableInfo = db.prepare("PRAGMA table_info(elements)").all() as { name: string }[]
     const columnNames = tableInfo.map(col => col.name)
+    console.log('Database columns:', columnNames.join(', '))
 
     if (!columnNames.includes('src')) {
+      console.log('Adding src column to elements table')
       db.exec('ALTER TABLE elements ADD COLUMN src TEXT')
     }
     if (!columnNames.includes('filename')) {
+      console.log('Adding filename column to elements table')
       db.exec('ALTER TABLE elements ADD COLUMN filename TEXT')
     }
   } catch (error) {
