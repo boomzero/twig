@@ -1282,6 +1282,7 @@
       fill: '#333333'
     }
     appState.currentSlide.elements.push(newText)
+    appState.isDirty = true
   }
 
   /**
@@ -1300,6 +1301,7 @@
       fill: '#FF6F61'
     }
     appState.currentSlide.elements.push(newRect)
+    appState.isDirty = true
   }
 
   /**
@@ -1355,6 +1357,7 @@
       }
 
       appState.currentSlide.elements.push(newImage)
+      appState.isDirty = true
     } catch (error) {
       console.error('Failed to add image:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
