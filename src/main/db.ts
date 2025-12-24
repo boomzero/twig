@@ -6,12 +6,12 @@ import { v4 as uuid_v4 } from 'uuid'
 // ============================================================================
 
 /**
- * Represents a single element (shape or text) on a slide.
- * Elements can be rectangles or text objects with various styling properties.
+ * Represents a single element (shape, text, or image) on a slide.
+ * Elements can be rectangles, text objects, or images with various styling properties.
  */
 export interface DeckElement {
-  /** Type of element - either a rectangle shape or text */
-  type: 'rect' | 'text'
+  /** Type of element - rectangle shape, text, or image */
+  type: 'rect' | 'text' | 'image'
 
   /** Unique identifier for this element */
   id: string
@@ -46,6 +46,12 @@ export interface DeckElement {
   /** Rich text styles object from fabric.js (only for text elements) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>
+
+  /** Image data as base64 data URI (only for image elements) */
+  src?: string
+
+  /** Original image filename (only for image elements) */
+  filename?: string
 }
 
 /**
@@ -59,6 +65,27 @@ export interface Slide {
   elements: DeckElement[]
 }
 
+/**
+ * Represents an embedded font stored in the database.
+ * Fonts are stored as binary data (BLOB) to ensure presentation portability.
+ */
+export interface FontData {
+  /** Unique identifier (hash of fontFamily + variant) */
+  id: string
+
+  /** Font family name (e.g., "Arial", "Roboto") */
+  fontFamily: string
+
+  /** Binary font file data */
+  fontData: Buffer
+
+  /** Font file format (ttf, woff, woff2, otf) */
+  format: string
+
+  /** Font variant identifier combining weight and style (e.g., "normal-normal", "bold-italic") */
+  variant: string
+}
+
 // ============================================================================
 // Database Schema Management
 // ============================================================================
@@ -69,6 +96,7 @@ export interface Slide {
  * Schema consists of:
  * - slides table: Stores slide metadata and ordering
  * - elements table: Stores all properties of shapes and text on each slide
+ * - fonts table: Stores embedded font files for presentation portability
  *
  * @param db - The SQLite database connection to initialize
  */
@@ -98,9 +126,42 @@ export function initializeDatabase(db: Database): void {
       fontSize REAL,
       fontFamily TEXT,
       styles TEXT,
+      src TEXT,
+      filename TEXT,
       FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
     )
   `)
+
+  // Create the fonts table to store embedded font files
+  // Fonts are stored as binary data to ensure presentations are portable across systems
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fonts (
+      id TEXT PRIMARY KEY,
+      fontFamily TEXT NOT NULL,
+      fontData BLOB NOT NULL,
+      format TEXT NOT NULL,
+      variant TEXT NOT NULL
+    )
+  `)
+
+  // Migration: Add src and filename columns for image support if they don't exist
+  // This handles existing databases that were created before image support was added
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(elements)").all() as { name: string }[]
+    const columnNames = tableInfo.map(col => col.name)
+    console.log('Database columns:', columnNames.join(', '))
+
+    if (!columnNames.includes('src')) {
+      console.log('Adding src column to elements table')
+      db.exec('ALTER TABLE elements ADD COLUMN src TEXT')
+    }
+    if (!columnNames.includes('filename')) {
+      console.log('Adding filename column to elements table')
+      db.exec('ALTER TABLE elements ADD COLUMN filename TEXT')
+    }
+  } catch (error) {
+    console.error('Failed to migrate database schema:', error)
+  }
 }
 
 // ============================================================================
@@ -137,6 +198,8 @@ interface ElementRow {
   fontSize?: number
   fontFamily?: string
   styles?: string | null // Stored as JSON string in database
+  src?: string | null // Image data as base64 data URI
+  filename?: string | null // Original image filename
 }
 
 /**
@@ -156,11 +219,15 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   }
 
   // Load all elements belonging to this slide
-  const elementStmt = db.prepare('SELECT * FROM elements WHERE slide_id = ?')
+  // Explicitly select all columns to ensure we get src and filename
+  const elementStmt = db.prepare(
+    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename FROM elements WHERE slide_id = ?'
+  )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
+
   const elements: DeckElement[] = elementRows.map((el) => ({
-    type: el.type as 'rect' | 'text',
+    type: el.type as 'rect' | 'text' | 'image',
     id: el.id,
     x: el.x,
     y: el.y,
@@ -181,7 +248,10 @@ export function getSlide(db: Database, slideId: string): Slide | null {
             return undefined
           }
         })()
-      : undefined
+      : undefined,
+    // Image-specific fields
+    src: el.src || undefined,
+    filename: el.filename || undefined
   }))
 
   return { id: slideRow.id, elements }
@@ -261,11 +331,16 @@ export function saveSlide(db: Database, slide: Slide): void {
 
     // Prepare the element insert statement (reused for all elements for efficiency)
     const elementInsert = db.prepare(
-      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
 
     // Insert all elements for this slide
     s.elements.forEach((el) => {
+      // Debug: Log image elements being saved
+      if (el.type === 'image') {
+        console.log(`Saving image element ${el.id}, src length: ${el.src?.length || 0}`)
+      }
+
       // Serialize styles with error handling
       let stylesJson: string | null = null
       if (el.styles) {
@@ -291,7 +366,9 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.text,
         el.fontSize,
         el.fontFamily,
-        stylesJson
+        stylesJson,
+        el.src || null,
+        el.filename || null
       )
     })
 
@@ -368,7 +445,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
       // Prepare the element insert statement (reused for all elements for efficiency)
       const elementInsert = db.prepare(
-        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
 
       // Insert all elements for this slide
@@ -380,7 +457,6 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
             stylesJson = JSON.stringify(el.styles)
           } catch (error) {
             console.error(`Failed to serialize styles for element ${el.id}:`, error)
-            // Continue without styles rather than failing the entire save
             stylesJson = null
           }
         }
@@ -398,7 +474,9 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.text,
           el.fontSize,
           el.fontFamily,
-          stylesJson
+          stylesJson,
+          el.src || null,
+          el.filename || null
         )
       })
     }
@@ -411,4 +489,78 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
   // Execute the transaction
   transaction(slides)
+}
+
+// ============================================================================
+// Font Management Functions
+// ============================================================================
+
+/**
+ * Retrieves all embedded fonts from the database.
+ *
+ * @param db - The SQLite database connection
+ * @returns Array of all fonts stored in the database
+ */
+export function getFonts(db: Database): FontData[] {
+  const stmt = db.prepare('SELECT * FROM fonts')
+  const rows = stmt.all() as Array<{
+    id: string
+    fontFamily: string
+    fontData: Buffer
+    format: string
+    variant: string
+  }>
+  return rows
+}
+
+/**
+ * Retrieves a specific font by family name and variant.
+ *
+ * @param db - The SQLite database connection
+ * @param fontFamily - The font family name to retrieve
+ * @param variant - The font variant (e.g., "normal-normal", "bold-italic")
+ * @returns The font data or null if not found
+ */
+export function getFontData(
+  db: Database,
+  fontFamily: string,
+  variant: string = 'normal-normal'
+): FontData | null {
+  const stmt = db.prepare('SELECT * FROM fonts WHERE fontFamily = ? AND variant = ?')
+  const row = stmt.get(fontFamily, variant) as
+    | {
+        id: string
+        fontFamily: string
+        fontData: Buffer
+        format: string
+        variant: string
+      }
+    | undefined
+  return row || null
+}
+
+/**
+ * Adds or updates a font in the database.
+ * If a font with the same family and variant exists, it will be replaced.
+ *
+ * @param db - The SQLite database connection
+ * @param fontData - The font data to add
+ */
+export function addFont(db: Database, fontData: FontData): void {
+  // Check if font already exists
+  const existing = getFontData(db, fontData.fontFamily, fontData.variant)
+
+  if (existing) {
+    // Update existing font
+    const stmt = db.prepare(
+      'UPDATE fonts SET fontData = ?, format = ? WHERE fontFamily = ? AND variant = ?'
+    )
+    stmt.run(fontData.fontData, fontData.format, fontData.fontFamily, fontData.variant)
+  } else {
+    // Insert new font
+    const stmt = db.prepare(
+      'INSERT INTO fonts (id, fontFamily, fontData, format, variant) VALUES (?, ?, ?, ?, ?)'
+    )
+    stmt.run(fontData.id, fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
+  }
 }

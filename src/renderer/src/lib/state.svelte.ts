@@ -10,19 +10,17 @@
  * - When currentFilePath is null: all slides are kept in inMemorySlides array
  */
 
-import type { Slide } from './db'
-
 // ============================================================================
 // Type Definitions
 // ============================================================================
 
 /**
- * Represents a single element (shape or text) on a slide.
+ * Represents a single element (shape, text, or image) on a slide.
  * This is a renderer-side copy of the DeckElement type from the main process.
  */
 export interface DeckElement {
-  /** Type of element - either a rectangle shape or text */
-  type: 'rect' | 'text'
+  /** Type of element - rectangle shape, text, or image */
+  type: 'rect' | 'text' | 'image'
 
   /** Unique identifier for this element */
   id: string
@@ -57,13 +55,24 @@ export interface DeckElement {
   /** Rich text styles from fabric.js (only for text elements) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>
+
+  /** Image data as base64 data URI (only for image elements) */
+  src?: string
+
+  /** Original image filename (only for image elements) */
+  filename?: string
 }
 
 /**
- * Re-export Slide type for convenience.
- * A slide contains an ID and an array of DeckElements.
+ * Represents a single slide containing multiple elements.
  */
-export type { Slide } from './db'
+export interface Slide {
+  /** Unique identifier for this slide */
+  id: string
+
+  /** Array of elements (shapes, text, images) on this slide */
+  elements: DeckElement[]
+}
 
 /**
  * Tracks which objects are selected on the canvas and their text selection ranges.
@@ -115,7 +124,10 @@ export const appState = $state({
   selectedObjectId: null as string | null,
 
   /** Whether there are unsaved changes to the current slide */
-  isDirty: false
+  isDirty: false,
+
+  /** Whether the presentation is in presenting mode (fullscreen slideshow) */
+  isPresentingMode: false
 })
 
 /**
@@ -236,6 +248,13 @@ export async function loadSlide(slideId: string): Promise<void> {
         console.error(`Failed to load slide ${slideId} from database`)
         return
       }
+      // Debug: Log loaded elements
+      console.log('Loaded slide with elements:', newSlide.elements.length)
+      newSlide.elements.forEach((el) => {
+        if (el.type === 'image') {
+          console.log(`  Image ${el.id}: src length = ${el.src?.length || 0}`)
+        }
+      })
     } else {
       // In-memory mode: load from memory
       newSlide = appState.inMemorySlides.find((s) => s.id === slideId) || null

@@ -4,25 +4,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="SQL update">
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_2025_8_29,_14_51_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_2025_8_29__14_51__Changes_.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_2025_8_29__15_16__Changes_.xml" beforeDir="false" />
+    <list default="true" id="443e567d-5bc1-4bda-8c42-db216fa772ca" name="Changes" comment="MCP! And also remove audit reports">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/preload/index.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/preload/index.d.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/preload/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/preload/index.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/renderer/src/App.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/App.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/renderer/src/components/ContextMenu.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/components/ContextMenu.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/renderer/src/components/PropertiesPanel.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/components/PropertiesPanel.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/renderer/src/lib/state.svelte.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/lib/state.svelte.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="90" />
+    <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -35,7 +28,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="main" />
+        <entry key="$PROJECT_DIR$" value="feature/rte" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -53,6 +46,10 @@
     &quot;accountId&quot;: &quot;545c3640-fbb8-4d83-b5a8-5cb8d2792118&quot;
   }
 }</component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
   <component name="ProblemsViewState">
     <option name="selectedTabId" value="CurrentFile" />
   </component>
@@ -65,36 +62,40 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;sqlrew&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;npm.build.executor&quot;: &quot;Run&quot;,
-    &quot;npm.build:mac.executor&quot;: &quot;Run&quot;,
-    &quot;npm.dev.executor&quot;: &quot;Run&quot;,
-    &quot;npm.lint.executor&quot;: &quot;Run&quot;,
-    &quot;npm.svelte-check.executor&quot;: &quot;Run&quot;,
-    &quot;npm.typecheck.executor&quot;: &quot;Run&quot;,
-    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/chenqi/Desktop/OSS/Deckhand/node_modules/prettier&quot;,
-    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/Users/chenqi/Desktop/OSS/Deckhand/node_modules/typescript/lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "git-widget-placeholder": "claude/add-presenting-feature-018x1w7gaLLQVYgJD5CVoN4x",
+    "javascript.preferred.runtime.type.id": "node",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.standard": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.standard": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "npm.build.executor": "Run",
+    "npm.build:mac.executor": "Run",
+    "npm.build:win.executor": "Run",
+    "npm.dev.executor": "Run",
+    "npm.lint.executor": "Run",
+    "npm.svelte-check.executor": "Run",
+    "npm.typecheck.executor": "Run",
+    "prettierjs.PrettierConfiguration.Package": "/Users/chenqi/Desktop/OSS/Deckhand/node_modules/prettier",
+    "run.code.analysis.last.selected.profile": "pProject Default",
+    "settings.editor.selected.configurable": "http.proxy",
+    "ts.external.directory.path": "/Users/chenqi/Desktop/OSS/Deckhand/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
-  <component name="RunManager" selected="npm.dev">
+}]]></component>
+  <component name="RunManager" selected="npm.build:win">
     <configuration name="build" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
       <package-json value="$PROJECT_DIR$/package.json" />
       <command value="run" />
@@ -115,21 +116,21 @@
       <envs />
       <method v="2" />
     </configuration>
-    <configuration name="dev" type="js.build_tools.npm" nameIsGenerated="true">
+    <configuration name="build:win" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
       <package-json value="$PROJECT_DIR$/package.json" />
       <command value="run" />
       <scripts>
-        <script value="dev" />
+        <script value="build:win" />
       </scripts>
       <node-interpreter value="project" />
       <envs />
       <method v="2" />
     </configuration>
-    <configuration name="lint" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
+    <configuration name="dev" type="js.build_tools.npm" nameIsGenerated="true">
       <package-json value="$PROJECT_DIR$/package.json" />
       <command value="run" />
       <scripts>
-        <script value="lint" />
+        <script value="dev" />
       </scripts>
       <node-interpreter value="project" />
       <envs />
@@ -157,26 +158,26 @@
     </configuration>
     <list>
       <item itemvalue="npm.dev" />
+      <item itemvalue="npm.build:win" />
       <item itemvalue="npm.build" />
       <item itemvalue="npm.build:mac" />
-      <item itemvalue="npm.lint" />
       <item itemvalue="npm.svelte-check" />
       <item itemvalue="npm.typecheck" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="npm.build:win" />
         <item itemvalue="npm.svelte-check" />
         <item itemvalue="npm.typecheck" />
         <item itemvalue="npm.build:mac" />
         <item itemvalue="npm.build" />
-        <item itemvalue="npm.lint" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-WS-252.26830.93" />
+        <option value="bundled-js-predefined-d6986cc7102b-9b0f141eb926-JavaScript-WS-253.29346.143" />
       </set>
     </attachedChunks>
   </component>
@@ -244,6 +245,23 @@
       <workItem from="1760189972874" duration="26000" />
       <workItem from="1760190010342" duration="10118000" />
       <workItem from="1760667127973" duration="13790000" />
+      <workItem from="1762500774555" duration="5969000" />
+      <workItem from="1762859938399" duration="10000" />
+      <workItem from="1762948833203" duration="11462000" />
+      <workItem from="1763699212049" duration="7514000" />
+      <workItem from="1763724654183" duration="4000" />
+      <workItem from="1763771451117" duration="1000" />
+      <workItem from="1763771457558" duration="1147000" />
+      <workItem from="1763907349777" duration="2089000" />
+      <workItem from="1763994385330" duration="5000" />
+      <workItem from="1764507323490" duration="4936000" />
+      <workItem from="1764909165516" duration="7057000" />
+      <workItem from="1765012098474" duration="7567000" />
+      <workItem from="1765107666425" duration="14973000" />
+      <workItem from="1765589141378" duration="1651000" />
+      <workItem from="1766122034524" duration="979000" />
+      <workItem from="1766323824529" duration="635000" />
+      <workItem from="1766415010802" duration="3133000" />
     </task>
     <task id="LOCAL-00001" summary="init">
       <option name="closed" value="true" />
@@ -392,16 +410,5 @@
     <MESSAGE value="Update rect position" />
     <MESSAGE value="SQL update" />
     <option name="LAST_COMMIT_MESSAGE" value="SQL update" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/renderer/src/App.svelte</url>
-          <line>345</line>
-          <option name="timeStamp" value="1" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
 </project>
