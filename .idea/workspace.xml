@@ -94,7 +94,7 @@
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
-  <component name="RunManager" selected="npm.dev">
+  <component name="RunManager" selected="npm.build:win">
     <configuration name="build" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
       <package-json value="$PROJECT_DIR$/package.json" />
       <command value="run" />
@@ -260,7 +260,7 @@
       <workItem from="1765589141378" duration="1651000" />
       <workItem from="1766122034524" duration="979000" />
       <workItem from="1766323824529" duration="635000" />
-      <workItem from="1766415010802" duration="3520000" />
+      <workItem from="1766415010802" duration="3133000" />
     </task>
     <task id="LOCAL-00001" summary="init">
       <option name="closed" value="true" />
@@ -416,7 +416,6 @@
     <MESSAGE value="Fix formatting" />
     <MESSAGE value="Update rect position" />
     <MESSAGE value="SQL update" />
-    <MESSAGE value="action" />
-    <option name="LAST_COMMIT_MESSAGE" value="action" />
+    <option name="LAST_COMMIT_MESSAGE" value="SQL update" />
   </component>
 </project>
