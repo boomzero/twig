@@ -143,6 +143,7 @@
    * user selections across state updates.
    */
   $effect(() => {
+    console.log('🔄 Main rendering effect triggered', { hasCurrentSlide: !!appState.currentSlide })
     if (!appState.currentSlide) {
       fabCanvas?.clear()
       return
@@ -223,6 +224,9 @@
    * Configure fabric.js defaults to use center origin for all objects.
    * This makes rotation and scaling more intuitive.
    */
+
+
+  
   BaseFabricObject.ownDefaults.originY = 'center'
   BaseFabricObject.ownDefaults.originX = 'center'
 
@@ -394,6 +398,7 @@
    * Updates app state and manages rich text editor visibility.
    */
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
+    console.log('🎯 handleSelection called', { selectedCount: event.selected?.length })
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
     } else {
@@ -405,6 +410,11 @@
 
     const selection = event.selected?.[0]
     if (selection instanceof IText) {
+      console.log('📝 Text object selected', {
+        isEditing: selection.isEditing,
+        wasEditing,
+        text: selection.text
+      })
       // Text object selected - enable rich text controls
       activeTextObject = selection
       showRichTextControls = true
@@ -414,6 +424,7 @@
 
       // If user was editing before, restore editing mode
       if (wasEditing) {
+        console.log('🔄 Restoring editing mode')
         activeTextObject.enterEditing()
         wasEditing = false
       }
@@ -470,9 +481,17 @@
    * If no text is selected, applies the style to the entire text object.
    */
   function applyStyleToSelection(style: Record<string, string | number | boolean>): void {
+    console.log('🎨 applyStyleToSelection called', { style, hasActiveText: !!activeTextObject })
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
+    console.log('📝 Text state before apply:', {
+      hasSelection,
+      isEditing: activeTextObject.isEditing,
+      selectionStart: activeTextObject.selectionStart,
+      selectionEnd: activeTextObject.selectionEnd,
+      text: activeTextObject.text
+    })
 
     if (hasSelection) {
       // Apply to selected text range
@@ -512,6 +531,13 @@
       }
     }
 
+    console.log('📝 Text state after apply:', {
+      isEditing: activeTextObject.isEditing,
+      selectionStart: activeTextObject.selectionStart,
+      selectionEnd: activeTextObject.selectionEnd,
+      hasHiddenTextarea: !!activeTextObject.hiddenTextarea
+    })
+
     fabCanvas?.renderAll()
     // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
     // which loses the text selection and input focus. The state will be updated when the
@@ -542,16 +568,17 @@
   /** Changes the font size of the selected text */
   function changeFontSize(event: Event): void {
     const size = parseInt((event.target as HTMLInputElement).value)
+    console.log('📏 changeFontSize called', { size, hasActiveText: !!activeTextObject })
     if (!isNaN(size) && size > 0 && activeTextObject) {
       applyStyleToSelection({ fontSize: size })
-      updateStateFromObject(activeTextObject)
-      fabCanvas?.renderAll()
+      // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
     }
   }
 
   /** Changes the font family of the selected text */
   async function changeFontFamily(event: Event): Promise<void> {
     const family = (event.target as HTMLSelectElement).value
+    console.log('🔤 changeFontFamily called', { family, hasActiveText: !!activeTextObject })
     if (!family || !activeTextObject) return
 
     // Embed the font if needed
@@ -559,8 +586,7 @@
 
     // Apply to selection
     applyStyleToSelection({ fontFamily: family })
-    updateStateFromObject(activeTextObject)
-    fabCanvas?.renderAll()
+    // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
   }
 
   /**
@@ -568,9 +594,16 @@
    * Checks if the selected text has bold, italic, underline, font size, and font family.
    */
   function handleTextSelectionChange(): void {
+    console.log('🔄 handleTextSelectionChange called')
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
+    console.log('📍 Selection state:', {
+      hasSelection,
+      isEditing: activeTextObject.isEditing,
+      selectionStart: activeTextObject.selectionStart,
+      selectionEnd: activeTextObject.selectionEnd
+    })
 
     if (hasSelection) {
       // Has text selection - check character-level styles
@@ -1237,6 +1270,7 @@
    * Selects a font from the custom dropdown
    */
   async function selectFontFromDropdown(fontFamily: string): Promise<void> {
+    console.log('🎯 selectFontFromDropdown called', { fontFamily, hasActiveText: !!activeTextObject })
     fontDropdownOpen = false
     selectionFontFamily = fontFamily
 
@@ -1247,8 +1281,7 @@
 
     // Apply to selection
     applyStyleToSelection({ fontFamily })
-    updateStateFromObject(activeTextObject)
-    fabCanvas?.renderAll()
+    // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
   }
 
   /**
