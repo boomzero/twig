@@ -435,6 +435,7 @@
         wasEditing,
         text: selection.text
       })
+      ensureExplicitTextStyles(selection)
       // Text object selected - enable rich text controls
       activeTextObject = selection
       showRichTextControls = true
@@ -475,6 +476,61 @@
       isSelectionUnderlined = false
       wasEditing = false
     }
+  }
+
+  function ensureExplicitTextStyles(textObject: IText): void {
+    if (!textObject.text) return
+
+    const lines = (textObject as IText & { _textLines?: string[] })._textLines
+      || textObject.text.split('\n')
+    const fontFamilies = new Set<string>()
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const graphemes = textObject.graphemeSplit(lines[lineIndex])
+      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
+        const family = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
+        if (family) {
+          fontFamilies.add(String(family))
+          if (fontFamilies.size > 1) {
+            break
+          }
+        }
+      }
+      if (fontFamilies.size > 1) {
+        break
+      }
+    }
+
+    if (fontFamilies.size < 2) {
+      return
+    }
+
+    if (!textObject.styles) {
+      textObject.styles = {}
+    }
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const graphemes = textObject.graphemeSplit(lines[lineIndex])
+      if (!textObject.styles[lineIndex]) {
+        textObject.styles[lineIndex] = {}
+      }
+      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
+        const existing = textObject.styles[lineIndex][charIndex] || {}
+        const fontFamily = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
+        const fontWeight = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontWeight')
+        const fontStyle = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontStyle')
+
+        textObject.styles[lineIndex][charIndex] = {
+          ...existing,
+          fontFamily,
+          fontWeight,
+          fontStyle
+        }
+      }
+    }
+
+    textObject.dirty = true
+    textObject.initDimensions()
   }
 
   /**
