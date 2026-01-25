@@ -1068,16 +1068,27 @@
     fabCanvas.requestRenderAll()
   }
 
-  function fontDataToBase64(fontData: Buffer | ArrayBuffer | Uint8Array): string {
+  type FontBytes =
+    | Buffer
+    | ArrayBuffer
+    | Uint8Array
+    | { data: number[] }
+    | { data: Uint8Array }
+
+  function fontDataToBase64(fontData: FontBytes): string {
+    const bytes = normalizeFontBytes(fontData)
+    if (!bytes) {
+      throw new Error('Unsupported font data type')
+    }
+
     try {
       if (typeof Buffer !== 'undefined') {
-        return Buffer.from(fontData as Buffer).toString('base64')
+        return Buffer.from(bytes).toString('base64')
       }
     } catch {
       // Fall back to manual base64 conversion.
     }
 
-    const bytes = fontData instanceof Uint8Array ? fontData : new Uint8Array(fontData)
     const chunkSize = 0x8000
     let binary = ''
 
@@ -1086,6 +1097,32 @@
     }
 
     return btoa(binary)
+  }
+
+  function normalizeFontBytes(fontData: FontBytes): Uint8Array | null {
+    if (fontData instanceof Uint8Array) {
+      return fontData
+    }
+
+    if (fontData instanceof ArrayBuffer) {
+      return new Uint8Array(fontData)
+    }
+
+    if (typeof Buffer !== 'undefined' && fontData instanceof Buffer) {
+      return new Uint8Array(fontData)
+    }
+
+    if (fontData && typeof fontData === 'object' && 'data' in fontData) {
+      const data = fontData.data
+      if (data instanceof Uint8Array) {
+        return data
+      }
+      if (Array.isArray(data)) {
+        return new Uint8Array(data)
+      }
+    }
+
+    return null
   }
 
   /**
