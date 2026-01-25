@@ -32,7 +32,8 @@
     FabricImage,
     ActiveSelection,
     util,
-    BaseFabricObject
+    BaseFabricObject,
+    cache
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
@@ -1191,6 +1192,7 @@
 
       loadedFonts.add(key)
       await ensureFontReady(fontFamily, weight, style)
+      cache.clearFontCache(fontFamily)
       console.log(`Injected font: ${fontFamily} (${variant})`)
     } catch (error) {
       console.error(`Failed to inject font ${fontFamily}:`, error)
