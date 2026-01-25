@@ -624,9 +624,14 @@
       selectionEnd: activeTextObject.selectionEnd
     })
 
+    const textLength = activeTextObject.text?.length ?? 0
+
     if (hasSelection) {
       // Has text selection - check character-level styles
-      const styles = activeTextObject.getSelectionStyles()
+      const styles = activeTextObject.getSelectionStyles(
+        activeTextObject.selectionStart,
+        activeTextObject.selectionEnd
+      )
       isSelectionBold = styles.length > 0 && styles.every((style) => style.fontWeight === 'bold')
       isSelectionItalic = styles.length > 0 && styles.every((style) => style.fontStyle === 'italic')
       isSelectionUnderlined = styles.length > 0 && styles.every((style) => style.underline === true)
@@ -649,10 +654,8 @@
         selectionFontFamily = activeTextObject.fontFamily
       }
     } else {
-      // No text selection - check if ALL characters have the same style
-      // Temporarily select all to check styles
-      activeTextObject.selectAll()
-      const allStyles = activeTextObject.getSelectionStyles()
+      // No text selection - check if ALL characters have the same style without mutating the cursor
+      const allStyles = textLength > 0 ? activeTextObject.getSelectionStyles(0, textLength) : []
 
       // Button lights up only if ALL characters have that style
       isSelectionBold = allStyles.length > 0 && allStyles.every((style) => style.fontWeight === 'bold')
@@ -677,9 +680,6 @@
         selectionFontFamily = activeTextObject.fontFamily
       }
 
-      // Restore no selection state
-      activeTextObject.selectionStart = 0
-      activeTextObject.selectionEnd = 0
     }
   }
 
