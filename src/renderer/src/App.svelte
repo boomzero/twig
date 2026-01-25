@@ -1048,6 +1048,10 @@
         await injectFontFace(font.fontFamily, font.fontData, font.format, font.variant)
       }
 
+      if (document?.fonts?.ready) {
+        await document.fonts.ready
+      }
+
       if (embeddedFonts.length > 0) {
         console.log(`Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`)
         refreshTextRendering()
@@ -1125,6 +1129,19 @@
     return null
   }
 
+  async function ensureFontReady(fontFamily: string, weight: string, style: string): Promise<void> {
+    if (!document?.fonts?.load) return
+
+    const normalizedStyle = style === 'italic' ? 'italic' : 'normal'
+    const normalizedWeight = weight === 'bold' ? 'bold' : 'normal'
+
+    try {
+      await document.fonts.load(`${normalizedStyle} ${normalizedWeight} 16px '${fontFamily}'`)
+    } catch (error) {
+      console.warn(`Failed to load font via FontFaceSet: ${fontFamily}`, error)
+    }
+  }
+
   /**
    * Injects a font into the page using CSS @font-face.
    *
@@ -1173,6 +1190,7 @@
       document.head.appendChild(styleEl)
 
       loadedFonts.add(key)
+      await ensureFontReady(fontFamily, weight, style)
       console.log(`Injected font: ${fontFamily} (${variant})`)
     } catch (error) {
       console.error(`Failed to inject font ${fontFamily}:`, error)
