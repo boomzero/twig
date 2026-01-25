@@ -483,53 +483,7 @@
 
   function ensureExplicitTextStyles(textObject: IText): void {
     if (!textObject.text) return
-
-    const lines = (textObject as IText & { _textLines?: string[] })._textLines
-      || textObject.text.split('\n')
-    const fontFamilies = new Set<string>()
-
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      const graphemes = textObject.graphemeSplit(lines[lineIndex])
-      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
-        const family = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
-        if (family) {
-          fontFamilies.add(String(family))
-          if (fontFamilies.size > 1) {
-            break
-          }
-        }
-      }
-      if (fontFamilies.size > 1) {
-        break
-      }
-    }
-
-    if (fontFamilies.size < 2) {
-      return
-    }
-
-    if (!textObject.styles) {
-      textObject.styles = {}
-    }
-
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      const graphemes = textObject.graphemeSplit(lines[lineIndex])
-      if (!textObject.styles[lineIndex]) {
-        textObject.styles[lineIndex] = {}
-      }
-      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
-        const existing = textObject.styles[lineIndex][charIndex] || {}
-        const fontFamily = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
-
-        textObject.styles[lineIndex][charIndex] = {
-          ...existing,
-          fontFamily
-        }
-      }
-    }
-
-    textObject.dirty = true
-    textObject.initDimensions()
+    normalizeFontFamiliesForRange(textObject, 0, textObject.text.length)
   }
 
   function normalizeFontFamiliesForRange(textObject: IText, start: number, end: number): void {
@@ -537,6 +491,7 @@
 
     const lines = (textObject as IText & { _textLines?: string[] })._textLines
       || textObject.text.split('\n')
+    const baseFamily = String(textObject.fontFamily || '')
 
     const startLoc = textObject.get2DCursorLocation(start, true)
     const endLoc = textObject.get2DCursorLocation(end, true)
@@ -560,19 +515,32 @@
         continue
       }
 
-      if (!textObject.styles) {
-        textObject.styles = {}
-      }
-      if (!textObject.styles[lineIndex]) {
-        textObject.styles[lineIndex] = {}
-      }
-
       for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
         const existing = textObject.styles[lineIndex][charIndex] || {}
         const fontFamily = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
+
+        if (!fontFamily) {
+          continue
+        }
+
+        const normalizedFamily = String(fontFamily)
+        const shouldApply = normalizedFamily !== baseFamily
+          || Object.keys(existing).some((key) => key !== 'fontFamily')
+
+        if (!shouldApply) {
+          continue
+        }
+
+        if (!textObject.styles) {
+          textObject.styles = {}
+        }
+        if (!textObject.styles[lineIndex]) {
+          textObject.styles[lineIndex] = {}
+        }
+
         textObject.styles[lineIndex][charIndex] = {
           ...existing,
-          fontFamily
+          fontFamily: normalizedFamily
         }
       }
     }
