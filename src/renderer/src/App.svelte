@@ -53,6 +53,7 @@
 
   // Currently active text object (for rich text editing)
   let activeTextObject: IText | null = null
+  let isNormalizingTextStyles = false
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -267,6 +268,7 @@
 
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
+    fabCanvas.off('text:changed', handleTextChanged)
     fabCanvas.off('selection:created', handleSelection)
     fabCanvas.off('selection:updated', handleSelection)
     fabCanvas.off('selection:cleared', handleSelectionCleared)
@@ -350,6 +352,7 @@
 
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)
+    fabCanvas.on('text:changed', handleTextChanged)
     fabCanvas.on('selection:created', handleSelection)
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
@@ -546,6 +549,18 @@
     isSelectionUnderlined = false
     selectionFontSize = 40
     wasEditing = false
+  }
+
+  function handleTextChanged(event: { target?: DeckFabricObject }): void {
+    const target = event.target
+    if (!(target instanceof IText) || isNormalizingTextStyles) return
+
+    isNormalizingTextStyles = true
+    try {
+      ensureExplicitTextStyles(target)
+    } finally {
+      isNormalizingTextStyles = false
+    }
   }
 
   // ============================================================================
