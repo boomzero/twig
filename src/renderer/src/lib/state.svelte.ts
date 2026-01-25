@@ -130,6 +130,7 @@ export const appState = $state({
   isPresentingMode: false
 })
 
+
 /**
  * Lock flag to prevent concurrent loadSlide operations.
  * This prevents race conditions when users rapidly switch between slides.
@@ -231,10 +232,11 @@ export async function loadSlide(slideId: string): Promise<void> {
         (s) => s.id === appState.currentSlide!.id
       )
       if (currentIndex !== -1) {
-        appState.inMemorySlides[currentIndex] = appState.currentSlide
+        // Deep copy to prevent reference issues
+        appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
       } else {
         console.warn(`Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`)
-        appState.inMemorySlides.push(appState.currentSlide)
+        appState.inMemorySlides.push(JSON.parse(JSON.stringify(appState.currentSlide)))
       }
     }
 
@@ -248,16 +250,10 @@ export async function loadSlide(slideId: string): Promise<void> {
         console.error(`Failed to load slide ${slideId} from database`)
         return
       }
-      // Debug: Log loaded elements
-      console.log('Loaded slide with elements:', newSlide.elements.length)
-      newSlide.elements.forEach((el) => {
-        if (el.type === 'image') {
-          console.log(`  Image ${el.id}: src length = ${el.src?.length || 0}`)
-        }
-      })
     } else {
-      // In-memory mode: load from memory
-      newSlide = appState.inMemorySlides.find((s) => s.id === slideId) || null
+      // In-memory mode: load from memory (deep copy to prevent reference issues)
+      const foundSlide = appState.inMemorySlides.find((s) => s.id === slideId)
+      newSlide = foundSlide ? JSON.parse(JSON.stringify(foundSlide)) : null
       if (!newSlide) {
         console.error(`Failed to find slide ${slideId} in memory`)
         return
