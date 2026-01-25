@@ -39,6 +39,7 @@
   import PresentationView from './components/PresentationView.svelte'
   import { PressedKeys } from 'runed'
 
+
   // ============================================================================
   // Component State
   // ============================================================================
@@ -143,9 +144,27 @@
    * user selections across state updates.
    */
   $effect(() => {
-    console.log('🔄 Main rendering effect triggered', { hasCurrentSlide: !!appState.currentSlide })
+    // Skip canvas operations during presentation mode - the edit canvas is not rendered
+    if (appState.isPresentingMode) {
+      return
+    }
+
     if (!appState.currentSlide) {
       fabCanvas?.clear()
+      return
+    }
+
+    // canvasEl binding might not be ready yet after exiting presentation mode
+    // Use requestAnimationFrame to defer to the next frame when DOM is ready
+    if (!canvasEl) {
+      requestAnimationFrame(() => {
+        if (canvasEl && appState.currentSlide && !appState.isPresentingMode) {
+          if (!fabCanvas) {
+            fabCanvas = new Canvas(canvasEl)
+          }
+          renderCanvasFromState()
+        }
+      })
       return
     }
 
@@ -226,7 +245,7 @@
    */
 
 
-  
+
   BaseFabricObject.ownDefaults.originY = 'center'
   BaseFabricObject.ownDefaults.originX = 'center'
 
@@ -605,9 +624,14 @@
       selectionEnd: activeTextObject.selectionEnd
     })
 
+    const textLength = activeTextObject.text?.length ?? 0
+
     if (hasSelection) {
       // Has text selection - check character-level styles
-      const styles = activeTextObject.getSelectionStyles()
+      const styles = activeTextObject.getSelectionStyles(
+        activeTextObject.selectionStart,
+        activeTextObject.selectionEnd
+      )
       isSelectionBold = styles.length > 0 && styles.every((style) => style.fontWeight === 'bold')
       isSelectionItalic = styles.length > 0 && styles.every((style) => style.fontStyle === 'italic')
       isSelectionUnderlined = styles.length > 0 && styles.every((style) => style.underline === true)
@@ -630,10 +654,8 @@
         selectionFontFamily = activeTextObject.fontFamily
       }
     } else {
-      // No text selection - check if ALL characters have the same style
-      // Temporarily select all to check styles
-      activeTextObject.selectAll()
-      const allStyles = activeTextObject.getSelectionStyles()
+      // No text selection - check if ALL characters have the same style without mutating the cursor
+      const allStyles = textLength > 0 ? activeTextObject.getSelectionStyles(0, textLength) : []
 
       // Button lights up only if ALL characters have that style
       isSelectionBold = allStyles.length > 0 && allStyles.every((style) => style.fontWeight === 'bold')
@@ -658,9 +680,6 @@
         selectionFontFamily = activeTextObject.fontFamily
       }
 
-      // Restore no selection state
-      activeTextObject.selectionStart = 0
-      activeTextObject.selectionEnd = 0
     }
   }
 
@@ -1443,7 +1462,8 @@
           (s) => s.id === appState.currentSlide!.id
         )
         if (currentIndex !== -1) {
-          appState.inMemorySlides[currentIndex] = appState.currentSlide
+          // Deep copy to prevent reference issues
+          appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
         }
       }
 
@@ -1571,9 +1591,26 @@
       }
     }
 
+    // For unsaved presentations, sync current slide to inMemorySlides before presenting
+    if (!appState.currentFilePath && appState.currentSlide) {
+      const currentIndex = appState.inMemorySlides.findIndex(
+        (s) => s.id === appState.currentSlide!.id
+      )
+      if (currentIndex !== -1) {
+        appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
+      }
+    }
+
     // Save to file if dirty and has file path
     if (appState.isDirty && appState.currentFilePath) {
       await handleSave()
+    }
+
+    // Dispose the edit canvas before entering presentation mode
+    // This ensures a fresh canvas is created when we exit
+    if (fabCanvas) {
+      fabCanvas.dispose()
+      fabCanvas = undefined
     }
 
     // Enter presentation mode
@@ -1585,11 +1622,8 @@
    * Restores the slide state that was active before presenting.
    */
   function exitPresentationMode(): void {
-    appState.isPresentingMode = false
-
-    // Restore the slide state if we have a snapshot
+    // Restore the slide state if we have a snapshot and we're on the same slide
     if (slideStateBeforePresentation && appState.currentSlide) {
-      // If we're still on the same slide, restore its elements
       if (appState.currentSlide.id === slideStateBeforePresentation.slideId) {
         appState.currentSlide.elements = slideStateBeforePresentation.elements
       }
@@ -1597,10 +1631,9 @@
 
     slideStateBeforePresentation = null
 
-    // Force re-render of the edit canvas by triggering a state update
-    if (fabCanvas && appState.currentSlide) {
-      renderCanvasFromState()
-    }
+    // Exit presentation mode - this will trigger the main $effect to create
+    // a new canvas and render the current slide
+    appState.isPresentingMode = false
   }
 
   /**
