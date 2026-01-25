@@ -520,14 +520,10 @@
       for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
         const existing = textObject.styles[lineIndex][charIndex] || {}
         const fontFamily = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
-        const fontWeight = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontWeight')
-        const fontStyle = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontStyle')
 
         textObject.styles[lineIndex][charIndex] = {
           ...existing,
-          fontFamily,
-          fontWeight,
-          fontStyle
+          fontFamily
         }
       }
     }
