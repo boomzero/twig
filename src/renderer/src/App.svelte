@@ -532,6 +532,55 @@
     textObject.initDimensions()
   }
 
+  function normalizeFontFamiliesForRange(textObject: IText, start: number, end: number): void {
+    if (!textObject.text) return
+
+    const lines = (textObject as IText & { _textLines?: string[] })._textLines
+      || textObject.text.split('\n')
+
+    const startLoc = textObject.get2DCursorLocation(start, true)
+    const endLoc = textObject.get2DCursorLocation(end, true)
+    const minLine = Math.min(startLoc.lineIndex, endLoc.lineIndex)
+    const maxLine = Math.max(startLoc.lineIndex, endLoc.lineIndex)
+
+    for (let lineIndex = minLine; lineIndex <= maxLine; lineIndex += 1) {
+      const graphemes = textObject.graphemeSplit(lines[lineIndex] || '')
+      if (!graphemes.length) continue
+
+      const fontFamilies = new Set<string>()
+      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
+        const family = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
+        if (family) {
+          fontFamilies.add(String(family))
+          if (fontFamilies.size > 1) break
+        }
+      }
+
+      if (fontFamilies.size < 2) {
+        continue
+      }
+
+      if (!textObject.styles) {
+        textObject.styles = {}
+      }
+      if (!textObject.styles[lineIndex]) {
+        textObject.styles[lineIndex] = {}
+      }
+
+      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
+        const existing = textObject.styles[lineIndex][charIndex] || {}
+        const fontFamily = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
+        textObject.styles[lineIndex][charIndex] = {
+          ...existing,
+          fontFamily
+        }
+      }
+    }
+
+    textObject.dirty = true
+    textObject.initDimensions()
+  }
+
   /**
    * Handles selection cleared event - resets selection state.
    */
@@ -553,7 +602,9 @@
 
     isNormalizingTextStyles = true
     try {
-      ensureExplicitTextStyles(target)
+      const start = target.selectionStart ?? 0
+      const end = target.selectionEnd ?? start
+      normalizeFontFamiliesForRange(target, start, end)
     } finally {
       isNormalizingTextStyles = false
     }
