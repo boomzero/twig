@@ -1050,10 +1050,42 @@
 
       if (embeddedFonts.length > 0) {
         console.log(`Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`)
+        refreshTextRendering()
       }
     } catch (error) {
       console.error('Failed to load embedded fonts:', error)
     }
+  }
+
+  function refreshTextRendering(): void {
+    if (!fabCanvas) return
+    fabCanvas.getObjects().forEach((obj) => {
+      if (obj instanceof IText) {
+        obj.dirty = true
+        obj.initDimensions()
+      }
+    })
+    fabCanvas.requestRenderAll()
+  }
+
+  function fontDataToBase64(fontData: Buffer | ArrayBuffer | Uint8Array): string {
+    try {
+      if (typeof Buffer !== 'undefined') {
+        return Buffer.from(fontData as Buffer).toString('base64')
+      }
+    } catch {
+      // Fall back to manual base64 conversion.
+    }
+
+    const bytes = fontData instanceof Uint8Array ? fontData : new Uint8Array(fontData)
+    const chunkSize = 0x8000
+    let binary = ''
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+    }
+
+    return btoa(binary)
   }
 
   /**
@@ -1077,12 +1109,13 @@
 
     try {
       // Convert Buffer to base64 for data URI
-      const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(fontData))))
+      const base64 = fontDataToBase64(fontData)
 
       // Determine font format for @font-face
-      let fontFormat = format
-      if (format === 'ttf') fontFormat = 'truetype'
-      else if (format === 'otf') fontFormat = 'opentype'
+      const normalizedFormat = format === 'ttc' ? 'ttf' : format
+      let fontFormat = normalizedFormat
+      if (normalizedFormat === 'ttf') fontFormat = 'truetype'
+      else if (normalizedFormat === 'otf') fontFormat = 'opentype'
 
       // Parse variant to get weight and style
       const [weight, style] = variant.split('-')
@@ -1091,7 +1124,7 @@
       const fontFaceRule = `
         @font-face {
           font-family: '${fontFamily}';
-          src: url(data:font/${format};base64,${base64}) format('${fontFormat}');
+          src: url(data:font/${normalizedFormat};base64,${base64}) format('${fontFormat}');
           font-weight: ${weight};
           font-style: ${style};
         }

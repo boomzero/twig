@@ -278,18 +278,32 @@ function scanFontDirectory(dir: string, fonts: SystemFont[]): void {
       } else if (entry.isFile()) {
         const ext = extname(entry.name).toLowerCase()
         // Check if it's a supported font file
-        if (['.ttf', '.otf'].includes(ext)) {
+        if (['.ttf', '.otf', '.ttc'].includes(ext)) {
           try {
             // Read the actual font family name from the font file metadata
             const font = fontkit.openSync(fullPath)
-            const familyName = font.familyName
+            const format = ext.substring(1) // Remove the dot
 
-            if (familyName) {
-              fonts.push({
-                family: familyName,
-                path: fullPath,
-                format: ext.substring(1) // Remove the dot
-              })
+            if (font?.type === 'TTC' && Array.isArray(font.fonts)) {
+              for (const collectionFont of font.fonts) {
+                const familyName = collectionFont.familyName
+                if (familyName) {
+                  fonts.push({
+                    family: familyName,
+                    path: fullPath,
+                    format
+                  })
+                }
+              }
+            } else {
+              const familyName = font.familyName
+              if (familyName) {
+                fonts.push({
+                  family: familyName,
+                  path: fullPath,
+                  format
+                })
+              }
             }
           } catch (fontError) {
             // Skip fonts that can't be parsed
@@ -643,7 +657,7 @@ app.whenReady().then(() => {
         // Determine format from file extension
         const ext = extname(fontPath).toLowerCase()
         let format = ext.substring(1) // Remove dot
-        if (!['ttf', 'otf', 'woff', 'woff2'].includes(format)) {
+        if (!['ttf', 'otf', 'ttc', 'woff', 'woff2'].includes(format)) {
           throw new Error(`Unsupported font format: ${format}`)
         }
 
