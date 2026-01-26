@@ -55,6 +55,7 @@
   let activeTextObject: IText | null = null
   let isNormalizingTextStyles = false
   let isApplyingFontChange = false
+  const debugFontStyleChanges = true
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -562,6 +563,20 @@
     const rangeStart = hasSelection ? Math.min(selectionStart, selectionEnd) : 0
     const rangeEnd = hasSelection ? Math.max(selectionStart, selectionEnd) : textLength
 
+    let beforeStyles: Array<{ index: number; family?: string; weight?: string | number; style?: string }> = []
+    if (debugFontStyleChanges) {
+      beforeStyles = collectTextStyles(textObject, rangeStart, rangeEnd)
+      console.log('🔎 Font change before', {
+        text: textObject.text,
+        baseFamily: textObject.fontFamily,
+        selectionStart,
+        selectionEnd,
+        rangeStart,
+        rangeEnd,
+        targetFamily: fontFamily
+      })
+    }
+
     if (!hasSelection) {
       textObject.fontFamily = fontFamily
     }
@@ -585,6 +600,63 @@
 
     textObject.dirty = true
     textObject.initDimensions()
+
+    if (debugFontStyleChanges) {
+      const afterStyles = collectTextStyles(textObject, rangeStart, rangeEnd)
+      const diffs = diffTextStyles(beforeStyles, afterStyles)
+      console.log('🔎 Font change after', {
+        baseFamily: textObject.fontFamily,
+        diffs
+      })
+    }
+  }
+
+  function collectTextStyles(
+    textObject: IText,
+    start: number,
+    end: number
+  ): Array<{ index: number; family?: string; weight?: string | number; style?: string }> {
+    const styles: Array<{ index: number; family?: string; weight?: string | number; style?: string }> = []
+    for (let index = start; index < end; index += 1) {
+      const { lineIndex, charIndex } = textObject.get2DCursorLocation(index, true)
+      styles.push({
+        index,
+        family: textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily'),
+        weight: textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontWeight'),
+        style: textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontStyle')
+      })
+    }
+    return styles
+  }
+
+  function diffTextStyles(
+    before: Array<{ index: number; family?: string; weight?: string | number; style?: string }>,
+    after: Array<{ index: number; family?: string; weight?: string | number; style?: string }>
+  ): Array<{
+    index: number
+    before: { family?: string; weight?: string | number; style?: string }
+    after: { family?: string; weight?: string | number; style?: string }
+  }> {
+    const diffs: Array<{
+      index: number
+      before: { family?: string; weight?: string | number; style?: string }
+      after: { family?: string; weight?: string | number; style?: string }
+    }> = []
+
+    for (let i = 0; i < Math.max(before.length, after.length); i += 1) {
+      const prev = before[i]
+      const next = after[i]
+      if (!prev || !next) continue
+      if (prev.family !== next.family || prev.weight !== next.weight || prev.style !== next.style) {
+        diffs.push({
+          index: next.index,
+          before: { family: prev.family, weight: prev.weight, style: prev.style },
+          after: { family: next.family, weight: next.weight, style: next.style }
+        })
+      }
+    }
+
+    return diffs
   }
 
   /**
