@@ -438,7 +438,6 @@
         wasEditing,
         text: selection.text
       })
-      ensureExplicitTextStyles(selection)
       // Text object selected - enable rich text controls
       activeTextObject = selection
       showRichTextControls = true
