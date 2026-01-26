@@ -549,6 +549,44 @@
     textObject.initDimensions()
   }
 
+  function applyFontFamilyPreserveStyles(textObject: IText, fontFamily: string): void {
+    const textLength = textObject.text?.length ?? 0
+    if (!textLength) {
+      textObject.fontFamily = fontFamily
+      return
+    }
+
+    const selectionStart = textObject.selectionStart ?? 0
+    const selectionEnd = textObject.selectionEnd ?? selectionStart
+    const hasSelection = selectionStart !== selectionEnd
+    const rangeStart = hasSelection ? Math.min(selectionStart, selectionEnd) : 0
+    const rangeEnd = hasSelection ? Math.max(selectionStart, selectionEnd) : textLength
+
+    if (!hasSelection) {
+      textObject.fontFamily = fontFamily
+    }
+
+    if (!textObject.styles) {
+      textObject.styles = {}
+    }
+
+    for (let index = rangeStart; index < rangeEnd; index += 1) {
+      const { lineIndex, charIndex } = textObject.get2DCursorLocation(index, true)
+      if (!textObject.styles[lineIndex]) {
+        textObject.styles[lineIndex] = {}
+      }
+
+      const existing = textObject.styles[lineIndex][charIndex] || {}
+      textObject.styles[lineIndex][charIndex] = {
+        ...existing,
+        fontFamily
+      }
+    }
+
+    textObject.dirty = true
+    textObject.initDimensions()
+  }
+
   /**
    * Handles selection cleared event - resets selection state.
    */
@@ -602,6 +640,13 @@
     const isFontChange = style.fontFamily !== undefined
     if (isFontChange) {
       isApplyingFontChange = true
+    }
+
+    if (isFontChange && Object.keys(style).length === 1 && activeTextObject) {
+      applyFontFamilyPreserveStyles(activeTextObject, style.fontFamily as string)
+      fabCanvas?.renderAll()
+      isApplyingFontChange = false
+      return
     }
 
     if (hasSelection) {
