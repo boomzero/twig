@@ -55,6 +55,7 @@
   let activeTextObject: IText | null = null
   let isNormalizingTextStyles = false
   let isApplyingFontChange = false
+  let lastTextSelectionRange: { start: number; end: number } | null = null
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -558,9 +559,19 @@
 
     const selectionStart = textObject.selectionStart ?? 0
     const selectionEnd = textObject.selectionEnd ?? selectionStart
-    const hasSelection = selectionStart !== selectionEnd
-    const rangeStart = hasSelection ? Math.min(selectionStart, selectionEnd) : 0
-    const rangeEnd = hasSelection ? Math.max(selectionStart, selectionEnd) : textLength
+    let hasSelection = selectionStart !== selectionEnd
+    let rangeStart = hasSelection ? Math.min(selectionStart, selectionEnd) : 0
+    let rangeEnd = hasSelection ? Math.max(selectionStart, selectionEnd) : textLength
+
+    if (!hasSelection && lastTextSelectionRange) {
+      const fallbackStart = Math.min(lastTextSelectionRange.start, lastTextSelectionRange.end)
+      const fallbackEnd = Math.max(lastTextSelectionRange.start, lastTextSelectionRange.end)
+      if (fallbackStart !== fallbackEnd && fallbackStart >= 0 && fallbackEnd <= textLength) {
+        hasSelection = true
+        rangeStart = fallbackStart
+        rangeEnd = fallbackEnd
+      }
+    }
 
     if (!hasSelection) {
       textObject.fontFamily = fontFamily
@@ -600,6 +611,7 @@
     isSelectionUnderlined = false
     selectionFontSize = 40
     wasEditing = false
+    lastTextSelectionRange = null
   }
 
   function handleTextChanged(event: { target?: DeckFabricObject }): void {
@@ -772,6 +784,10 @@
     const textLength = activeTextObject.text?.length ?? 0
 
     if (hasSelection) {
+      lastTextSelectionRange = {
+        start: activeTextObject.selectionStart ?? 0,
+        end: activeTextObject.selectionEnd ?? 0
+      }
       // Has text selection - check character-level styles
       const styles = activeTextObject.getSelectionStyles(
         activeTextObject.selectionStart,
@@ -799,6 +815,7 @@
         selectionFontFamily = activeTextObject.fontFamily
       }
     } else {
+      lastTextSelectionRange = null
       // No text selection - check if ALL characters have the same style without mutating the cursor
       const allStyles = textLength > 0 ? activeTextObject.getSelectionStyles(0, textLength) : []
 
