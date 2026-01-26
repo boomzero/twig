@@ -56,6 +56,7 @@
   let isNormalizingTextStyles = false
   let isApplyingFontChange = false
   let lastTextSelectionRange: { start: number; end: number } | null = null
+  let suppressSelectionTracking = false
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -612,6 +613,7 @@
     selectionFontSize = 40
     wasEditing = false
     lastTextSelectionRange = null
+    suppressSelectionTracking = false
   }
 
   function handleTextChanged(event: { target?: DeckFabricObject }): void {
@@ -784,9 +786,11 @@
     const textLength = activeTextObject.text?.length ?? 0
 
     if (hasSelection) {
-      lastTextSelectionRange = {
-        start: activeTextObject.selectionStart ?? 0,
-        end: activeTextObject.selectionEnd ?? 0
+      if (!suppressSelectionTracking) {
+        lastTextSelectionRange = {
+          start: activeTextObject.selectionStart ?? 0,
+          end: activeTextObject.selectionEnd ?? 0
+        }
       }
       // Has text selection - check character-level styles
       const styles = activeTextObject.getSelectionStyles(
@@ -815,7 +819,9 @@
         selectionFontFamily = activeTextObject.fontFamily
       }
     } else {
-      lastTextSelectionRange = null
+      if (!suppressSelectionTracking) {
+        lastTextSelectionRange = null
+      }
       // No text selection - check if ALL characters have the same style without mutating the cursor
       const allStyles = textLength > 0 ? activeTextObject.getSelectionStyles(0, textLength) : []
 
@@ -1526,6 +1532,29 @@
   function toggleFontDropdown(): void {
     fontDropdownOpen = !fontDropdownOpen
     if (fontDropdownOpen) {
+      if (activeTextObject) {
+        suppressSelectionTracking = true
+        lastTextSelectionRange = {
+          start: activeTextObject.selectionStart ?? 0,
+          end: activeTextObject.selectionEnd ?? 0
+        }
+        const restoreStart = lastTextSelectionRange.start
+        const restoreEnd = lastTextSelectionRange.end
+
+        setTimeout(() => {
+          if (!activeTextObject) {
+            suppressSelectionTracking = false
+            return
+          }
+          if (wasEditing || activeTextObject.isEditing) {
+            activeTextObject.enterEditing()
+          }
+          activeTextObject.setSelectionStart(restoreStart)
+          activeTextObject.setSelectionEnd(restoreEnd)
+          fabCanvas?.requestRenderAll()
+          suppressSelectionTracking = false
+        }, 0)
+      }
       fontSearchQuery = ''
       // Load the currently selected font and a few common ones
       if (selectionFontFamily !== 'Multiple') {
@@ -1533,6 +1562,8 @@
       }
       const commonFonts = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana']
       commonFonts.forEach(font => queueFontForLoading(font))
+    } else {
+      suppressSelectionTracking = false
     }
   }
 
