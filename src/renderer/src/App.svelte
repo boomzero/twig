@@ -54,6 +54,7 @@
   // Currently active text object (for rich text editing)
   let activeTextObject: IText | null = null
   let isNormalizingTextStyles = false
+  let isApplyingFontChange = false
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -565,7 +566,7 @@
 
   function handleTextChanged(event: { target?: DeckFabricObject }): void {
     const target = event.target
-    if (!(target instanceof IText) || isNormalizingTextStyles) return
+    if (!(target instanceof IText) || isNormalizingTextStyles || isApplyingFontChange) return
 
     isNormalizingTextStyles = true
     try {
@@ -597,6 +598,11 @@
       selectionEnd: activeTextObject.selectionEnd,
       text: activeTextObject.text
     })
+
+    const isFontChange = style.fontFamily !== undefined
+    if (isFontChange) {
+      isApplyingFontChange = true
+    }
 
     if (hasSelection) {
       // Apply to selected text range
@@ -644,6 +650,9 @@
     })
 
     fabCanvas?.renderAll()
+    if (isFontChange) {
+      isApplyingFontChange = false
+    }
     // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
     // which loses the text selection and input focus. The state will be updated when the
     // user finishes editing via the object:modified event handler.
@@ -686,11 +695,16 @@
     console.log('🔤 changeFontFamily called', { family, hasActiveText: !!activeTextObject })
     if (!family || !activeTextObject) return
 
-    // Embed the font if needed
-    await embedFontIfNeeded(family)
+    isApplyingFontChange = true
+    try {
+      // Embed the font if needed
+      await embedFontIfNeeded(family)
 
-    // Apply to selection
-    applyStyleToSelection({ fontFamily: family })
+      // Apply to selection
+      applyStyleToSelection({ fontFamily: family })
+    } finally {
+      isApplyingFontChange = false
+    }
     // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
   }
 
@@ -1470,11 +1484,16 @@
 
     if (!activeTextObject) return
 
-    // Embed the font if needed
-    await embedFontIfNeeded(fontFamily)
+    isApplyingFontChange = true
+    try {
+      // Embed the font if needed
+      await embedFontIfNeeded(fontFamily)
 
-    // Apply to selection
-    applyStyleToSelection({ fontFamily })
+      // Apply to selection
+      applyStyleToSelection({ fontFamily })
+    } finally {
+      isApplyingFontChange = false
+    }
     // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
   }
 
