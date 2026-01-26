@@ -56,6 +56,7 @@
   let isNormalizingTextStyles = false
   let isApplyingFontChange = false
   const debugFontStyleChanges = true
+  const textStyleSnapshot = new WeakMap<IText, Array<{ index: number; family?: string; weight?: string | number; style?: string }>>()
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -608,6 +609,8 @@
         baseFamily: textObject.fontFamily,
         diffs
       })
+      const fullStyles = collectTextStyles(textObject, 0, textObject.text?.length ?? 0)
+      textStyleSnapshot.set(textObject, fullStyles)
     }
   }
 
@@ -680,6 +683,21 @@
 
     isNormalizingTextStyles = true
     try {
+      if (debugFontStyleChanges) {
+        const before = textStyleSnapshot.get(target) || []
+        const after = collectTextStyles(target, 0, target.text?.length ?? 0)
+        const diffs = diffTextStyles(before, after)
+        if (diffs.length > 0) {
+          console.log('🔎 Text change style diffs', {
+            baseFamily: target.fontFamily,
+            baseWeight: target.fontWeight,
+            baseStyle: target.fontStyle,
+            diffs
+          })
+        }
+        textStyleSnapshot.set(target, after)
+      }
+
       const start = target.selectionStart ?? 0
       const end = target.selectionEnd ?? start
       normalizeFontFamiliesForRange(target, start, end)
