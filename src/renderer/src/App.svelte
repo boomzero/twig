@@ -241,6 +241,23 @@
   })
 
   // ============================================================================
+  // Utility Functions
+  // ============================================================================
+
+  /**
+   * Escapes a font family name for use in CSS.
+   * Handles special characters like quotes and backslashes.
+   */
+  function escapeCssFontFamily(fontFamily: string): string {
+    // If the font name contains spaces or special characters, wrap in quotes
+    // and escape any existing quotes or backslashes
+    if (/["\\\s,]/.test(fontFamily)) {
+      return `"${fontFamily.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    }
+    return fontFamily
+  }
+
+  // ============================================================================
   // fabric.js Configuration and Canvas Rendering
   // ============================================================================
 
@@ -424,7 +441,6 @@
    * Updates app state and manages rich text editor visibility.
    */
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
-    console.log('🎯 handleSelection called', { selectedCount: event.selected?.length })
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
     } else {
@@ -436,11 +452,6 @@
 
     const selection = event.selected?.[0]
     if (selection instanceof IText) {
-      console.log('📝 Text object selected', {
-        isEditing: selection.isEditing,
-        wasEditing,
-        text: selection.text
-      })
       // Text object selected - enable rich text controls
       activeTextObject = selection
       showRichTextControls = true
@@ -450,7 +461,6 @@
 
       // If user was editing before, restore editing mode
       if (wasEditing) {
-        console.log('🔄 Restoring editing mode')
         activeTextObject.enterEditing()
         wasEditing = false
       }
@@ -639,17 +649,9 @@
    * If no text is selected, applies the style to the entire text object.
    */
   function applyStyleToSelection(style: Record<string, string | number | boolean>): void {
-    console.log('🎨 applyStyleToSelection called', { style, hasActiveText: !!activeTextObject })
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
-    console.log('📝 Text state before apply:', {
-      hasSelection,
-      isEditing: activeTextObject.isEditing,
-      selectionStart: activeTextObject.selectionStart,
-      selectionEnd: activeTextObject.selectionEnd,
-      text: activeTextObject.text
-    })
 
     const isFontChange = style.fontFamily !== undefined
     if (isFontChange) {
@@ -701,13 +703,6 @@
       }
     }
 
-    console.log('📝 Text state after apply:', {
-      isEditing: activeTextObject.isEditing,
-      selectionStart: activeTextObject.selectionStart,
-      selectionEnd: activeTextObject.selectionEnd,
-      hasHiddenTextarea: !!activeTextObject.hiddenTextarea
-    })
-
     fabCanvas?.renderAll()
     if (isFontChange) {
       isApplyingFontChange = false
@@ -741,7 +736,6 @@
   /** Changes the font size of the selected text */
   function changeFontSize(event: Event): void {
     const size = parseInt((event.target as HTMLInputElement).value)
-    console.log('📏 changeFontSize called', { size, hasActiveText: !!activeTextObject })
     if (!isNaN(size) && size > 0 && activeTextObject) {
       applyStyleToSelection({ fontSize: size })
       // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
@@ -751,7 +745,6 @@
   /** Changes the font family of the selected text */
   async function changeFontFamily(event: Event): Promise<void> {
     const family = (event.target as HTMLSelectElement).value
-    console.log('🔤 changeFontFamily called', { family, hasActiveText: !!activeTextObject })
     if (!family || !activeTextObject) return
 
     isApplyingFontChange = true
@@ -772,17 +765,9 @@
    * Checks if the selected text has bold, italic, underline, font size, and font family.
    */
   function handleTextSelectionChange(): void {
-    console.log('🔄 handleTextSelectionChange called')
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
-    console.log('📍 Selection state:', {
-      hasSelection,
-      isEditing: activeTextObject.isEditing,
-      selectionStart: activeTextObject.selectionStart,
-      selectionEnd: activeTextObject.selectionEnd
-    })
-
     const textLength = activeTextObject.text?.length ?? 0
 
     if (hasSelection) {
@@ -1571,7 +1556,6 @@
    * Selects a font from the custom dropdown
    */
   async function selectFontFromDropdown(fontFamily: string): Promise<void> {
-    console.log('🎯 selectFontFromDropdown called', { fontFamily, hasActiveText: !!activeTextObject })
     fontDropdownOpen = false
     selectionFontFamily = fontFamily
 
@@ -2047,7 +2031,7 @@
             onclick={toggleFontDropdown}
             onkeydown={(e) => e.stopPropagation()}
             class="h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center min-w-[120px] relative"
-            style={selectionFontFamily !== 'Multiple' ? `font-family: ${selectionFontFamily}` : ''}
+            style={selectionFontFamily !== 'Multiple' ? `font-family: ${escapeCssFontFamily(selectionFontFamily)}` : ''}
           >
             <span class="truncate" class:italic={selectionFontFamily === 'Multiple'} class:text-gray-500={selectionFontFamily === 'Multiple'}>
               {selectionFontFamily}
@@ -2082,7 +2066,7 @@
                     onmouseenter={() => queueFontForLoading(font)}
                     class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
                     class:bg-blue-100={font === selectionFontFamily}
-                    style="font-family: '{font}'; contain: layout style;"
+                    style="font-family: {escapeCssFontFamily(font)}; contain: layout style;"
                   >
                     {font}
                   </button>
