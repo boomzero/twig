@@ -138,6 +138,27 @@ This ID is crucial for synchronizing Canvas modifications back to the state.
 - `src/preload/index.ts`: IPC bridge definitions
 - `AGENTS.md`: Notes about technology choices
 
+## Debugging & Development Tools
+
+### Debug Window
+
+A separate debug window allows real-time inspection of the application state:
+
+- **Keyboard shortcut**: Press `Cmd/Ctrl+Shift+D` to open the debug window
+- **UI button**: Click the "Debug" button in the toolbar
+- **Console access**: State is exposed on `window.__DECKHAND_STATE__` for console inspection
+- **Features**:
+  - Real-time state updates - automatically reflects changes from the main window
+  - View current file path and persistence mode
+  - Inspect all slide IDs and current slide details
+  - Monitor selection state and loading flags
+  - View all elements on the current slide
+  - Copy state snapshot to clipboard
+  - Log full state to console
+  - Separate window can be positioned on another monitor
+
+The debug window is implemented in `src/renderer/src/Debug.svelte` and uses IPC to receive state updates from the main window.
+
 ## Known Dependencies
 
 - `runed`: Utility library (currently unused but available for features like StateHistory)

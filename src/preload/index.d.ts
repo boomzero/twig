@@ -39,6 +39,41 @@ export interface ImageData {
   filename: string
 }
 
+/**
+ * Represents a snapshot of the application state for debugging
+ */
+export interface DebugState {
+  currentFilePath: string | null
+  slideIds: string[]
+  currentSlideIndex: number
+  currentSlideId: string | null
+  currentSlideElementCount: number
+  selectedObjectId: string | null
+  isDirty: boolean
+  isPresentingMode: boolean
+  inMemorySlidesCount: number
+  isLoadingSlide: boolean
+  currentSlide: {
+    id: string
+    elements: Array<{
+      type: 'rect' | 'text' | 'image'
+      id: string
+      x: number
+      y: number
+      width: number
+      height: number
+      angle: number
+      fill?: string
+      text?: string
+      fontSize?: number
+      fontFamily?: string
+      styles?: Record<string, any>
+      src?: string
+      filename?: string
+    }>
+  } | null
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -67,6 +102,13 @@ declare global {
         getEmbeddedFonts: (filePath: string) => Promise<FontData[]>
         getFontData: (filePath: string, fontFamily: string, variant?: string) => Promise<FontData | null>
         loadFontFile: (fontPath: string) => Promise<Buffer>
+      }
+      debug: {
+        openWindow: () => Promise<void>
+        sendStateUpdate: (state: DebugState) => void
+        onStateUpdate: (callback: (state: DebugState) => void) => () => void
+        requestState: () => void
+        onStateRequest: (callback: () => void) => () => void
       }
     }
   }

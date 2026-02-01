@@ -405,6 +405,53 @@ function createWindow(): void {
   }
 }
 
+/**
+ * Reference to the debug window (if open).
+ * Only one debug window can be open at a time.
+ */
+let debugWindow: BrowserWindow | null = null
+
+/**
+ * Creates and opens the debug window.
+ * If a debug window is already open, focuses it instead of creating a new one.
+ */
+function createDebugWindow(): void {
+  // If debug window already exists, focus it
+  if (debugWindow && !debugWindow.isDestroyed()) {
+    debugWindow.focus()
+    return
+  }
+
+  debugWindow = new BrowserWindow({
+    width: 800,
+    height: 900,
+    title: 'Deckhand Debug Panel',
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  debugWindow.on('ready-to-show', () => {
+    debugWindow?.show()
+  })
+
+  // Clean up reference when window is closed
+  debugWindow.on('closed', () => {
+    debugWindow = null
+  })
+
+  // Load the debug window content
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    debugWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/debug.html`)
+  } else {
+    debugWindow.loadFile(join(__dirname, '../renderer/debug.html'))
+  }
+}
+
 // ============================================================================
 // Application Lifecycle
 // ============================================================================
@@ -736,6 +783,44 @@ app.whenReady().then(() => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+
+  // --------------------------------------------------------------------------
+  // Debug Window Handlers
+  // --------------------------------------------------------------------------
+
+  /**
+   * Opens the debug window.
+   * If already open, focuses it instead of creating a new one.
+   */
+  ipcMain.handle('debug:open-window', () => {
+    createDebugWindow()
+  })
+
+  /**
+   * Broadcasts state updates to the debug window (if open).
+   * Called from the main renderer window whenever state changes.
+   */
+  ipcMain.on('debug:state-update', (_event, state) => {
+    if (debugWindow && !debugWindow.isDestroyed()) {
+      debugWindow.webContents.send('debug:state-changed', state)
+    }
+  })
+
+  /**
+   * Handles request from debug window to get initial state.
+   * Forwards the request to the main window.
+   */
+  ipcMain.on('debug:request-state', () => {
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== debugWindow && !win.isDestroyed()
+    )
+    if (mainWindow) {
+      // Ask main window to send its state
+      mainWindow.webContents.send('debug:request-state-from-main')
+    }
+  })
+
+  createWindow()
 })
 
 // ============================================================================

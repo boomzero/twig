@@ -74,6 +74,32 @@ const api = {
 
     /** Load a font file directly from the filesystem for preview */
     loadFontFile: (fontPath) => ipcRenderer.invoke('fonts:load-font-file', fontPath)
+  },
+
+  // Debug window operations
+  debug: {
+    /** Open the debug window */
+    openWindow: () => ipcRenderer.invoke('debug:open-window'),
+
+    /** Send state update to debug window */
+    sendStateUpdate: (state) => ipcRenderer.send('debug:state-update', state),
+
+    /** Listen for state updates (for debug window) */
+    onStateUpdate: (callback) => {
+      const handler = (_event, state) => callback(state)
+      ipcRenderer.on('debug:state-changed', handler)
+      return () => ipcRenderer.removeListener('debug:state-changed', handler)
+    },
+
+    /** Request current state (for debug window) */
+    requestState: () => ipcRenderer.send('debug:request-state'),
+
+    /** Listen for state requests from debug window (for main window) */
+    onStateRequest: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('debug:request-state-from-main', handler)
+      return () => ipcRenderer.removeListener('debug:request-state-from-main', handler)
+    }
   }
 }
 

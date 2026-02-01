@@ -40,7 +40,6 @@
   import PresentationView from './components/PresentationView.svelte'
   import { PressedKeys } from 'runed'
 
-
   // ============================================================================
   // Component State
   // ============================================================================
@@ -53,8 +52,6 @@
 
   // Currently active text object (for rich text editing)
   let activeTextObject: IText | null = null
-  let isNormalizingTextStyles = false
-  let isApplyingFontChange = false
   let lastTextSelectionRange: { start: number; end: number } | null = null
   let suppressSelectionTracking = false
 
@@ -107,7 +104,73 @@
   onMount(async () => {
     await loadSystemFonts()
     handleNewPresentation()
+
+    // Expose state to window for console debugging
+    if (typeof window !== 'undefined') {
+      ;(window as any).__DECKHAND_STATE__ = {
+        appState,
+        loadingState
+      }
+      console.log(
+        '💡 Debug tip: Access app state via window.__DECKHAND_STATE__ or press Cmd/Ctrl+Shift+D'
+      )
+    }
+
+    // Listen for state requests from the debug window
+    window.api?.debug?.onStateRequest(() => {
+      sendStateToDebugWindow()
+    })
   })
+
+  /**
+   * Reactive effect that broadcasts state changes to the debug window.
+   * Runs whenever any tracked state changes.
+   */
+  $effect(() => {
+    // Track all relevant state
+    const _ = [
+      appState.currentFilePath,
+      appState.slideIds,
+      appState.currentSlideIndex,
+      appState.currentSlide,
+      appState.selectedObjectId,
+      appState.isDirty,
+      appState.isPresentingMode,
+      appState.inMemorySlides,
+      loadingState.isLoadingSlide
+    ]
+
+    // Send state update to debug window (if open)
+    sendStateToDebugWindow()
+  })
+
+  /**
+   * Sends the current application state to the debug window.
+   */
+  function sendStateToDebugWindow(): void {
+    const stateSnapshot = {
+      currentFilePath: appState.currentFilePath,
+      slideIds: [...appState.slideIds],
+      currentSlideIndex: appState.currentSlideIndex,
+      currentSlideId: appState.currentSlide?.id || null,
+      currentSlideElementCount: appState.currentSlide?.elements.length || 0,
+      selectedObjectId: appState.selectedObjectId,
+      isDirty: appState.isDirty,
+      isPresentingMode: appState.isPresentingMode,
+      inMemorySlidesCount: appState.inMemorySlides.length,
+      isLoadingSlide: loadingState.isLoadingSlide,
+      currentSlide: appState.currentSlide ? JSON.parse(JSON.stringify(appState.currentSlide)) : null
+    }
+
+    window.api?.debug?.sendStateUpdate(stateSnapshot)
+  }
+
+  /**
+   * Opens the debug window.
+   */
+  function openDebugWindow(): void {
+    window.api?.debug?.openWindow()
+  }
 
   /**
    * Reactive effect that tracks changes to the current slide.
@@ -224,6 +287,20 @@
         }
         fabCanvas.setActiveObject(selection)
         fabCanvas.renderAll()
+
+        // Restore text cursor/selection position if this is a text object
+        if (selectionRangeToRestore && selection instanceof IText) {
+          const range = { ...selectionRangeToRestore }
+          selectionRangeToRestore = null
+          setTimeout(() => {
+            if (selection && selection instanceof IText) {
+              selection.setSelectionStart(range.start)
+              selection.setSelectionEnd(range.end)
+              fabCanvas?.requestRenderAll()
+              handleTextSelectionChange()
+            }
+          }, 10)
+        }
       }
     }
   })
@@ -265,8 +342,6 @@
    * Configure fabric.js defaults to use center origin for all objects.
    * This makes rotation and scaling more intuitive.
    */
-
-
 
   BaseFabricObject.ownDefaults.originY = 'center'
   BaseFabricObject.ownDefaults.originX = 'center'
@@ -346,25 +421,27 @@
       if (element.src) {
         FabricImage.fromURL(element.src, {
           crossOrigin: 'anonymous'
-        }).then((img) => {
-          // Calculate scale to match the stored width/height
-          const scaleX = element.width / (img.width || 1)
-          const scaleY = element.height / (img.height || 1)
-
-          img.set({
-            left: element.x,
-            top: element.y,
-            angle: element.angle,
-            scaleX: scaleX,
-            scaleY: scaleY,
-            id: element.id
-          })
-
-          fabCanvas.add(img)
-          fabCanvas.renderAll()
-        }).catch((error) => {
-          console.error('Failed to load image:', error)
         })
+          .then((img) => {
+            // Calculate scale to match the stored width/height
+            const scaleX = element.width / (img.width || 1)
+            const scaleY = element.height / (img.height || 1)
+
+            img.set({
+              left: element.x,
+              top: element.y,
+              angle: element.angle,
+              scaleX: scaleX,
+              scaleY: scaleY,
+              id: element.id
+            })
+
+            fabCanvas.add(img)
+            fabCanvas.renderAll()
+          })
+          .catch((error) => {
+            console.error('Failed to load image:', error)
+          })
       }
     })
 
@@ -468,20 +545,6 @@
       // Listen for text selection changes to update formatting buttons
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
-
-      // Restore text cursor position if saved
-      if (selectionRangeToRestore) {
-        const range = { ...selectionRangeToRestore }
-        selectionRangeToRestore = null
-        setTimeout(() => {
-          if (activeTextObject) {
-            activeTextObject.setSelectionStart(range.start)
-            activeTextObject.setSelectionEnd(range.end)
-            fabCanvas?.requestRenderAll()
-            handleTextSelectionChange()
-          }
-        }, 10)
-      }
     } else {
       // Non-text object selected - hide rich text controls
       activeTextObject = null
@@ -491,122 +554,6 @@
       isSelectionUnderlined = false
       wasEditing = false
     }
-  }
-
-  function ensureExplicitTextStyles(textObject: IText): void {
-    if (!textObject.text) return
-    normalizeFontFamiliesForRange(textObject, 0, textObject.text.length)
-  }
-
-  function normalizeFontFamiliesForRange(textObject: IText, start: number, end: number): void {
-    if (!textObject.text) return
-
-    const lines = (textObject as IText & { _textLines?: string[] })._textLines
-      || textObject.text.split('\n')
-    const baseFamily = String(textObject.fontFamily || '')
-
-    const startLoc = textObject.get2DCursorLocation(start, true)
-    const endLoc = textObject.get2DCursorLocation(end, true)
-    const minLine = Math.min(startLoc.lineIndex, endLoc.lineIndex)
-    const maxLine = Math.max(startLoc.lineIndex, endLoc.lineIndex)
-
-    for (let lineIndex = minLine; lineIndex <= maxLine; lineIndex += 1) {
-      const graphemes = textObject.graphemeSplit(lines[lineIndex] || '')
-      if (!graphemes.length) continue
-
-      const fontFamilies = new Set<string>()
-      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
-        const family = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
-        if (family) {
-          fontFamilies.add(String(family))
-          if (fontFamilies.size > 1) break
-        }
-      }
-
-      if (fontFamilies.size < 2) {
-        continue
-      }
-
-      for (let charIndex = 0; charIndex < graphemes.length; charIndex += 1) {
-        const existing = textObject.styles[lineIndex][charIndex] || {}
-        const fontFamily = textObject.getValueOfPropertyAt(lineIndex, charIndex, 'fontFamily')
-
-        if (!fontFamily) {
-          continue
-        }
-
-        const normalizedFamily = String(fontFamily)
-        const shouldApply = normalizedFamily !== baseFamily
-          || Object.keys(existing).some((key) => key !== 'fontFamily')
-
-        if (!shouldApply) {
-          continue
-        }
-
-        if (!textObject.styles) {
-          textObject.styles = {}
-        }
-        if (!textObject.styles[lineIndex]) {
-          textObject.styles[lineIndex] = {}
-        }
-
-        textObject.styles[lineIndex][charIndex] = {
-          ...existing,
-          fontFamily: normalizedFamily
-        }
-      }
-    }
-
-    textObject.dirty = true
-    textObject.initDimensions()
-  }
-
-  function applyFontFamilyPreserveStyles(textObject: IText, fontFamily: string): void {
-    const textLength = textObject.text?.length ?? 0
-    if (!textLength) {
-      textObject.fontFamily = fontFamily
-      return
-    }
-
-    const selectionStart = textObject.selectionStart ?? 0
-    const selectionEnd = textObject.selectionEnd ?? selectionStart
-    let hasSelection = selectionStart !== selectionEnd
-    let rangeStart = hasSelection ? Math.min(selectionStart, selectionEnd) : 0
-    let rangeEnd = hasSelection ? Math.max(selectionStart, selectionEnd) : textLength
-
-    if (!hasSelection && lastTextSelectionRange) {
-      const fallbackStart = Math.min(lastTextSelectionRange.start, lastTextSelectionRange.end)
-      const fallbackEnd = Math.max(lastTextSelectionRange.start, lastTextSelectionRange.end)
-      if (fallbackStart !== fallbackEnd && fallbackStart >= 0 && fallbackEnd <= textLength) {
-        hasSelection = true
-        rangeStart = fallbackStart
-        rangeEnd = fallbackEnd
-      }
-    }
-
-    if (!hasSelection) {
-      textObject.fontFamily = fontFamily
-    }
-
-    if (!textObject.styles) {
-      textObject.styles = {}
-    }
-
-    for (let index = rangeStart; index < rangeEnd; index += 1) {
-      const { lineIndex, charIndex } = textObject.get2DCursorLocation(index, true)
-      if (!textObject.styles[lineIndex]) {
-        textObject.styles[lineIndex] = {}
-      }
-
-      const existing = textObject.styles[lineIndex][charIndex] || {}
-      textObject.styles[lineIndex][charIndex] = {
-        ...existing,
-        fontFamily
-      }
-    }
-
-    textObject.dirty = true
-    textObject.initDimensions()
   }
 
   /**
@@ -628,16 +575,8 @@
 
   function handleTextChanged(event: { target?: DeckFabricObject }): void {
     const target = event.target
-    if (!(target instanceof IText) || isNormalizingTextStyles || isApplyingFontChange) return
-
-    isNormalizingTextStyles = true
-    try {
-      const start = target.selectionStart ?? 0
-      const end = target.selectionEnd ?? start
-      normalizeFontFamiliesForRange(target, start, end)
-    } finally {
-      isNormalizingTextStyles = false
-    }
+    if (!(target instanceof IText)) return
+    // Text changed - no special handling needed
   }
 
   // ============================================================================
@@ -653,39 +592,92 @@
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
 
-    const isFontChange = style.fontFamily !== undefined
-    if (isFontChange) {
-      isApplyingFontChange = true
-    }
-
-    if (isFontChange && Object.keys(style).length === 1 && activeTextObject) {
-      applyFontFamilyPreserveStyles(activeTextObject, style.fontFamily as string)
-      fabCanvas?.renderAll()
-      isApplyingFontChange = false
-      return
-    }
-
     if (hasSelection) {
       // Apply to selected text range
-      activeTextObject.setSelectionStyles(style)
+      // Instead of using setSelectionStyles (which can accumulate styles incorrectly),
+      // manually manage character-level styles to avoid corruption
+      const start = activeTextObject.selectionStart ?? 0
+      const end = activeTextObject.selectionEnd ?? 0
+
+      for (let i = start; i < end; i++) {
+        const loc = activeTextObject.get2DCursorLocation(i, true)
+        const lineIndex = loc.lineIndex
+        const charIndex = loc.charIndex
+
+        // Ensure the styles structure exists
+        if (!activeTextObject.styles[lineIndex]) {
+          activeTextObject.styles[lineIndex] = {}
+        }
+        if (!activeTextObject.styles[lineIndex][charIndex]) {
+          activeTextObject.styles[lineIndex][charIndex] = {}
+        }
+
+        // Apply each style property
+        Object.keys(style).forEach((key) => {
+          const newValue = style[key]
+          const baseValue = activeTextObject[key]
+
+          if (newValue === baseValue) {
+            // New value matches base - remove character-level override
+            delete activeTextObject.styles[lineIndex][charIndex][key]
+          } else {
+            // New value differs from base - set character-level style
+            activeTextObject.styles[lineIndex][charIndex][key] = newValue
+          }
+        })
+
+        // Clean up empty style objects
+        if (Object.keys(activeTextObject.styles[lineIndex][charIndex]).length === 0) {
+          delete activeTextObject.styles[lineIndex][charIndex]
+        }
+        if (Object.keys(activeTextObject.styles[lineIndex]).length === 0) {
+          delete activeTextObject.styles[lineIndex]
+        }
+      }
+
+      activeTextObject.dirty = true
+      activeTextObject.initDimensions()
       handleTextSelectionChange()
     } else {
-      // No selection - apply to entire text object
-      // First select all text temporarily
-      activeTextObject.selectAll()
-      // Apply the style to all characters
-      activeTextObject.setSelectionStyles(style)
-
-      // Also apply to object's base properties so new characters inherit the style
-      Object.keys(style).forEach(key => {
+      // No selection - apply style to the entire text object
+      // Just update the base properties - do NOT use setSelectionStyles which creates
+      // character-level overrides that accumulate as the user types
+      Object.keys(style).forEach((key) => {
         activeTextObject[key] = style[key]
       })
 
-      // Restore no selection state
-      activeTextObject.selectionStart = 0
-      activeTextObject.selectionEnd = 0
+      // Clear any character-level overrides for the properties we just set
+      // This ensures the base property takes effect for all characters
+      if (activeTextObject.styles) {
+        const styleKeys = Object.keys(style)
+        Object.keys(activeTextObject.styles).forEach((lineIndex) => {
+          const lineNum = parseInt(lineIndex)
+          if (!activeTextObject.styles[lineNum]) return
+          Object.keys(activeTextObject.styles[lineNum]).forEach((charIndex) => {
+            const charNum = parseInt(charIndex)
+            const charStyles = activeTextObject.styles[lineNum][charNum]
+            if (!charStyles) return
+            // Remove the properties we're setting at the base level
+            styleKeys.forEach((key) => {
+              delete charStyles[key]
+            })
+            // If no styles left, remove the character entry
+            if (Object.keys(charStyles).length === 0) {
+              delete activeTextObject.styles[lineNum][charNum]
+            }
+          })
+          // If no characters left in line, remove line entry
+          if (Object.keys(activeTextObject.styles[lineNum]).length === 0) {
+            delete activeTextObject.styles[lineNum]
+          }
+        })
+      }
 
-      // Update UI state to match what we just applied
+      // Mark as dirty so fabric.js re-renders
+      activeTextObject.dirty = true
+      activeTextObject.initDimensions()
+
+      // Update UI state
       if (style.fontWeight !== undefined) {
         isSelectionBold = style.fontWeight === 'bold'
       }
@@ -701,12 +693,12 @@
       if (style.fontFamily !== undefined) {
         selectionFontFamily = style.fontFamily as string
       }
+
+      // Update button states based on actual text state (not just what we applied)
+      handleTextSelectionChange()
     }
 
     fabCanvas?.renderAll()
-    if (isFontChange) {
-      isApplyingFontChange = false
-    }
     // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
     // which loses the text selection and input focus. The state will be updated when the
     // user finishes editing via the object:modified event handler.
@@ -742,24 +734,6 @@
     }
   }
 
-  /** Changes the font family of the selected text */
-  async function changeFontFamily(event: Event): Promise<void> {
-    const family = (event.target as HTMLSelectElement).value
-    if (!family || !activeTextObject) return
-
-    isApplyingFontChange = true
-    try {
-      // Embed the font if needed
-      await embedFontIfNeeded(family)
-
-      // Apply to selection
-      applyStyleToSelection({ fontFamily: family })
-    } finally {
-      isApplyingFontChange = false
-    }
-    // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
-  }
-
   /**
    * Updates the formatting button states based on the current text selection.
    * Checks if the selected text has bold, italic, underline, font size, and font family.
@@ -770,6 +744,14 @@
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
     const textLength = activeTextObject.text?.length ?? 0
 
+    // Helper to get effective style value using fabric's getValueOfPropertyAt
+    // which properly handles base + character-level style inheritance
+    type StyleProperty = 'fontWeight' | 'fontStyle' | 'underline' | 'fontFamily' | 'fontSize'
+    const getEffectiveStyle = (charIndex: number, property: StyleProperty): unknown => {
+      const loc = activeTextObject.get2DCursorLocation(charIndex, true)
+      return activeTextObject.getValueOfPropertyAt(loc.lineIndex, loc.charIndex, property)
+    }
+
     if (hasSelection) {
       if (!suppressSelectionTracking) {
         lastTextSelectionRange = {
@@ -777,29 +759,41 @@
           end: activeTextObject.selectionEnd ?? 0
         }
       }
-      // Has text selection - check character-level styles
-      const styles = activeTextObject.getSelectionStyles(
-        activeTextObject.selectionStart,
-        activeTextObject.selectionEnd
-      )
-      isSelectionBold = styles.length > 0 && styles.every((style) => style.fontWeight === 'bold')
-      isSelectionItalic = styles.length > 0 && styles.every((style) => style.fontStyle === 'italic')
-      isSelectionUnderlined = styles.length > 0 && styles.every((style) => style.underline === true)
 
-      // Get font size from first character in selection
-      if (styles.length > 0 && styles[0].fontSize) {
-        selectionFontSize = styles[0].fontSize
+      const start = activeTextObject.selectionStart ?? 0
+      const end = activeTextObject.selectionEnd ?? 0
+
+      // Check effective styles for all characters in selection
+      let allBold = true
+      let allItalic = true
+      let allUnderlined = true
+      const fontFamilies = new Set<string>()
+      let firstFontSize: number | null = null
+
+      for (let i = start; i < end; i++) {
+        if (getEffectiveStyle(i, 'fontWeight') !== 'bold') allBold = false
+        if (getEffectiveStyle(i, 'fontStyle') !== 'italic') allItalic = false
+        if (getEffectiveStyle(i, 'underline') !== true) allUnderlined = false
+        fontFamilies.add(String(getEffectiveStyle(i, 'fontFamily') || activeTextObject.fontFamily))
+        if (firstFontSize === null) {
+          firstFontSize = (getEffectiveStyle(i, 'fontSize') as number) || activeTextObject.fontSize
+        }
+      }
+
+      isSelectionBold = end > start && allBold
+      isSelectionItalic = end > start && allItalic
+      isSelectionUnderlined = end > start && allUnderlined
+
+      if (firstFontSize !== null) {
+        selectionFontSize = firstFontSize
       } else if (activeTextObject.fontSize) {
         selectionFontSize = activeTextObject.fontSize
       }
 
-      // Get font family - check if selection has mixed fonts
-      const fontFamilies = new Set(styles.map(style => style.fontFamily || activeTextObject.fontFamily))
-
       if (fontFamilies.size > 1) {
         selectionFontFamily = 'Multiple'
-      } else if (styles.length > 0 && styles[0].fontFamily) {
-        selectionFontFamily = styles[0].fontFamily
+      } else if (fontFamilies.size === 1) {
+        selectionFontFamily = fontFamilies.values().next().value
       } else if (activeTextObject.fontFamily) {
         selectionFontFamily = activeTextObject.fontFamily
       }
@@ -807,32 +801,55 @@
       if (!suppressSelectionTracking) {
         lastTextSelectionRange = null
       }
-      // No text selection - check if ALL characters have the same style without mutating the cursor
-      const allStyles = textLength > 0 ? activeTextObject.getSelectionStyles(0, textLength) : []
 
-      // Button lights up only if ALL characters have that style
-      isSelectionBold = allStyles.length > 0 && allStyles.every((style) => style.fontWeight === 'bold')
-      isSelectionItalic = allStyles.length > 0 && allStyles.every((style) => style.fontStyle === 'italic')
-      isSelectionUnderlined = allStyles.length > 0 && allStyles.every((style) => style.underline === true)
+      // No text selection - check effective styles for ALL characters
+      let allBold = true
+      let allItalic = true
+      let allUnderlined = true
+      const fontFamilies = new Set<string>()
+      let firstFontSize: number | null = null
 
-      // Get font size - use first character or object default
-      if (allStyles.length > 0 && allStyles[0].fontSize) {
-        selectionFontSize = allStyles[0].fontSize
+      for (let i = 0; i < textLength; i++) {
+        if (getEffectiveStyle(i, 'fontWeight') !== 'bold') allBold = false
+        if (getEffectiveStyle(i, 'fontStyle') !== 'italic') allItalic = false
+        if (getEffectiveStyle(i, 'underline') !== true) allUnderlined = false
+        fontFamilies.add(String(getEffectiveStyle(i, 'fontFamily') || activeTextObject.fontFamily))
+        if (firstFontSize === null) {
+          firstFontSize = (getEffectiveStyle(i, 'fontSize') as number) || activeTextObject.fontSize
+        }
+      }
+
+      isSelectionBold = textLength > 0 && allBold
+      isSelectionItalic = textLength > 0 && allItalic
+      isSelectionUnderlined = textLength > 0 && allUnderlined
+      console.log(
+        '[handleTextSelectionChange] no-selection: allBold:',
+        allBold,
+        'allItalic:',
+        allItalic,
+        'allUnderlined:',
+        allUnderlined
+      )
+      console.log(
+        '[handleTextSelectionChange] => isSelectionBold:',
+        isSelectionBold,
+        'isSelectionItalic:',
+        isSelectionItalic
+      )
+
+      if (firstFontSize !== null) {
+        selectionFontSize = firstFontSize
       } else if (activeTextObject.fontSize) {
         selectionFontSize = activeTextObject.fontSize
       }
 
-      // Check for mixed fonts
-      const fontFamilies = new Set(allStyles.map(style => style.fontFamily || activeTextObject.fontFamily))
-
       if (fontFamilies.size > 1) {
         selectionFontFamily = 'Multiple'
-      } else if (allStyles.length > 0 && allStyles[0].fontFamily) {
-        selectionFontFamily = allStyles[0].fontFamily
+      } else if (fontFamilies.size === 1) {
+        selectionFontFamily = fontFamilies.values().next().value
       } else if (activeTextObject.fontFamily) {
         selectionFontFamily = activeTextObject.fontFamily
       }
-
     }
   }
 
@@ -990,7 +1007,9 @@
             appState.inMemorySlides[currentIndex] = appState.currentSlide
           } else {
             // Slide not found in memory - add it to prevent data loss
-            console.warn(`Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`)
+            console.warn(
+              `Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`
+            )
             appState.inMemorySlides.push(appState.currentSlide)
           }
         }
@@ -1024,7 +1043,9 @@
         plainSlides = JSON.parse(JSON.stringify(slidesToSave))
       } catch (serializationError) {
         console.error('Failed to serialize slides:', serializationError)
-        throw new Error('Failed to serialize presentation data. Some elements may contain invalid data.')
+        throw new Error(
+          'Failed to serialize presentation data. Some elements may contain invalid data.'
+        )
       }
 
       // Debug: Log what we're saving
@@ -1073,7 +1094,9 @@
             console.error('Failed to recover original file:', recoveryError)
           }
         }
-        throw new Error('Presentation was saved, but failed to load the new file. Please try opening it manually.')
+        throw new Error(
+          'Presentation was saved, but failed to load the new file. Please try opening it manually.'
+        )
       }
 
       // Restore the slide the user was viewing
@@ -1136,15 +1159,21 @@
 
     // Filter out STIX math symbol variants
     // Keep only main STIX Two variants
-    if (family.startsWith('STIX') &&
-        !['STIX Two Math', 'STIX Two Text'].includes(family)) return true
+    if (family.startsWith('STIX') && !['STIX Two Math', 'STIX Two Text'].includes(family))
+      return true
 
     // Symbol and dingbat fonts (cross-platform)
     const symbolFonts = [
-      'Webdings', 'Wingdings', 'Wingdings 2', 'Wingdings 3',
-      'Zapf Dingbats', 'Symbol',
-      'Apple Symbols', 'Apple Braille',
-      'OpenSymbol', 'Standard Symbols'
+      'Webdings',
+      'Wingdings',
+      'Wingdings 2',
+      'Wingdings 3',
+      'Zapf Dingbats',
+      'Symbol',
+      'Apple Symbols',
+      'Apple Braille',
+      'OpenSymbol',
+      'Standard Symbols'
     ]
     if (symbolFonts.includes(family)) return true
 
@@ -1166,10 +1195,13 @@
     try {
       systemFonts = await window.api.fonts.getSystemFonts()
       // Extract unique font families, filtering out unwanted fonts
-      const families = Array.from(new Set(systemFonts.map((f) => f.family)))
-        .filter((family) => !shouldExcludeFont(family))
+      const families = Array.from(new Set(systemFonts.map((f) => f.family))).filter(
+        (family) => !shouldExcludeFont(family)
+      )
       availableFonts = [...new Set([...availableFonts, ...families])].sort()
-      console.log(`Loaded ${families.length} system fonts (${systemFonts.length - families.length} filtered out)`)
+      console.log(
+        `Loaded ${families.length} system fonts (${systemFonts.length - families.length} filtered out)`
+      )
     } catch (error) {
       console.error('Failed to load system fonts:', error)
       // Continue with default fonts
@@ -1206,7 +1238,9 @@
       }
 
       if (embeddedFonts.length > 0) {
-        console.log(`Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`)
+        console.log(
+          `Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`
+        )
         refreshTextRendering()
       }
     } catch (error) {
@@ -1225,12 +1259,7 @@
     fabCanvas.requestRenderAll()
   }
 
-  type FontBytes =
-    | Buffer
-    | ArrayBuffer
-    | Uint8Array
-    | { data: number[] }
-    | { data: Uint8Array }
+  type FontBytes = Buffer | ArrayBuffer | Uint8Array | { data: number[] } | { data: Uint8Array }
 
   function fontDataToBase64(fontData: FontBytes): string {
     const bytes = normalizeFontBytes(fontData)
@@ -1352,12 +1381,39 @@
   }
 
   /**
+   * List of web-safe fonts that are available in browsers by default.
+   * These fonts don't need to be embedded or loaded via @font-face.
+   */
+  const WEB_SAFE_FONTS = [
+    'Arial',
+    'Helvetica',
+    'Times New Roman',
+    'Times',
+    'Courier New',
+    'Courier',
+    'Verdana',
+    'Georgia',
+    'Palatino',
+    'Garamond',
+    'Bookman',
+    'Comic Sans MS',
+    'Trebuchet MS',
+    'Impact'
+  ]
+
+  /**
    * Embeds a font file into the database.
    * Called when a user selects a font that hasn't been embedded yet.
    *
    * @param fontFamily - The font family name to embed
    */
   async function embedFontIfNeeded(fontFamily: string): Promise<void> {
+    // Skip embedding for web-safe fonts that are already available in browsers
+    if (WEB_SAFE_FONTS.includes(fontFamily)) {
+      console.log(`Skipping embed for web-safe font: ${fontFamily}`)
+      return
+    }
+
     // For unsaved presentations, track fonts that need to be embedded later
     if (!appState.currentFilePath) {
       pendingFontsToEmbed.add(fontFamily)
@@ -1402,7 +1458,12 @@
       )
 
       if (fontData) {
-        await injectFontFace(fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
+        await injectFontFace(
+          fontData.fontFamily,
+          fontData.fontData,
+          fontData.format,
+          fontData.variant
+        )
         console.log(`Embedded and loaded font: ${fontFamily}`)
       }
     } catch (error) {
@@ -1431,12 +1492,7 @@
         }
 
         // Embed the font
-        await window.api.fonts.embedFont(
-          filePath,
-          systemFont.path,
-          fontFamily,
-          'normal-normal'
-        )
+        await window.api.fonts.embedFont(filePath, systemFont.path, fontFamily, 'normal-normal')
         console.log(`Embedded pending font: ${fontFamily}`)
       } catch (error) {
         console.error(`Failed to embed pending font ${fontFamily}:`, error)
@@ -1453,6 +1509,11 @@
    * @param fontFamily - The font family name to load for preview
    */
   async function loadFontForPreview(fontFamily: string): Promise<void> {
+    // Skip loading for web-safe fonts that are already available in browsers
+    if (WEB_SAFE_FONTS.includes(fontFamily)) {
+      return
+    }
+
     const key = `${fontFamily}-normal-normal`
     if (loadedFonts.has(key)) {
       return // Already loaded
@@ -1500,7 +1561,7 @@
     for (const font of batch) {
       await loadFontForPreview(font)
       // Small delay to prevent blocking the UI
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await new Promise((resolve) => setTimeout(resolve, 10))
     }
 
     isLoadingFonts = false
@@ -1546,7 +1607,7 @@
         queueFontForLoading(selectionFontFamily)
       }
       const commonFonts = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana']
-      commonFonts.forEach(font => queueFontForLoading(font))
+      commonFonts.forEach((font) => queueFontForLoading(font))
     } else {
       suppressSelectionTracking = false
     }
@@ -1561,16 +1622,11 @@
 
     if (!activeTextObject) return
 
-    isApplyingFontChange = true
-    try {
-      // Embed the font if needed
-      await embedFontIfNeeded(fontFamily)
+    // Embed the font if needed
+    await embedFontIfNeeded(fontFamily)
 
-      // Apply to selection
-      applyStyleToSelection({ fontFamily })
-    } finally {
-      isApplyingFontChange = false
-    }
+    // Apply to selection
+    applyStyleToSelection({ fontFamily })
     // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
   }
 
@@ -1580,9 +1636,8 @@
   function getFilteredFonts(): string[] {
     if (!fontSearchQuery) return availableFonts
     const query = fontSearchQuery.toLowerCase()
-    return availableFonts.filter(font => font.toLowerCase().includes(query))
+    return availableFonts.filter((font) => font.toLowerCase().includes(query))
   }
-
 
   /**
    * Handles click outside to close font dropdown
@@ -1775,9 +1830,16 @@
 
   /**
    * Global keyboard event handler for shortcuts.
-   * Handles Cmd/Ctrl+A (Select All) and Delete/Backspace (Delete object).
+   * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
    */
   function handleKeyDown(event: KeyboardEvent): void {
+    // Cmd/Ctrl+Shift+D: Open debug window
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'd') {
+      event.preventDefault()
+      openDebugWindow()
+      return
+    }
+
     // Cmd/Ctrl+A: Select all objects on the canvas (unless editing text)
     if ((event.metaKey || event.ctrlKey) && event.key === 'a') {
       // Don't intercept if user is editing text - let them select text normally
@@ -1916,6 +1978,13 @@
       await enterPresentationMode()
     }
   })
+
+  /**
+   * Keyboard shortcut handler for Cmd/Ctrl+Shift+D (Open Debug Window)
+   */
+  keys.onKeys(['meta', 'shift', 'd'], () => {
+    openDebugWindow()
+  })
 </script>
 
 <svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
@@ -1972,6 +2041,13 @@
         title="Start presentation (F5)"
       >
         Present
+      </button>
+      <button
+        onclick={openDebugWindow}
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        title="Open debug window (Cmd/Ctrl+Shift+D)"
+      >
+        Debug
       </button>
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
@@ -2031,13 +2107,29 @@
             onclick={toggleFontDropdown}
             onkeydown={(e) => e.stopPropagation()}
             class="h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center min-w-[120px] relative"
-            style={selectionFontFamily !== 'Multiple' ? `font-family: ${escapeCssFontFamily(selectionFontFamily)}` : ''}
+            style={selectionFontFamily !== 'Multiple'
+              ? `font-family: ${escapeCssFontFamily(selectionFontFamily)}`
+              : ''}
           >
-            <span class="truncate" class:italic={selectionFontFamily === 'Multiple'} class:text-gray-500={selectionFontFamily === 'Multiple'}>
+            <span
+              class="truncate"
+              class:italic={selectionFontFamily === 'Multiple'}
+              class:text-gray-500={selectionFontFamily === 'Multiple'}
+            >
               {selectionFontFamily}
             </span>
-            <svg class="w-4 h-4 absolute right-1 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            <svg
+              class="w-4 h-4 absolute right-1 pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
             </svg>
           </button>
 
