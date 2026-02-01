@@ -206,8 +206,9 @@ export async function loadPresentation(filePath: string): Promise<void> {
  * - The database (if currentFilePath is set)
  * - The inMemorySlides array (if currentFilePath is null)
  *
- * Important: For unsaved presentations, this saves the current slide back to inMemorySlides
- * before switching to ensure no changes are lost.
+ * Important: Before switching slides, this function auto-saves the current slide to prevent data loss:
+ * - For saved presentations: Saves the current slide to the database
+ * - For unsaved presentations: Saves the current slide back to inMemorySlides
  *
  * @param slideId - The ID of the slide to load
  */
@@ -226,17 +227,31 @@ export async function loadSlide(slideId: string): Promise<void> {
 
   loadingState.isLoadingSlide = true
   try {
-    // For unsaved presentations, save current slide back to inMemorySlides before switching
-    if (!appState.currentFilePath && appState.currentSlide) {
-      const currentIndex = appState.inMemorySlides.findIndex(
-        (s) => s.id === appState.currentSlide!.id
-      )
-      if (currentIndex !== -1) {
-        // Deep copy to prevent reference issues
-        appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
+    // Save current slide before switching to prevent data loss
+    if (appState.currentSlide) {
+      if (appState.currentFilePath) {
+        // For saved presentations, auto-save current slide to database before switching
+        try {
+          const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+          await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+          // Clear dirty flag since we just saved
+          appState.isDirty = false
+        } catch (error) {
+          console.error('Failed to auto-save slide before navigation:', error)
+          // Continue with navigation despite save failure
+        }
       } else {
-        console.warn(`Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`)
-        appState.inMemorySlides.push(JSON.parse(JSON.stringify(appState.currentSlide)))
+        // For unsaved presentations, save current slide back to inMemorySlides before switching
+        const currentIndex = appState.inMemorySlides.findIndex(
+          (s) => s.id === appState.currentSlide!.id
+        )
+        if (currentIndex !== -1) {
+          // Deep copy to prevent reference issues
+          appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
+        } else {
+          console.warn(`Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`)
+          appState.inMemorySlides.push(JSON.parse(JSON.stringify(appState.currentSlide)))
+        }
       }
     }
 
