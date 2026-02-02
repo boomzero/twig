@@ -322,6 +322,53 @@
   // ============================================================================
 
   /**
+   * Removes unwanted "transparent" values from fabric.js character styles.
+   * fabric.js sometimes adds transparent values for fill, stroke, and textBackgroundColor
+   * which we don't want to persist in the state.
+   */
+  function cleanStylesObject(styles: Record<string, any>): Record<string, any> {
+    const cleaned: Record<string, any> = {}
+
+    Object.keys(styles).forEach((lineIndex) => {
+      const lineStyles = styles[lineIndex]
+      if (!lineStyles || typeof lineStyles !== 'object') return
+
+      cleaned[lineIndex] = {}
+
+      Object.keys(lineStyles).forEach((charIndex) => {
+        const charStyle = lineStyles[charIndex]
+        if (!charStyle || typeof charStyle !== 'object') return
+
+        const cleanedCharStyle: Record<string, any> = {}
+
+        Object.keys(charStyle).forEach((key) => {
+          const value = charStyle[key]
+          // Skip transparent values for these properties
+          if (
+            (key === 'fill' || key === 'stroke' || key === 'textBackgroundColor') &&
+            value === 'transparent'
+          ) {
+            return
+          }
+          cleanedCharStyle[key] = value
+        })
+
+        // Only keep character style if it has properties
+        if (Object.keys(cleanedCharStyle).length > 0) {
+          cleaned[lineIndex][charIndex] = cleanedCharStyle
+        }
+      })
+
+      // Only keep line if it has character styles
+      if (Object.keys(cleaned[lineIndex]).length === 0) {
+        delete cleaned[lineIndex]
+      }
+    })
+
+    return cleaned
+  }
+
+  /**
    * Escapes a font family name for use in CSS.
    * Handles special characters like quotes and backslashes.
    */
@@ -399,6 +446,9 @@
           id: element.id
         })
       } else if (element.type === 'text') {
+        // Clean up any unwanted "transparent" values from styles before creating the object
+        const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
+
         fabObj = new IText(element.text || 'Hello', {
           left: element.x,
           top: element.y,
@@ -407,7 +457,7 @@
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
-          styles: element.styles || {}
+          styles: cleanedStyles
         })
       }
 
@@ -506,7 +556,8 @@
       elementInState.fontSize = obj.fontSize
       elementInState.fontFamily = obj.fontFamily
       elementInState.fill = obj.fill as string
-      elementInState.styles = obj.styles
+      // Clean up any unwanted transparent values before saving to state
+      elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
     }
   }
 
@@ -638,6 +689,12 @@
 
       activeTextObject.dirty = true
       activeTextObject.initDimensions()
+
+      // Clean up any transparent values that fabric.js might have added during initDimensions
+      if (activeTextObject.styles) {
+        activeTextObject.styles = cleanStylesObject(activeTextObject.styles)
+      }
+
       handleTextSelectionChange()
     } else {
       // No selection - apply style to the entire text object
@@ -647,8 +704,8 @@
         activeTextObject[key] = style[key]
       })
 
-      // Clear any character-level overrides for the properties we just set
-      // This ensures the base property takes effect for all characters
+      // Update any character-level overrides with the new values
+      // This ensures all characters use the new font/color/etc, even if they have other formatting
       if (activeTextObject.styles) {
         const styleKeys = Object.keys(style)
         Object.keys(activeTextObject.styles).forEach((lineIndex) => {
@@ -658,10 +715,17 @@
             const charNum = parseInt(charIndex)
             const charStyles = activeTextObject.styles[lineNum][charNum]
             if (!charStyles) return
-            // Remove the properties we're setting at the base level
+
+            // Update the properties we're changing at the base level
+            // This is important for properties like fontFamily - if a character has
+            // { fontFamily: 'Arial', fontWeight: 'bold' } and we change the whole text
+            // to 'Helvetica', we want { fontFamily: 'Helvetica', fontWeight: 'bold' }
             styleKeys.forEach((key) => {
-              delete charStyles[key]
+              if (charStyles[key] !== undefined) {
+                charStyles[key] = style[key]
+              }
             })
+
             // If no styles left, remove the character entry
             if (Object.keys(charStyles).length === 0) {
               delete activeTextObject.styles[lineNum][charNum]
@@ -677,6 +741,11 @@
       // Mark as dirty so fabric.js re-renders
       activeTextObject.dirty = true
       activeTextObject.initDimensions()
+
+      // Clean up any transparent values that fabric.js might have added during initDimensions
+      if (activeTextObject.styles) {
+        activeTextObject.styles = cleanStylesObject(activeTextObject.styles)
+      }
 
       // Update UI state
       if (style.fontWeight !== undefined) {
