@@ -20,7 +20,7 @@
 -->
 
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import type { DeckElement, SelectionState, Slide } from './lib/state.svelte'
@@ -505,6 +505,7 @@
       elementInState.text = obj.text
       elementInState.fontSize = obj.fontSize
       elementInState.fontFamily = obj.fontFamily
+      elementInState.fill = obj.fill as string
       elementInState.styles = obj.styles
     }
   }
@@ -699,9 +700,35 @@
     }
 
     fabCanvas?.renderAll()
+
+    // Directly update styling properties in state (without triggering full re-render)
+    // Use untrack() to prevent this state change from triggering the $effect
+    const textObj = activeTextObject as DeckFabricObject
+    if (textObj.id) {
+      untrack(() => {
+        if (appState.currentSlide) {
+          const elementInState = appState.currentSlide.elements.find((el) => el.id === textObj.id)
+          if (elementInState && elementInState.type === 'text') {
+            // Update any properties that changed
+            if (style.fill !== undefined) {
+              elementInState.fill = style.fill as string
+            }
+            if (style.fontSize !== undefined) {
+              elementInState.fontSize = style.fontSize as number
+            }
+            if (style.fontFamily !== undefined) {
+              elementInState.fontFamily = style.fontFamily as string
+            }
+            // Note: bold/italic/underline are handled via styles object, which gets
+            // synced when object:modified fires on blur
+          }
+        }
+      })
+    }
+
     // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
-    // which loses the text selection and input focus. The state will be updated when the
-    // user finishes editing via the object:modified event handler.
+    // which loses the text selection and input focus. For most properties, the state will
+    // be updated when the user finishes editing via the object:modified event handler.
   }
 
   /** Toggles bold formatting on the selected text */
