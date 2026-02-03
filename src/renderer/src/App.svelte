@@ -20,7 +20,7 @@
 -->
 
 <script lang="ts">
-  import { onMount, untrack } from 'svelte'
+  import { onMount } from 'svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import type { DeckElement, SelectionState, Slide } from './lib/state.svelte'
@@ -62,6 +62,7 @@
   let isSelectionUnderlined = $state(false)
   let selectionFontSize = $state(40)
   let selectionFontFamily = $state('Arial')
+  let selectionFillColor = $state('#333333')
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
 
@@ -576,6 +577,11 @@
       appState.selectedObjectId = null
     }
 
+    // Sync previous text object state before switching - object:modified doesn't always fire
+    if (activeTextObject) {
+      updateStateFromObject(activeTextObject as DeckFabricObject)
+    }
+
     // Remove old text selection change listener
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
 
@@ -612,6 +618,10 @@
    * Handles selection cleared event - resets selection state.
    */
   function handleSelectionCleared(): void {
+    // Sync state before clearing - object:modified doesn't always fire reliably
+    if (activeTextObject) {
+      updateStateFromObject(activeTextObject as DeckFabricObject)
+    }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
     activeTextObject = null
@@ -620,6 +630,7 @@
     isSelectionItalic = false
     isSelectionUnderlined = false
     selectionFontSize = 40
+    selectionFillColor = '#333333'
     wasEditing = false
     lastTextSelectionRange = null
     suppressSelectionTracking = false
@@ -770,34 +781,9 @@
 
     fabCanvas?.renderAll()
 
-    // Directly update styling properties in state (without triggering full re-render)
-    // Use untrack() to prevent this state change from triggering the $effect
-    const textObj = activeTextObject as DeckFabricObject
-    if (textObj.id) {
-      untrack(() => {
-        if (appState.currentSlide) {
-          const elementInState = appState.currentSlide.elements.find((el) => el.id === textObj.id)
-          if (elementInState && elementInState.type === 'text') {
-            // Update any properties that changed
-            if (style.fill !== undefined) {
-              elementInState.fill = style.fill as string
-            }
-            if (style.fontSize !== undefined) {
-              elementInState.fontSize = style.fontSize as number
-            }
-            if (style.fontFamily !== undefined) {
-              elementInState.fontFamily = style.fontFamily as string
-            }
-            // Note: bold/italic/underline are handled via styles object, which gets
-            // synced when object:modified fires on blur
-          }
-        }
-      })
-    }
-
-    // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
-    // which loses the text selection and input focus. For most properties, the state will
-    // be updated when the user finishes editing via the object:modified event handler.
+    // Note: Do NOT update state here - it triggers the $effect which re-renders the canvas
+    // and loses the text selection/cursor. State is synced when editing finishes via the
+    // object:modified event handler, which calls updateStateFromObject().
   }
 
   /** Toggles bold formatting on the selected text */
@@ -813,12 +799,6 @@
   /** Toggles underline formatting on the selected text */
   function toggleUnderline(): void {
     applyStyleToSelection({ underline: !isSelectionUnderlined })
-  }
-
-  /** Changes the color of the selected text */
-  function changeSelectionColor(event: Event): void {
-    const color = (event.target as HTMLInputElement).value
-    applyStyleToSelection({ fill: color })
   }
 
   /** Changes the font size of the selected text */
@@ -842,7 +822,7 @@
 
     // Helper to get effective style value using fabric's getValueOfPropertyAt
     // which properly handles base + character-level style inheritance
-    type StyleProperty = 'fontWeight' | 'fontStyle' | 'underline' | 'fontFamily' | 'fontSize'
+    type StyleProperty = 'fontWeight' | 'fontStyle' | 'underline' | 'fontFamily' | 'fontSize' | 'fill'
     const getEffectiveStyle = (charIndex: number, property: StyleProperty): unknown => {
       const loc = activeTextObject.get2DCursorLocation(charIndex, true)
       return activeTextObject.getValueOfPropertyAt(loc.lineIndex, loc.charIndex, property)
@@ -892,6 +872,11 @@
         selectionFontFamily = fontFamilies.values().next().value
       } else if (activeTextObject.fontFamily) {
         selectionFontFamily = activeTextObject.fontFamily
+      }
+
+      // Read fill color from first selected character
+      if (end > start) {
+        selectionFillColor = (getEffectiveStyle(start, 'fill') as string) || activeTextObject.fill as string || '#333333'
       }
     } else {
       if (!suppressSelectionTracking) {
@@ -945,6 +930,14 @@
         selectionFontFamily = fontFamilies.values().next().value
       } else if (activeTextObject.fontFamily) {
         selectionFontFamily = activeTextObject.fontFamily
+      }
+
+      // Read fill color from first character
+      if (textLength > 0) {
+        selectionFillColor =
+          (getEffectiveStyle(0, 'fill') as string) ||
+          (activeTextObject.fill as string) ||
+          '#333333'
       }
     }
   }
@@ -2265,7 +2258,8 @@
         </div>
         <input
           type="color"
-          oninput={changeSelectionColor}
+          bind:value={selectionFillColor}
+          oninput={() => applyStyleToSelection({ fill: selectionFillColor })}
           class="w-8 h-8 p-0 border-none bg-transparent"
         />
       {/if}

@@ -70,27 +70,6 @@
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
-      <div>
-        <label for="fill" class="block text-sm font-medium text-gray-600">Fill Color</label>
-        <input
-          type="color"
-          id="fill"
-          bind:value={selectedObject.fill}
-          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-        />
-      </div>
-      {#if selectedObject.type === 'text'}
-        <!-- Text-specific properties -->
-        <div>
-          <label for="fontSize" class="block text-sm font-medium text-gray-600">Font Size</label>
-          <input
-            type="number"
-            id="fontSize"
-            bind:value={selectedObject.fontSize}
-            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-          />
-        </div>
-      {/if}
     </div>
   {:else}
     <p class="text-sm text-gray-500">No object selected.</p>
