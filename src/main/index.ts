@@ -64,6 +64,57 @@ function validateSlideId(slideId: string): void {
 }
 
 // ============================================================================
+// Temp Directory Management
+// ============================================================================
+
+/**
+ * Temporary directory for unsaved presentations.
+ * Each new presentation gets a temp database here until the user saves it.
+ */
+const TEMP_DIR = join(app.getPath('temp'), 'deckhand-temp')
+
+/**
+ * Tracks which database file paths are temporary files.
+ * Used to clean up temp files on app shutdown.
+ */
+const tempFilePaths = new Set<string>()
+
+/**
+ * Ensures the temp directory exists and cleans up old orphaned temp files.
+ * Called on app startup and when creating new temp databases.
+ */
+function ensureTempDir(): void {
+  // Create temp directory if it doesn't exist
+  fs.mkdirSync(TEMP_DIR, { recursive: true })
+
+  // Clean up orphaned temp files older than 24 hours (crash recovery)
+  try {
+    const now = Date.now()
+    const maxAge = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+    if (fs.existsSync(TEMP_DIR)) {
+      const files = fs.readdirSync(TEMP_DIR)
+      for (const file of files) {
+        if (file.endsWith('.db')) {
+          const filePath = join(TEMP_DIR, file)
+          try {
+            const stats = fs.statSync(filePath)
+            if (now - stats.mtimeMs > maxAge) {
+              fs.unlinkSync(filePath)
+              console.log(`Cleaned up orphaned temp file: ${filePath}`)
+            }
+          } catch (err) {
+            console.warn(`Failed to clean up temp file ${filePath}:`, err)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to clean up temp directory:', error)
+  }
+}
+
+// ============================================================================
 // Database Connection Management
 // ============================================================================
 
@@ -672,6 +723,122 @@ app.whenReady().then(() => {
     closeDbConnection(filePath)
   })
 
+  /**
+   * Creates a new temporary database for an unsaved presentation.
+   * Returns the path to the temp database file.
+   */
+  ipcMain.handle('db:create-temp', (): string => {
+    try {
+      ensureTempDir()
+      const tempPath = join(TEMP_DIR, `temp-${crypto.randomUUID()}.db`)
+
+      // Create and initialize the database
+      getDbConnection(tempPath)
+
+      // Track this as a temp file for cleanup
+      tempFilePaths.add(tempPath)
+
+      console.log(`Created temp database: ${tempPath}`)
+      return tempPath
+    } catch (error) {
+      console.error('Error in db:create-temp:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Checks if a database file path is a temporary file.
+   */
+  ipcMain.handle('db:is-temp-file', (_event, filePath: string): boolean => {
+    return tempFilePaths.has(filePath)
+  })
+
+  /**
+   * Moves a temp database to a user-chosen location (Save operation).
+   * Handles cross-device moves by falling back to copy+delete.
+   */
+  ipcMain.handle('db:save-to-location', (_event, sourcePath: string, destPath: string): string => {
+    try {
+      validateFilePath(sourcePath)
+      validateFilePath(destPath)
+
+      // Close connections to both paths to flush WAL
+      closeDbConnection(sourcePath)
+      closeDbConnection(destPath)
+
+      // Delete destination if it exists
+      if (fs.existsSync(destPath)) {
+        try {
+          fs.unlinkSync(destPath)
+        } catch (unlinkError) {
+          const errCode = (unlinkError as NodeJS.ErrnoException).code
+          if (errCode === 'EBUSY' || errCode === 'EPERM') {
+            throw new Error(
+              `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
+            )
+          }
+          // ENOENT is fine, other errors we'll try to proceed
+          if (errCode !== 'ENOENT') {
+            console.warn('Failed to delete existing destination file:', unlinkError)
+          }
+        }
+      }
+
+      // Try to rename (move) the file
+      try {
+        fs.renameSync(sourcePath, destPath)
+      } catch (renameError) {
+        // If cross-device move (EXDEV), fall back to copy+delete
+        const errCode = (renameError as NodeJS.ErrnoException).code
+        if (errCode === 'EXDEV') {
+          console.log('Cross-device move detected, using copy+delete fallback')
+          fs.copyFileSync(sourcePath, destPath)
+          fs.unlinkSync(sourcePath)
+        } else {
+          throw renameError
+        }
+      }
+
+      // Remove from temp files set
+      tempFilePaths.delete(sourcePath)
+
+      // Open connection at destination
+      getDbConnection(destPath)
+
+      console.log(`Moved temp database from ${sourcePath} to ${destPath}`)
+      return destPath
+    } catch (error) {
+      console.error('Error in db:save-to-location:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Copies a database to a new location (Save As from an already-saved file).
+   */
+  ipcMain.handle('db:copy-to-location', (_event, sourcePath: string, destPath: string): string => {
+    try {
+      validateFilePath(sourcePath)
+      validateFilePath(destPath)
+
+      // Close connections to flush WAL
+      closeDbConnection(sourcePath)
+      closeDbConnection(destPath)
+
+      // Copy the file
+      fs.copyFileSync(sourcePath, destPath)
+
+      // Open connection at destination
+      getDbConnection(destPath)
+
+      console.log(`Copied database from ${sourcePath} to ${destPath}`)
+      return destPath
+    } catch (error) {
+      console.error('Error in db:copy-to-location:', error)
+      throw error
+    }
+  })
+
   // --------------------------------------------------------------------------
   // Font Operation Handlers
   // --------------------------------------------------------------------------
@@ -828,7 +995,7 @@ app.whenReady().then(() => {
 // ============================================================================
 
 /**
- * Clean up all database connections before quitting the app.
+ * Clean up all database connections and temp files before quitting the app.
  * On macOS, the app stays running even when all windows are closed.
  */
 app.on('window-all-closed', () => {
@@ -843,8 +1010,68 @@ app.on('window-all-closed', () => {
   }
   connectionCache.clear()
 
+  // Clean up temp files
+  for (const tempPath of tempFilePaths) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath)
+        console.log(`Deleted temp file: ${tempPath}`)
+      }
+    } catch (error) {
+      console.warn(`Failed to delete temp file ${tempPath}:`, error)
+    }
+  }
+  tempFilePaths.clear()
+
+  // Clean up temp directory
+  try {
+    if (fs.existsSync(TEMP_DIR)) {
+      fs.rmSync(TEMP_DIR, { recursive: true, force: true })
+      console.log('Cleaned up temp directory')
+    }
+  } catch (error) {
+    console.warn('Failed to clean up temp directory:', error)
+  }
+
   // On non-macOS platforms, quit the app when all windows are closed
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+/**
+ * Clean up temp files before the app quits completely.
+ * This handles cleanup on macOS when the app is actually quitting.
+ */
+app.on('before-quit', () => {
+  // Close all database connections
+  for (const [filePath, connection] of connectionCache.entries()) {
+    try {
+      connection.close()
+    } catch (error) {
+      console.error(`Error closing database connection for ${filePath}:`, error)
+    }
+  }
+  connectionCache.clear()
+
+  // Clean up temp files
+  for (const tempPath of tempFilePaths) {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath)
+      }
+    } catch (error) {
+      console.warn(`Failed to delete temp file ${tempPath}:`, error)
+    }
+  }
+  tempFilePaths.clear()
+
+  // Clean up temp directory
+  try {
+    if (fs.existsSync(TEMP_DIR)) {
+      fs.rmSync(TEMP_DIR, { recursive: true, force: true })
+    }
+  } catch (error) {
+    console.warn('Failed to clean up temp directory:', error)
   }
 })

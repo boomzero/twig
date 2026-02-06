@@ -23,7 +23,7 @@
   import { onMount } from 'svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
-  import type { DeckElement, SelectionState, Slide } from './lib/state.svelte'
+  import type { DeckElement, SelectionState } from './lib/state.svelte'
   import {
     Canvas,
     type FabricObject,
@@ -70,7 +70,6 @@
   let systemFonts: { family: string; path: string; format: string }[] = []
   let availableFonts = $state(['Arial', 'Helvetica', 'Times New Roman', 'Courier New']) // Default fallbacks
   let loadedFonts = new Set<string>() // Track which fonts have been loaded via @font-face
-  let pendingFontsToEmbed = new Set<string>() // Track fonts that need to be embedded on next save
 
   // Custom font dropdown state
   let fontDropdownOpen = $state(false)
@@ -104,7 +103,7 @@
    */
   onMount(async () => {
     await loadSystemFonts()
-    handleNewPresentation()
+    await handleNewPresentation()
 
     // Expose state to window for console debugging
     if (typeof window !== 'undefined') {
@@ -158,7 +157,7 @@
       selectedObjectId: appState.selectedObjectId,
       isDirty: appState.isDirty,
       isPresentingMode: appState.isPresentingMode,
-      inMemorySlidesCount: appState.inMemorySlides.length,
+      isTempFile: appState.isTempFile,
       isLoadingSlide: loadingState.isLoadingSlide,
       currentSlide: appState.currentSlide ? JSON.parse(JSON.stringify(appState.currentSlide)) : null
     }
@@ -947,10 +946,10 @@
   // ============================================================================
 
   /**
-   * Creates a new, unsaved presentation with one blank slide.
+   * Creates a new, unsaved presentation with one blank slide in a temp database.
    * Checks for unsaved changes before proceeding.
    */
-  function handleNewPresentation(): void {
+  async function handleNewPresentation(): Promise<void> {
     // Check for unsaved changes before proceeding
     if (appState.isDirty) {
       const shouldProceed = confirm(
@@ -959,18 +958,33 @@
       if (!shouldProceed) return
     }
 
-    // Create the new slide BEFORE resetting to prevent UI flicker
-    const newSlide: Slide = { id: uuid_v4(), elements: [] }
+    try {
+      // Close any existing database connection
+      if (appState.currentFilePath) {
+        await window.api.db.closeConnection(appState.currentFilePath)
+      }
 
-    // Reset state and immediately assign the new slide
-    // This ensures currentSlide is never null during the transition
-    appState.slideIds = [newSlide.id]
-    appState.currentSlide = newSlide
-    appState.inMemorySlides = [newSlide]
-    appState.currentSlideIndex = 0
-    appState.currentFilePath = null
-    appState.selectedObjectId = null
-    appState.isDirty = false
+      // Create a new temp database
+      const tempPath = await window.api.db.createTemp()
+
+      // Create the first slide in the temp database
+      const newSlide = await window.api.db.createSlide(tempPath)
+
+      // Update state
+      appState.currentFilePath = tempPath
+      appState.isTempFile = true
+      appState.slideIds = [newSlide.id]
+      appState.currentSlide = newSlide
+      appState.currentSlideIndex = 0
+      appState.selectedObjectId = null
+      appState.isDirty = false
+
+      console.log('Created new presentation with temp database:', tempPath)
+    } catch (error) {
+      console.error('Failed to create new presentation:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to create new presentation: ${errorMessage}`)
+    }
   }
 
   /**
@@ -1000,12 +1014,12 @@
 
   /**
    * Saves the current slide to the existing file.
-   * If no file is open, triggers Save As instead.
+   * If this is a temp file, triggers Save As instead.
    * Prevents concurrent save operations using the isSaving flag.
    */
   async function handleSave(): Promise<void> {
-    // If no file path, delegate to Save As (it will handle the isSaving flag)
-    if (!appState.currentFilePath) {
+    // If this is a temp file (unsaved presentation), delegate to Save As
+    if (appState.isTempFile) {
       await handleSaveAs()
       return
     }
@@ -1044,8 +1058,8 @@
   }
 
   /**
-   * Opens a save dialog and saves all slides to a new file.
-   * Works for both saved and unsaved presentations.
+   * Opens a save dialog and saves the presentation to a new file.
+   * For temp files, moves the database. For saved files, copies the database.
    * Prevents concurrent save operations using the isSaving flag.
    */
   async function handleSaveAs(): Promise<void> {
@@ -1058,135 +1072,42 @@
     const originalSlideId = appState.currentSlide?.id
 
     try {
+      if (!appState.currentFilePath) {
+        throw new Error('No current file path')
+      }
+
+      // Save current slide to database first to flush all edits
+      if (appState.currentSlide) {
+        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+        appState.isDirty = false
+      }
+
+      // Show save dialog
       const newPath = await window.api.dialog.showSaveDialog()
       if (!newPath) return
 
       // Remember which slide we're currently viewing so we can restore it
       const currentSlideId = appState.currentSlide?.id
 
-      // If the target file already exists, close its connection first
-      await window.api.db.closeConnection(newPath)
-
-      // Collect all slides to save
-      let slidesToSave: Slide[] = []
-      if (appState.currentFilePath) {
-        // Saved presentation: Load all slides from the database
-        for (const slideId of appState.slideIds) {
-          if (slideId === appState.currentSlide?.id) {
-            // Use the current slide (with latest edits, even if unsaved)
-            slidesToSave.push(appState.currentSlide)
-          } else {
-            // Load from database
-            const slide = await window.api.db.getSlide(appState.currentFilePath, slideId)
-            if (slide) {
-              slidesToSave.push(slide)
-            } else {
-              console.error(`Failed to load slide ${slideId} from database during Save As`)
-              throw new Error(`Failed to load slide ${slideId}. The database may be corrupted.`)
-            }
-          }
-        }
+      // Move or copy the database depending on whether it's a temp file
+      let resultPath: string
+      if (appState.isTempFile) {
+        // For temp files, move the database to the new location
+        resultPath = await window.api.db.saveToLocation(appState.currentFilePath, newPath)
       } else {
-        // Unsaved presentation: First save current slide back to inMemorySlides to prevent data loss
-        if (appState.currentSlide) {
-          const currentIndex = appState.inMemorySlides.findIndex(
-            (s) => s.id === appState.currentSlide!.id
-          )
-          if (currentIndex !== -1) {
-            appState.inMemorySlides[currentIndex] = appState.currentSlide
-          } else {
-            // Slide not found in memory - add it to prevent data loss
-            console.warn(
-              `Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`
-            )
-            appState.inMemorySlides.push(appState.currentSlide)
-          }
-        }
-
-        // Build slides array manually to ensure current slide is included
-        for (const slideId of appState.slideIds) {
-          if (slideId === appState.currentSlide?.id) {
-            // Use the current slide (with latest edits)
-            slidesToSave.push(appState.currentSlide)
-          } else {
-            // Load from inMemorySlides
-            const slide = appState.inMemorySlides.find((s) => s.id === slideId)
-            if (slide) {
-              slidesToSave.push(slide)
-            } else {
-              console.error(`Slide ${slideId} not found in inMemorySlides during Save As`)
-              throw new Error(`Failed to find slide ${slideId} in memory. State may be corrupted.`)
-            }
-          }
-        }
+        // For saved files, copy the database to the new location
+        resultPath = await window.api.db.copyToLocation(appState.currentFilePath, newPath)
       }
 
-      // Validate we have slides to save
-      if (slidesToSave.length === 0) {
-        throw new Error('No slides to save')
-      }
+      // Update state
+      appState.currentFilePath = resultPath
+      appState.isTempFile = false
+      appState.isDirty = false
 
-      // Convert reactive Svelte state to plain JS objects for IPC
-      let plainSlides: Slide[]
-      try {
-        plainSlides = JSON.parse(JSON.stringify(slidesToSave))
-      } catch (serializationError) {
-        console.error('Failed to serialize slides:', serializationError)
-        throw new Error(
-          'Failed to serialize presentation data. Some elements may contain invalid data.'
-        )
-      }
-
-      // Debug: Log what we're saving
-      console.log('Save As: Saving', plainSlides.length, 'slides')
-      plainSlides.forEach((slide, i) => {
-        console.log(`  Slide ${i}: ${slide.elements.length} elements`)
-        slide.elements.forEach((el) => {
-          if (el.type === 'image') {
-            console.log(`    Image ${el.id}: src length = ${el.src?.length || 0}`)
-          }
-        })
-      })
-
-      // Save to new file
-      try {
-        await window.api.db.saveAs(newPath, plainSlides)
-      } catch (saveError) {
-        console.error('Failed to save to file:', saveError)
-        const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error'
-        throw new Error(`Failed to save presentation: ${errorMessage}`)
-      }
-
-      // Embed any pending fonts (from unsaved presentation) before reloading
-      try {
-        await embedPendingFonts(newPath)
-      } catch (fontError) {
-        console.error('Failed to embed fonts:', fontError)
-        // Don't throw - fonts are non-critical, presentation is saved
-      }
-
-      // Reload the presentation from the new file
-      try {
-        await loadPresentation(newPath)
-      } catch (loadError) {
-        console.error('Failed to reload presentation after Save As:', loadError)
-        // The file was saved successfully, but we failed to reload it
-        // Try to recover by reloading the original file
-        if (originalFilePath) {
-          try {
-            await loadPresentation(originalFilePath)
-            alert(
-              `Presentation was saved to ${newPath}, but failed to load the new file. Your original file has been reloaded.`
-            )
-            return
-          } catch (recoveryError) {
-            console.error('Failed to recover original file:', recoveryError)
-          }
-        }
-        throw new Error(
-          'Presentation was saved, but failed to load the new file. Please try opening it manually.'
-        )
-      }
+      // Reload slide IDs from the new file
+      const ids = await window.api.db.getSlideIds(resultPath)
+      appState.slideIds = ids
 
       // Restore the slide the user was viewing
       if (currentSlideId && appState.slideIds.includes(currentSlideId)) {
@@ -1194,10 +1115,14 @@
           await loadSlide(currentSlideId)
         } catch (slideLoadError) {
           console.error('Failed to restore original slide:', slideLoadError)
-          // Not critical - the presentation was saved successfully
-          // Just log the error and continue
+          // Not critical - load the first slide instead
+          if (ids.length > 0) {
+            await loadSlide(ids[0])
+          }
         }
       }
+
+      console.log(`Saved presentation to ${resultPath}`)
     } catch (error) {
       console.error('Save As operation failed:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -1503,12 +1428,9 @@
       return
     }
 
-    // For unsaved presentations, track fonts that need to be embedded later
+    // All presentations now have a currentFilePath (can be temp or saved)
     if (!appState.currentFilePath) {
-      pendingFontsToEmbed.add(fontFamily)
-      console.log(`Font ${fontFamily} will be embedded when presentation is saved`)
-      // Still load the font for preview
-      await loadFontForPreview(fontFamily)
+      console.warn('No current file path, cannot embed font')
       return
     }
 
@@ -1558,38 +1480,6 @@
     } catch (error) {
       console.error(`Failed to embed font ${fontFamily}:`, error)
     }
-  }
-
-  /**
-   * Embeds all pending fonts into the database after a file is saved.
-   * Called after Save As to embed fonts that were used in unsaved presentations.
-   *
-   * @param filePath - The path to the database file
-   */
-  async function embedPendingFonts(filePath: string): Promise<void> {
-    if (pendingFontsToEmbed.size === 0) return
-
-    console.log(`Embedding ${pendingFontsToEmbed.size} pending fonts...`)
-
-    for (const fontFamily of pendingFontsToEmbed) {
-      try {
-        // Find the system font
-        const systemFont = systemFonts.find((f) => f.family === fontFamily)
-        if (!systemFont) {
-          console.warn(`Font ${fontFamily} not found in system fonts, skipping embed`)
-          continue
-        }
-
-        // Embed the font
-        await window.api.fonts.embedFont(filePath, systemFont.path, fontFamily, 'normal-normal')
-        console.log(`Embedded pending font: ${fontFamily}`)
-      } catch (error) {
-        console.error(`Failed to embed pending font ${fontFamily}:`, error)
-      }
-    }
-
-    // Clear the pending list
-    pendingFontsToEmbed.clear()
   }
 
   /**
@@ -1848,45 +1738,33 @@
    * Handles both saved (file-based) and unsaved (in-memory) presentations.
    */
   async function addNewSlide(): Promise<void> {
-    const newSlide: Slide = { id: uuid_v4(), elements: [] }
-    if (appState.currentFilePath) {
-      // Saved presentation: save slide to database with error handling
-      try {
-        // Save the new slide to the database
-        await window.api.db.saveSlide(appState.currentFilePath, newSlide)
+    if (!appState.currentFilePath) {
+      console.error('Cannot add slide: no current file path')
+      return
+    }
 
-        // Update slideIds only after successful save
-        appState.slideIds = [...appState.slideIds, newSlide.id]
+    let newSlideId: string | null = null
+    try {
+      // Create new slide in the database (works for both temp and saved files)
+      const newSlide = await window.api.db.createSlide(appState.currentFilePath)
+      newSlideId = newSlide.id
 
-        // Load the new slide
-        await loadSlide(newSlide.id)
-      } catch (error) {
-        console.error('Failed to create new slide:', error)
-
-        // Roll back slideIds if it was added but loading failed
-        appState.slideIds = appState.slideIds.filter((id) => id !== newSlide.id)
-
-        // Show user-friendly error message
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        alert(`Failed to create new slide: ${errorMessage}`)
-      }
-    } else {
-      // Unsaved presentation: save current slide back to memory before switching
-      if (appState.currentSlide) {
-        const currentIndex = appState.inMemorySlides.findIndex(
-          (s) => s.id === appState.currentSlide!.id
-        )
-        if (currentIndex !== -1) {
-          // Deep copy to prevent reference issues
-          appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
-        }
-      }
-
-      // Add new slide to in-memory array
-      appState.inMemorySlides.push(newSlide)
+      // Update slideIds
       appState.slideIds = [...appState.slideIds, newSlide.id]
-      appState.currentSlide = newSlide
-      appState.currentSlideIndex = appState.slideIds.length - 1
+
+      // Load the new slide
+      await loadSlide(newSlide.id)
+    } catch (error) {
+      console.error('Failed to create new slide:', error)
+
+      // Roll back slideIds if it was added but loading failed
+      if (newSlideId) {
+        appState.slideIds = appState.slideIds.filter((id) => id !== newSlideId)
+      }
+
+      // Show user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to create new slide: ${errorMessage}`)
     }
   }
 
@@ -2002,10 +1880,10 @@
 
   /**
    * Enters presentation mode (fullscreen slideshow).
-   * Preserves the current slide state for unsaved presentations.
+   * Preserves the current slide state.
    */
   async function enterPresentationMode(): Promise<void> {
-    // Save a snapshot of current slide state (for unsaved presentations)
+    // Save a snapshot of current slide state
     if (appState.currentSlide) {
       slideStateBeforePresentation = {
         slideId: appState.currentSlide.id,
@@ -2013,19 +1891,11 @@
       }
     }
 
-    // For unsaved presentations, sync current slide to inMemorySlides before presenting
-    if (!appState.currentFilePath && appState.currentSlide) {
-      const currentIndex = appState.inMemorySlides.findIndex(
-        (s) => s.id === appState.currentSlide!.id
-      )
-      if (currentIndex !== -1) {
-        appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
-      }
-    }
-
-    // Save to file if dirty and has file path
-    if (appState.isDirty && appState.currentFilePath) {
-      await handleSave()
+    // Save to database if dirty
+    if (appState.isDirty && appState.currentFilePath && appState.currentSlide) {
+      const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+      await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+      appState.isDirty = false
     }
 
     // Dispose the edit canvas before entering presentation mode

@@ -53,7 +53,19 @@ const api = {
     saveAs: (filePath, slides) => ipcRenderer.invoke('db:save-as', filePath, slides),
 
     /** Close a database connection (used before overwriting files) */
-    closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath)
+    closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath),
+
+    /** Create a new temporary database for unsaved presentations */
+    createTemp: () => ipcRenderer.invoke('db:create-temp'),
+
+    /** Check if a file path is a temporary file */
+    isTempFile: (filePath) => ipcRenderer.invoke('db:is-temp-file', filePath),
+
+    /** Move a temp database to a user-chosen location (Save) */
+    saveToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:save-to-location', sourcePath, destPath),
+
+    /** Copy a database to a new location (Save As) */
+    copyToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath)
   },
 
   // Font operations

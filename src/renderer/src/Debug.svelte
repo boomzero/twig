@@ -33,7 +33,7 @@
     selectedObjectId: string | null
     isDirty: boolean
     isPresentingMode: boolean
-    inMemorySlidesCount: number
+    isTempFile: boolean
     isLoadingSlide: boolean
     currentSlide: {
       id: string
@@ -50,7 +50,7 @@
     selectedObjectId: null,
     isDirty: false,
     isPresentingMode: false,
-    inMemorySlidesCount: 0,
+    isTempFile: false,
     isLoadingSlide: false,
     currentSlide: null
   })
@@ -237,7 +237,7 @@
           <div class="flex justify-between">
             <span class="text-gray-600">Persistence Mode:</span>
             <span class="text-gray-900">
-              {state.currentFilePath ? 'File-based' : 'In-memory'}
+              {state.isTempFile ? 'Temp DB (unsaved)' : 'Saved to disk'}
             </span>
           </div>
         </div>
@@ -264,10 +264,6 @@
           <div class="flex justify-between">
             <span class="text-gray-600">Elements on Slide:</span>
             <span class="text-gray-900 font-bold">{state.currentSlideElementCount}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-600">In-Memory Slides:</span>
-            <span class="text-gray-900">{state.inMemorySlidesCount}</span>
           </div>
         </div>
       </section>
