@@ -49,7 +49,6 @@ export interface DebugState {
   currentSlideId: string | null
   currentSlideElementCount: number
   selectedObjectId: string | null
-  isDirty: boolean
   isPresentingMode: boolean
   isTempFile: boolean
   isLoadingSlide: boolean

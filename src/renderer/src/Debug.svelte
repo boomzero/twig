@@ -31,7 +31,6 @@
     currentSlideId: string | null
     currentSlideElementCount: number
     selectedObjectId: string | null
-    isDirty: boolean
     isPresentingMode: boolean
     isTempFile: boolean
     isLoadingSlide: boolean
@@ -48,7 +47,6 @@
     currentSlideId: null,
     currentSlideElementCount: 0,
     selectedObjectId: null,
-    isDirty: false,
     isPresentingMode: false,
     isTempFile: false,
     isLoadingSlide: false,
@@ -226,12 +224,6 @@
             <span class="text-gray-600">Current File:</span>
             <span class="text-gray-900 truncate ml-4 max-w-md" title={state.currentFilePath || 'Unsaved'}>
               {state.currentFilePath || 'Unsaved'}
-            </span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-600">Is Dirty:</span>
-            <span class:text-red-600={state.isDirty} class:text-green-600={!state.isDirty} class="font-bold">
-              {state.isDirty ? 'Yes (unsaved changes)' : 'No'}
             </span>
           </div>
           <div class="flex justify-between">

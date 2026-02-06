@@ -124,13 +124,9 @@ export const appState = $state({
   /** ID of the currently selected object on the canvas, or null */
   selectedObjectId: null as string | null,
 
-  /** Whether there are unsaved changes to the current slide */
-  isDirty: false,
-
   /** Whether the presentation is in presenting mode (fullscreen slideshow) */
   isPresentingMode: false
 })
-
 
 /**
  * Lock flag to prevent concurrent loadSlide operations.
@@ -155,7 +151,6 @@ export function resetState(): void {
   appState.currentFilePath = null
   appState.isTempFile = false
   appState.selectedObjectId = null
-  appState.isDirty = false
 }
 
 /**
@@ -175,7 +170,6 @@ export async function loadPresentation(filePath: string): Promise<void> {
   appState.currentFilePath = filePath
   appState.isTempFile = await window.api.db.isTempFile(filePath)
   appState.slideIds = ids
-  appState.isDirty = false
   appState.selectedObjectId = null
 
   // Load the first slide, or create one if the file is empty
@@ -230,7 +224,6 @@ export async function loadSlide(slideId: string): Promise<void> {
       try {
         const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
         await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-        appState.isDirty = false
       } catch (error) {
         console.error('Failed to auto-save slide before navigation:', error)
         // Continue with navigation despite save failure

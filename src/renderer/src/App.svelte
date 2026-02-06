@@ -88,6 +88,26 @@
   // Save operation state to prevent concurrent saves
   let isSaving = false
 
+  // Debounced auto-save
+  let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleSave(): void {
+    if (saveTimeoutId) clearTimeout(saveTimeoutId)
+    saveTimeoutId = setTimeout(async () => {
+      saveTimeoutId = null
+      if (!appState.currentSlide || !appState.currentFilePath || isSaving) return
+      isSaving = true
+      try {
+        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+      } catch (error) {
+        console.error('Auto-save failed:', error)
+      } finally {
+        isSaving = false
+      }
+    }, 300)
+  }
+
   /**
    * Extended fabric.js object type that includes our custom 'id' property.
    * The id links canvas objects back to their corresponding state elements.
@@ -134,9 +154,7 @@
       appState.currentSlideIndex,
       appState.currentSlide,
       appState.selectedObjectId,
-      appState.isDirty,
       appState.isPresentingMode,
-      appState.inMemorySlides,
       loadingState.isLoadingSlide
     ]
 
@@ -155,7 +173,6 @@
       currentSlideId: appState.currentSlide?.id || null,
       currentSlideElementCount: appState.currentSlide?.elements.length || 0,
       selectedObjectId: appState.selectedObjectId,
-      isDirty: appState.isDirty,
       isPresentingMode: appState.isPresentingMode,
       isTempFile: appState.isTempFile,
       isLoadingSlide: loadingState.isLoadingSlide,
@@ -173,18 +190,17 @@
   }
 
   /**
-   * Reactive effect that tracks changes to the current slide.
-   * Marks the presentation as "dirty" (unsaved) when the slide is modified.
-   * Tracks the last loaded slide ID to avoid marking as dirty when switching slides.
+   * Reactive effect that auto-saves the current slide when it changes.
+   * Tracks the last loaded slide ID to avoid saving when switching slides.
    */
   let lastLoadedSlideId: string | null = null
   $effect(() => {
     if (appState.currentSlide) {
       if (lastLoadedSlideId === appState.currentSlide.id) {
-        // Same slide reloading - mark as dirty (user made changes)
-        appState.isDirty = true
+        // Same slide updated — schedule auto-save
+        scheduleSave()
       } else {
-        // Different slide loaded - don't mark dirty (just switching slides)
+        // Different slide loaded — just track it
         lastLoadedSlideId = appState.currentSlide.id
       }
     }
@@ -950,14 +966,6 @@
    * Checks for unsaved changes before proceeding.
    */
   async function handleNewPresentation(): Promise<void> {
-    // Check for unsaved changes before proceeding
-    if (appState.isDirty) {
-      const shouldProceed = confirm(
-        'You have unsaved changes. Do you want to discard them and create a new presentation?'
-      )
-      if (!shouldProceed) return
-    }
-
     try {
       // Close any existing database connection
       if (appState.currentFilePath) {
@@ -977,7 +985,6 @@
       appState.currentSlide = newSlide
       appState.currentSlideIndex = 0
       appState.selectedObjectId = null
-      appState.isDirty = false
 
       console.log('Created new presentation with temp database:', tempPath)
     } catch (error) {
@@ -992,14 +999,6 @@
    * Checks for unsaved changes before proceeding.
    */
   async function handleOpen(): Promise<void> {
-    // Check for unsaved changes before proceeding
-    if (appState.isDirty) {
-      const shouldProceed = confirm(
-        'You have unsaved changes. Do you want to discard them and open a different file?'
-      )
-      if (!shouldProceed) return
-    }
-
     const filePath = await window.api.dialog.showOpenDialog()
     if (filePath) {
       try {
@@ -1029,24 +1028,16 @@
     isSaving = true
 
     try {
-      if (!appState.currentSlide || !appState.isDirty) return
+      if (!appState.currentSlide || !appState.currentFilePath) return
+
+      // Cancel any pending debounced save and flush immediately
+      if (saveTimeoutId) { clearTimeout(saveTimeoutId); saveTimeoutId = null }
 
       // Convert the reactive Svelte state to a plain JS object before sending to IPC
       const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
 
-      // Debug: Log what we're saving
-      console.log('Saving slide with elements:', plainSlide.elements.length)
-      plainSlide.elements.forEach((el: DeckElement) => {
-        if (el.type === 'image') {
-          console.log(`  Image ${el.id}: src length = ${el.src?.length || 0}`)
-        }
-      })
-
       // Save just the current slide to the existing file
       await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-
-      // Reset the dirty flag
-      appState.isDirty = false
       console.log('Saved to', appState.currentFilePath)
     } catch (error) {
       console.error('Save failed:', error)
@@ -1080,7 +1071,6 @@
       if (appState.currentSlide) {
         const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
         await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-        appState.isDirty = false
       }
 
       // Show save dialog
@@ -1103,7 +1093,6 @@
       // Update state
       appState.currentFilePath = resultPath
       appState.isTempFile = false
-      appState.isDirty = false
 
       // Reload slide IDs from the new file
       const ids = await window.api.db.getSlideIds(resultPath)
@@ -1650,7 +1639,6 @@
       fill: '#333333'
     }
     appState.currentSlide.elements.push(newText)
-    appState.isDirty = true
   }
 
   /**
@@ -1669,7 +1657,6 @@
       fill: '#FF6F61'
     }
     appState.currentSlide.elements.push(newRect)
-    appState.isDirty = true
   }
 
   /**
@@ -1725,7 +1712,6 @@
       }
 
       appState.currentSlide.elements.push(newImage)
-      appState.isDirty = true
     } catch (error) {
       console.error('Failed to add image:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -1891,11 +1877,11 @@
       }
     }
 
-    // Save to database if dirty
-    if (appState.isDirty && appState.currentFilePath && appState.currentSlide) {
+    // Flush any pending auto-save before presenting
+    if (appState.currentSlide && appState.currentFilePath) {
+      if (saveTimeoutId) { clearTimeout(saveTimeoutId); saveTimeoutId = null }
       const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
       await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-      appState.isDirty = false
     }
 
     // Dispose the edit canvas before entering presentation mode
@@ -1983,7 +1969,6 @@
       <button
         onclick={handleSave}
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-        disabled={!appState.isDirty && appState.currentFilePath !== null}
       >
         Save
       </button>
