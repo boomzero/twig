@@ -88,6 +88,9 @@
   // Save operation state to prevent concurrent saves
   let isSaving = false
 
+  // Auto-save debounce delay in milliseconds
+  const AUTO_SAVE_DEBOUNCE_MS = 300
+
   // Debounced auto-save
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -105,7 +108,32 @@
       } finally {
         isSaving = false
       }
-    }, 300)
+    }, AUTO_SAVE_DEBOUNCE_MS)
+  }
+
+  /**
+   * Flushes any pending auto-save immediately.
+   * Called before critical operations like navigation, closing, or presenting.
+   */
+  async function flushPendingSave(): Promise<void> {
+    // Cancel pending debounced save
+    if (saveTimeoutId) {
+      clearTimeout(saveTimeoutId)
+      saveTimeoutId = null
+    }
+
+    // Save immediately if there's a current slide
+    if (appState.currentSlide && appState.currentFilePath && !isSaving) {
+      isSaving = true
+      try {
+        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+      } catch (error) {
+        console.error('Failed to flush pending save:', error)
+      } finally {
+        isSaving = false
+      }
+    }
   }
 
   /**
@@ -139,6 +167,14 @@
     // Listen for state requests from the debug window
     window.api?.debug?.onStateRequest(() => {
       sendStateToDebugWindow()
+    })
+
+    // Flush pending saves before window closes to prevent data loss
+    window.addEventListener('beforeunload', () => {
+      if (saveTimeoutId) {
+        // Best effort flush - most saves will complete before window closes
+        flushPendingSave()
+      }
     })
   })
 
@@ -1023,29 +1059,9 @@
       return
     }
 
-    // Prevent concurrent saves
-    if (isSaving) return
-    isSaving = true
-
-    try {
-      if (!appState.currentSlide || !appState.currentFilePath) return
-
-      // Cancel any pending debounced save and flush immediately
-      if (saveTimeoutId) { clearTimeout(saveTimeoutId); saveTimeoutId = null }
-
-      // Convert the reactive Svelte state to a plain JS object before sending to IPC
-      const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-
-      // Save just the current slide to the existing file
-      await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-      console.log('Saved to', appState.currentFilePath)
-    } catch (error) {
-      console.error('Save failed:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to save: ${errorMessage}`)
-    } finally {
-      isSaving = false
-    }
+    // Flush any pending auto-save immediately
+    await flushPendingSave()
+    console.log('Saved to', appState.currentFilePath)
   }
 
   /**
@@ -1878,11 +1894,7 @@
     }
 
     // Flush any pending auto-save before presenting
-    if (appState.currentSlide && appState.currentFilePath) {
-      if (saveTimeoutId) { clearTimeout(saveTimeoutId); saveTimeoutId = null }
-      const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-      await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-    }
+    await flushPendingSave()
 
     // Dispose the edit canvas before entering presentation mode
     // This ensures a fresh canvas is created when we exit

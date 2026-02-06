@@ -74,6 +74,11 @@ function validateSlideId(slideId: string): void {
 const TEMP_DIR = join(app.getPath('temp'), 'deckhand-temp')
 
 /**
+ * Maximum age for orphaned temp files before automatic cleanup (24 hours).
+ */
+const TEMP_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/**
  * Tracks which database file paths are temporary files.
  * Used to clean up temp files on app shutdown.
  */
@@ -90,7 +95,6 @@ function ensureTempDir(): void {
   // Clean up orphaned temp files older than 24 hours (crash recovery)
   try {
     const now = Date.now()
-    const maxAge = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
 
     if (fs.existsSync(TEMP_DIR)) {
       const files = fs.readdirSync(TEMP_DIR)
@@ -99,7 +103,7 @@ function ensureTempDir(): void {
           const filePath = join(TEMP_DIR, file)
           try {
             const stats = fs.statSync(filePath)
-            if (now - stats.mtimeMs > maxAge) {
+            if (now - stats.mtimeMs > TEMP_FILE_MAX_AGE_MS) {
               fs.unlinkSync(filePath)
               console.log(`Cleaned up orphaned temp file: ${filePath}`)
             }
@@ -793,6 +797,24 @@ app.whenReady().then(() => {
         if (errCode === 'EXDEV') {
           console.log('Cross-device move detected, using copy+delete fallback')
           fs.copyFileSync(sourcePath, destPath)
+
+          // Verify destination is a valid SQLite database before deleting source
+          try {
+            const testDb = new Database(destPath, { readonly: true })
+            testDb.close()
+          } catch (verifyError) {
+            // Destination is corrupted, delete it and don't delete source
+            try {
+              fs.unlinkSync(destPath)
+            } catch {
+              // Ignore cleanup error
+            }
+            throw new Error(
+              `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
+            )
+          }
+
+          // Destination verified, safe to delete source
           fs.unlinkSync(sourcePath)
         } else {
           throw renameError
@@ -827,6 +849,22 @@ app.whenReady().then(() => {
 
       // Copy the file
       fs.copyFileSync(sourcePath, destPath)
+
+      // Verify destination is a valid SQLite database
+      try {
+        const testDb = new Database(destPath, { readonly: true })
+        testDb.close()
+      } catch (verifyError) {
+        // Destination is corrupted, delete it and throw
+        try {
+          fs.unlinkSync(destPath)
+        } catch {
+          // Ignore cleanup error
+        }
+        throw new Error(
+          `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
+        )
+      }
 
       // Open connection at destination
       getDbConnection(destPath)
@@ -995,10 +1033,10 @@ app.whenReady().then(() => {
 // ============================================================================
 
 /**
- * Clean up all database connections and temp files before quitting the app.
- * On macOS, the app stays running even when all windows are closed.
+ * Cleans up all database connections and temp files.
+ * Called on app shutdown and when all windows are closed.
  */
-app.on('window-all-closed', () => {
+function cleanupResources(): void {
   // Close all database connections with error handling
   for (const [filePath, connection] of connectionCache.entries()) {
     try {
@@ -1032,6 +1070,14 @@ app.on('window-all-closed', () => {
   } catch (error) {
     console.warn('Failed to clean up temp directory:', error)
   }
+}
+
+/**
+ * Clean up resources when all windows are closed.
+ * On macOS, the app stays running even when all windows are closed.
+ */
+app.on('window-all-closed', () => {
+  cleanupResources()
 
   // On non-macOS platforms, quit the app when all windows are closed
   if (process.platform !== 'darwin') {
@@ -1040,38 +1086,9 @@ app.on('window-all-closed', () => {
 })
 
 /**
- * Clean up temp files before the app quits completely.
+ * Clean up resources before the app quits completely.
  * This handles cleanup on macOS when the app is actually quitting.
  */
 app.on('before-quit', () => {
-  // Close all database connections
-  for (const [filePath, connection] of connectionCache.entries()) {
-    try {
-      connection.close()
-    } catch (error) {
-      console.error(`Error closing database connection for ${filePath}:`, error)
-    }
-  }
-  connectionCache.clear()
-
-  // Clean up temp files
-  for (const tempPath of tempFilePaths) {
-    try {
-      if (fs.existsSync(tempPath)) {
-        fs.unlinkSync(tempPath)
-      }
-    } catch (error) {
-      console.warn(`Failed to delete temp file ${tempPath}:`, error)
-    }
-  }
-  tempFilePaths.clear()
-
-  // Clean up temp directory
-  try {
-    if (fs.existsSync(TEMP_DIR)) {
-      fs.rmSync(TEMP_DIR, { recursive: true, force: true })
-    }
-  } catch (error) {
-    console.warn('Failed to clean up temp directory:', error)
-  }
+  cleanupResources()
 })
