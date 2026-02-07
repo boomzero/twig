@@ -90,8 +90,9 @@ const tempFilePaths = new Set<string>()
  * Called on app startup and when creating new temp databases.
  */
 function ensureTempDir(): void {
-  // Create temp directory if it doesn't exist
-  fs.mkdirSync(TEMP_DIR, { recursive: true })
+  // Create temp directory with restrictive permissions (user-only access)
+  // Mode 0o700 = rwx------ (owner read/write/execute only)
+  fs.mkdirSync(TEMP_DIR, { recursive: true, mode: 0o700 })
 
   // Clean up orphaned temp files older than 24 hours (crash recovery)
   try {
@@ -241,6 +242,11 @@ function getDbConnection(filePath: string): Database.Database {
 }
 
 /**
+ * Error codes that indicate file is locked or inaccessible and should be retried.
+ */
+const RETRYABLE_FILE_ERROR_CODES = ['EBUSY', 'EPERM', 'EACCES']
+
+/**
  * Retry a file operation with exponential backoff on Windows.
  * On Windows, closing a database connection doesn't immediately release the file lock.
  * This function retries the operation with increasing delays.
@@ -263,7 +269,7 @@ async function retryFileOperation<T>(
       const errCode = (error as NodeJS.ErrnoException).code
 
       // Only retry on file locking errors
-      if (errCode !== 'EBUSY' && errCode !== 'EPERM') {
+      if (!RETRYABLE_FILE_ERROR_CODES.includes(errCode || '')) {
         throw error
       }
 

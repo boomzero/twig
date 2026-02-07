@@ -107,8 +107,17 @@
     if (saveTimeoutId) clearTimeout(saveTimeoutId)
     saveTimeoutId = setTimeout(async () => {
       saveTimeoutId = null
-      if (!appState.currentSlide || !appState.currentFilePath || isSaving) return
+
+      // Check and set isSaving atomically to prevent race condition
+      if (isSaving) return
       isSaving = true
+
+      // Check if we have valid state to save
+      if (!appState.currentSlide || !appState.currentFilePath) {
+        isSaving = false
+        return
+      }
+
       try {
         const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
         await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
@@ -131,17 +140,23 @@
       saveTimeoutId = null
     }
 
-    // Save immediately if there's a current slide
-    if (appState.currentSlide && appState.currentFilePath && !isSaving) {
-      isSaving = true
-      try {
-        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-      } catch (error) {
-        console.error('Failed to flush pending save:', error)
-      } finally {
-        isSaving = false
-      }
+    // Check and set isSaving to prevent race condition
+    if (isSaving) return
+    isSaving = true
+
+    // Check if we have valid state to save
+    if (!appState.currentSlide || !appState.currentFilePath) {
+      isSaving = false
+      return
+    }
+
+    try {
+      const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+      await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+    } catch (error) {
+      console.error('Failed to flush pending save:', error)
+    } finally {
+      isSaving = false
     }
   }
 
