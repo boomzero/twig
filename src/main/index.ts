@@ -882,6 +882,11 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('db:delete-temp', (_event, filePath: string): void => {
     try {
+      // Validate that this is actually a tracked temp file to prevent arbitrary deletion
+      if (!tempFilePaths.has(filePath)) {
+        throw new Error('Cannot delete: path is not a tracked temporary file')
+      }
+
       // Close any connection to this file
       closeDbConnection(filePath)
 
@@ -1247,6 +1252,7 @@ let cleanupPromise: Promise<void> | null = null
  * Cleans up all database connections and temp files.
  * Called on app shutdown and when all windows are closed.
  * Uses promise-based guard to prevent concurrent cleanup attempts.
+ * The guard resets after completion to allow cleanup on subsequent window cycles.
  */
 async function cleanupResources(): Promise<void> {
   if (cleanupPromise) return cleanupPromise
@@ -1287,7 +1293,12 @@ async function cleanupResources(): Promise<void> {
     }
   })()
 
-  return cleanupPromise
+  try {
+    await cleanupPromise
+  } finally {
+    // Reset promise guard so cleanup can run again on subsequent cycles
+    cleanupPromise = null
+  }
 }
 
 /**

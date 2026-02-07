@@ -1066,6 +1066,9 @@
       let tempPath: string | null = null
 
       try {
+        // Flush any pending saves before switching presentations
+        await flushPendingSave()
+
         // Close any existing database connection
         if (appState.currentFilePath) {
           await window.api.db.closeConnection(appState.currentFilePath)
@@ -1135,6 +1138,9 @@
     const filePath = await window.api.dialog.showOpenDialog()
     if (filePath) {
       try {
+        // Flush any pending saves before switching presentations
+        await flushPendingSave()
+
         await loadPresentation(filePath)
       } catch (error) {
         console.error('Failed to open presentation:', error)
