@@ -244,11 +244,25 @@ function getDbConnection(filePath: string): Database.Database {
  * This should be called before overwriting or deleting a database file.
  *
  * @param filePath - Absolute path to the .db file
+ * @param checkpoint - Whether to force a WAL checkpoint before closing (default: false)
  */
-function closeDbConnection(filePath: string): void {
+function closeDbConnection(filePath: string, checkpoint: boolean = false): void {
   if (connectionCache.has(filePath)) {
     try {
-      connectionCache.get(filePath)!.close()
+      const db = connectionCache.get(filePath)!
+
+      // Force WAL checkpoint to ensure all data is written to the main file
+      if (checkpoint) {
+        try {
+          db.pragma('wal_checkpoint(TRUNCATE)')
+          console.log(`Checkpointed WAL for ${filePath}`)
+        } catch (checkpointError) {
+          console.warn(`Failed to checkpoint WAL for ${filePath}:`, checkpointError)
+          // Continue anyway - close will still work
+        }
+      }
+
+      db.close()
     } catch (error) {
       console.error(`Error closing database connection for ${filePath}:`, error)
       // Continue anyway - we still want to remove it from cache
@@ -444,6 +458,30 @@ function createWindow(): void {
   // Show window only when content is ready to prevent blank white flash
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  // Prevent window from closing until pending saves are flushed
+  mainWindow.on('close', (event) => {
+    // Prevent immediate close
+    event.preventDefault()
+
+    // Ask renderer to flush pending saves
+    mainWindow.webContents.send('lifecycle:before-close')
+
+    // Wait for flush to complete
+    const flushTimeout = setTimeout(() => {
+      // If flush doesn't complete in 5 seconds, force close anyway
+      console.warn('Flush timeout - forcing window close')
+      mainWindow.destroy()
+    }, 5000)
+
+    // Listen for flush complete
+    const flushCompleteHandler = () => {
+      clearTimeout(flushTimeout)
+      ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
+      mainWindow.destroy()
+    }
+    ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
   })
 
   // Open external links in the system browser instead of within the app
@@ -766,9 +804,14 @@ app.whenReady().then(() => {
       validateFilePath(sourcePath)
       validateFilePath(destPath)
 
-      // Close connections to both paths to flush WAL
-      closeDbConnection(sourcePath)
-      closeDbConnection(destPath)
+      // Verify source file exists
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(`Source file does not exist: ${sourcePath}`)
+      }
+
+      // Close connections to both paths and checkpoint WAL
+      closeDbConnection(sourcePath, true)
+      closeDbConnection(destPath, true)
 
       // Delete destination if it exists
       if (fs.existsSync(destPath)) {
@@ -843,9 +886,32 @@ app.whenReady().then(() => {
       validateFilePath(sourcePath)
       validateFilePath(destPath)
 
-      // Close connections to flush WAL
-      closeDbConnection(sourcePath)
-      closeDbConnection(destPath)
+      // Verify source file exists
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(`Source file does not exist: ${sourcePath}`)
+      }
+
+      // Close connections and checkpoint WAL
+      closeDbConnection(sourcePath, true)
+      closeDbConnection(destPath, true)
+
+      // Delete destination if it exists
+      if (fs.existsSync(destPath)) {
+        try {
+          fs.unlinkSync(destPath)
+        } catch (unlinkError) {
+          const errCode = (unlinkError as NodeJS.ErrnoException).code
+          if (errCode === 'EBUSY' || errCode === 'EPERM') {
+            throw new Error(
+              `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
+            )
+          }
+          // ENOENT is fine, other errors we'll try to proceed
+          if (errCode !== 'ENOENT') {
+            console.warn('Failed to delete existing destination file:', unlinkError)
+          }
+        }
+      }
 
       // Copy the file
       fs.copyFileSync(sourcePath, destPath)
@@ -1033,10 +1099,18 @@ app.whenReady().then(() => {
 // ============================================================================
 
 /**
+ * Flag to prevent cleanup from running multiple times.
+ * On macOS, both window-all-closed and before-quit can fire.
+ */
+let cleanupCompleted = false
+
+/**
  * Cleans up all database connections and temp files.
  * Called on app shutdown and when all windows are closed.
  */
 function cleanupResources(): void {
+  if (cleanupCompleted) return
+  cleanupCompleted = true
   // Close all database connections with error handling
   for (const [filePath, connection] of connectionCache.entries()) {
     try {

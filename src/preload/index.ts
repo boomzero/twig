@@ -112,6 +112,19 @@ const api = {
       ipcRenderer.on('debug:request-state-from-main', handler)
       return () => ipcRenderer.removeListener('debug:request-state-from-main', handler)
     }
+  },
+
+  // Window lifecycle
+  lifecycle: {
+    /** Called by main process before window closes to flush pending saves */
+    onBeforeClose: (callback) => {
+      const listener = () => callback()
+      ipcRenderer.on('lifecycle:before-close', listener)
+      return () => ipcRenderer.removeListener('lifecycle:before-close', listener)
+    },
+
+    /** Notify main process that flush is complete */
+    flushComplete: () => ipcRenderer.send('lifecycle:flush-complete')
   }
 }
 

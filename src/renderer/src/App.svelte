@@ -20,7 +20,7 @@
 -->
 
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
@@ -169,13 +169,21 @@
       sendStateToDebugWindow()
     })
 
-    // Flush pending saves before window closes to prevent data loss
-    window.addEventListener('beforeunload', () => {
-      if (saveTimeoutId) {
-        // Best effort flush - most saves will complete before window closes
-        flushPendingSave()
-      }
+    // Listen for window close event - flush pending saves before closing
+    window.api?.lifecycle?.onBeforeClose(async () => {
+      await flushPendingSave()
+      window.api?.lifecycle?.flushComplete()
     })
+  })
+
+  /**
+   * Clean up pending auto-save timeout on component unmount to prevent memory leaks.
+   */
+  onDestroy(() => {
+    if (saveTimeoutId) {
+      clearTimeout(saveTimeoutId)
+      saveTimeoutId = null
+    }
   })
 
   /**
@@ -1002,31 +1010,59 @@
    * Checks for unsaved changes before proceeding.
    */
   async function handleNewPresentation(): Promise<void> {
-    try {
-      // Close any existing database connection
-      if (appState.currentFilePath) {
-        await window.api.db.closeConnection(appState.currentFilePath)
+    let retryCount = 0
+    const maxRetries = 3
+
+    while (retryCount < maxRetries) {
+      try {
+        // Close any existing database connection
+        if (appState.currentFilePath) {
+          await window.api.db.closeConnection(appState.currentFilePath)
+        }
+
+        // Create a new temp database
+        const tempPath = await window.api.db.createTemp()
+
+        // Create the first slide in the temp database
+        const newSlide = await window.api.db.createSlide(tempPath)
+
+        // Update state
+        appState.currentFilePath = tempPath
+        appState.isTempFile = true
+        appState.slideIds = [newSlide.id]
+        appState.currentSlide = newSlide
+        appState.currentSlideIndex = 0
+        appState.selectedObjectId = null
+
+        console.log('Created new presentation with temp database:', tempPath)
+        return // Success!
+      } catch (error) {
+        console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
+        retryCount++
+
+        if (retryCount >= maxRetries) {
+          // All retries failed - show error and offer recovery
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          const retry = confirm(
+            `Failed to create new presentation after ${maxRetries} attempts: ${errorMessage}\n\n` +
+            'This might be due to:\n' +
+            '• Insufficient disk space\n' +
+            '• Permission issues\n' +
+            '• Corrupted temp directory\n\n' +
+            'Would you like to try again?'
+          )
+
+          if (retry) {
+            retryCount = 0 // Reset and try again
+          } else {
+            // User gave up - leave them with current state (if any)
+            return
+          }
+        } else {
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
       }
-
-      // Create a new temp database
-      const tempPath = await window.api.db.createTemp()
-
-      // Create the first slide in the temp database
-      const newSlide = await window.api.db.createSlide(tempPath)
-
-      // Update state
-      appState.currentFilePath = tempPath
-      appState.isTempFile = true
-      appState.slideIds = [newSlide.id]
-      appState.currentSlide = newSlide
-      appState.currentSlideIndex = 0
-      appState.selectedObjectId = null
-
-      console.log('Created new presentation with temp database:', tempPath)
-    } catch (error) {
-      console.error('Failed to create new presentation:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to create new presentation: ${errorMessage}`)
     }
   }
 

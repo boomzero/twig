@@ -231,7 +231,12 @@ export async function loadSlide(slideId: string): Promise<void> {
     }
 
     // Load the new slide from database
-    const newSlide = await window.api.db.getSlide(appState.currentFilePath!, slideId)
+    if (!appState.currentFilePath) {
+      console.error('Cannot load slide: no current file path')
+      return
+    }
+
+    const newSlide = await window.api.db.getSlide(appState.currentFilePath, slideId)
     if (!newSlide) {
       console.error(`Failed to load slide ${slideId} from database`)
       return

@@ -113,6 +113,10 @@ declare global {
         requestState: () => void
         onStateRequest: (callback: () => void) => () => void
       }
+      lifecycle: {
+        onBeforeClose: (callback: () => void) => () => void
+        flushComplete: () => void
+      }
     }
   }
 }
