@@ -173,6 +173,9 @@
   /**
    * Initialize the app on mount by creating a new presentation.
    */
+  let unsubscribeBeforeClose: (() => void) | undefined
+  let unsubscribeStateRequest: (() => void) | undefined
+
   onMount(async () => {
     await loadSystemFonts()
     await handleNewPresentation()
@@ -189,25 +192,31 @@
     }
 
     // Listen for state requests from the debug window
-    window.api?.debug?.onStateRequest(() => {
+    unsubscribeStateRequest = window.api?.debug?.onStateRequest(() => {
       sendStateToDebugWindow()
     })
 
     // Listen for window close event - flush pending saves before closing
-    window.api?.lifecycle?.onBeforeClose(async () => {
+    unsubscribeBeforeClose = window.api?.lifecycle?.onBeforeClose(async () => {
       await flushPendingSave()
       window.api?.lifecycle?.flushComplete()
     })
   })
 
   /**
-   * Clean up pending auto-save timeout on component unmount to prevent memory leaks.
+   * Clean up pending auto-save timeout and event listeners on component unmount.
+   * Prevents memory leaks from dangling timeouts and IPC listeners.
    */
   onDestroy(() => {
+    // Clear pending auto-save timeout
     if (saveTimeoutId) {
       clearTimeout(saveTimeoutId)
       saveTimeoutId = null
     }
+
+    // Unsubscribe from IPC event listeners
+    unsubscribeBeforeClose?.()
+    unsubscribeStateRequest?.()
   })
 
   /**
@@ -1966,7 +1975,19 @@
     }
 
     // Flush any pending auto-save before presenting
-    await flushPendingSave()
+    try {
+      await flushPendingSave()
+    } catch (error) {
+      console.error('Failed to save before presenting:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const proceed = confirm(
+        `Failed to save recent changes: ${errorMessage}\n\n` +
+        'Your presentation may show stale data. Continue to presentation mode anyway?'
+      )
+      if (!proceed) {
+        return // Abort entering presentation mode
+      }
+    }
 
     // Dispose the edit canvas before entering presentation mode
     // This ensures a fresh canvas is created when we exit

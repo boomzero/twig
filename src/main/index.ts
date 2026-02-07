@@ -952,10 +952,17 @@ app.whenReady().then(() => {
             fs.copyFileSync(sourcePath, destPath)
           })
 
-          // Verify destination is a valid SQLite database before deleting source
+          // Verify destination database integrity before deleting source
           try {
             const testDb = new Database(destPath, { readonly: true })
+
+            // Run integrity check to verify data, not just header
+            const integrityResult = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>
             testDb.close()
+
+            if (!integrityResult || integrityResult[0]?.integrity_check !== 'ok') {
+              throw new Error('Database integrity check failed')
+            }
           } catch (verifyError) {
             // Destination is corrupted, delete it and don't delete source
             try {
@@ -972,6 +979,13 @@ app.whenReady().then(() => {
           await retryFileOperation(() => {
             fs.unlinkSync(sourcePath)
           })
+
+          // Verify source is actually deleted
+          if (fs.existsSync(sourcePath)) {
+            throw new Error(
+              'Source file still exists after move operation - this indicates a file system error'
+            )
+          }
         } else {
           throw renameError
         }
@@ -1033,10 +1047,17 @@ app.whenReady().then(() => {
         fs.copyFileSync(sourcePath, destPath)
       })
 
-      // Verify destination is a valid SQLite database
+      // Verify destination database integrity
       try {
         const testDb = new Database(destPath, { readonly: true })
+
+        // Run integrity check to verify data, not just header
+        const integrityResult = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>
         testDb.close()
+
+        if (!integrityResult || integrityResult[0]?.integrity_check !== 'ok') {
+          throw new Error('Database integrity check failed')
+        }
       } catch (verifyError) {
         // Destination is corrupted, delete it and throw
         try {
