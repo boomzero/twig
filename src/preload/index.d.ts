@@ -93,6 +93,7 @@ declare global {
         isTempFile: (filePath: string) => Promise<boolean>
         saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
         copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
+        deleteTemp: (filePath: string) => Promise<void>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>

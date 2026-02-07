@@ -65,7 +65,10 @@ const api = {
     saveToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:save-to-location', sourcePath, destPath),
 
     /** Copy a database to a new location (Save As) */
-    copyToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath)
+    copyToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath),
+
+    /** Delete a temporary database file */
+    deleteTemp: (filePath) => ipcRenderer.invoke('db:delete-temp', filePath)
   },
 
   // Font operations

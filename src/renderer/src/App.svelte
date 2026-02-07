@@ -88,8 +88,17 @@
   // Save operation state to prevent concurrent saves
   let isSaving = false
 
-  // Auto-save debounce delay in milliseconds
+  /**
+   * Auto-save debounce delay in milliseconds.
+   * 300ms is fast enough to feel instant while batching rapid changes
+   * (e.g., dragging objects, typing in text boxes).
+   */
   const AUTO_SAVE_DEBOUNCE_MS = 300
+
+  /**
+   * Delay between retry attempts when creating a new presentation fails.
+   */
+  const NEW_PRESENTATION_RETRY_DELAY_MS = 500
 
   // Debounced auto-save
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
@@ -1014,6 +1023,8 @@
     const maxRetries = 3
 
     while (retryCount < maxRetries) {
+      let tempPath: string | null = null
+
       try {
         // Close any existing database connection
         if (appState.currentFilePath) {
@@ -1021,7 +1032,7 @@
         }
 
         // Create a new temp database
-        const tempPath = await window.api.db.createTemp()
+        tempPath = await window.api.db.createTemp()
 
         // Create the first slide in the temp database
         const newSlide = await window.api.db.createSlide(tempPath)
@@ -1038,6 +1049,16 @@
         return // Success!
       } catch (error) {
         console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
+
+        // Clean up the temp file if it was created
+        if (tempPath) {
+          try {
+            await window.api.db.deleteTemp(tempPath)
+          } catch (cleanupError) {
+            console.error('Failed to clean up temp file:', cleanupError)
+          }
+        }
+
         retryCount++
 
         if (retryCount >= maxRetries) {
@@ -1059,8 +1080,8 @@
             return
           }
         } else {
-          // Wait a bit before retrying
-          await new Promise(resolve => setTimeout(resolve, 500))
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, NEW_PRESENTATION_RETRY_DELAY_MS))
         }
       }
     }

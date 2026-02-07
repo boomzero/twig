@@ -241,15 +241,48 @@ function getDbConnection(filePath: string): Database.Database {
 }
 
 /**
- * Waits for file locks to be released on Windows.
+ * Retry a file operation with exponential backoff on Windows.
  * On Windows, closing a database connection doesn't immediately release the file lock.
- * This function adds a small delay to allow the OS to release locks.
+ * This function retries the operation with increasing delays.
+ *
+ * @param operation - The file operation to retry
+ * @param maxRetries - Maximum number of retry attempts (default: 5)
+ * @returns The result of the successful operation
+ * @throws The last error if all retries fail
  */
-async function waitForFileLockRelease(): Promise<void> {
-  if (process.platform === 'win32') {
-    // Wait 100ms on Windows to allow file locks to be released
-    await new Promise(resolve => setTimeout(resolve, 100))
+async function retryFileOperation<T>(
+  operation: () => T,
+  maxRetries: number = 5
+): Promise<T> {
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return operation()
+    } catch (error) {
+      const errCode = (error as NodeJS.ErrnoException).code
+
+      // Only retry on file locking errors
+      if (errCode !== 'EBUSY' && errCode !== 'EPERM') {
+        throw error
+      }
+
+      lastError = error as Error
+
+      // Don't wait after the last attempt
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
+        const delay = 50 * Math.pow(2, attempt)
+        console.log(
+          `File operation failed (${errCode}), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`
+        )
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
   }
+
+  // All retries failed
+  throw lastError || new Error('File operation failed after all retries')
 }
 
 /**
@@ -473,39 +506,54 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  // Guard flag to prevent multiple simultaneous close operations
-  let isClosing = false
+  // Close state management to prevent race conditions
+  const FLUSH_TIMEOUT_MS = 5000
+  let closeState: 'idle' | 'flushing' | 'closed' = 'idle'
+  let flushTimeoutId: NodeJS.Timeout | null = null
 
   // Prevent window from closing until pending saves are flushed
   mainWindow.on('close', (event) => {
-    // Prevent race condition from multiple close attempts
-    if (isClosing) {
+    // Only handle close if we're in idle state
+    if (closeState !== 'idle') {
+      event.preventDefault()
       return
     }
-    isClosing = true
 
-    // Prevent immediate close
+    // Transition to flushing state
+    closeState = 'flushing'
     event.preventDefault()
+
+    // Function to safely close the window
+    const performClose = () => {
+      if (closeState === 'closed') return // Already closed
+      closeState = 'closed'
+
+      // Clean up timeout if it exists
+      if (flushTimeoutId) {
+        clearTimeout(flushTimeoutId)
+        flushTimeoutId = null
+      }
+
+      // Close window if not already destroyed
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.destroy()
+      }
+    }
 
     // Ask renderer to flush pending saves
     mainWindow.webContents.send('lifecycle:before-close')
 
-    // Wait for flush to complete
-    const flushTimeout = setTimeout(() => {
-      // If flush doesn't complete in 5 seconds, force close anyway
+    // Set timeout for flush operation
+    flushTimeoutId = setTimeout(() => {
       console.warn('Flush timeout - forcing window close')
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.destroy()
-      }
-    }, 5000)
+      flushTimeoutId = null
+      performClose()
+    }, FLUSH_TIMEOUT_MS)
 
     // Listen for flush complete
     const flushCompleteHandler = () => {
-      clearTimeout(flushTimeout)
       ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.destroy()
-      }
+      performClose()
     }
     ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
   })
@@ -822,6 +870,29 @@ app.whenReady().then(() => {
   })
 
   /**
+   * Deletes a temporary database file.
+   * Used for cleanup when temp file creation succeeds but initialization fails.
+   */
+  ipcMain.handle('db:delete-temp', (_event, filePath: string): void => {
+    try {
+      // Close any connection to this file
+      closeDbConnection(filePath)
+
+      // Delete the file if it exists
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+        console.log(`Deleted temp database: ${filePath}`)
+      }
+
+      // Remove from temp files tracking
+      tempFilePaths.delete(filePath)
+    } catch (error) {
+      console.error('Error deleting temp file:', error)
+      throw error
+    }
+  })
+
+  /**
    * Moves a temp database to a user-chosen location (Save operation).
    * Handles cross-device moves by falling back to copy+delete.
    */
@@ -839,13 +910,12 @@ app.whenReady().then(() => {
       closeDbConnection(sourcePath, true)
       closeDbConnection(destPath, true)
 
-      // Wait for file locks to be released (especially important on Windows)
-      await waitForFileLockRelease()
-
-      // Delete destination if it exists
+      // Delete destination if it exists (with retry logic for file locks)
       if (fs.existsSync(destPath)) {
         try {
-          fs.unlinkSync(destPath)
+          await retryFileOperation(() => {
+            fs.unlinkSync(destPath)
+          })
         } catch (unlinkError) {
           const errCode = (unlinkError as NodeJS.ErrnoException).code
           if (errCode === 'EBUSY' || errCode === 'EPERM') {
@@ -860,15 +930,21 @@ app.whenReady().then(() => {
         }
       }
 
-      // Try to rename (move) the file
+      // Try to rename (move) the file (with retry logic)
       try {
-        fs.renameSync(sourcePath, destPath)
+        await retryFileOperation(() => {
+          fs.renameSync(sourcePath, destPath)
+        })
       } catch (renameError) {
         // If cross-device move (EXDEV), fall back to copy+delete
         const errCode = (renameError as NodeJS.ErrnoException).code
         if (errCode === 'EXDEV') {
           console.log('Cross-device move detected, using copy+delete fallback')
-          fs.copyFileSync(sourcePath, destPath)
+
+          // Copy with retry logic
+          await retryFileOperation(() => {
+            fs.copyFileSync(sourcePath, destPath)
+          })
 
           // Verify destination is a valid SQLite database before deleting source
           try {
@@ -886,8 +962,10 @@ app.whenReady().then(() => {
             )
           }
 
-          // Destination verified, safe to delete source
-          fs.unlinkSync(sourcePath)
+          // Destination verified, safe to delete source (with retry)
+          await retryFileOperation(() => {
+            fs.unlinkSync(sourcePath)
+          })
         } else {
           throw renameError
         }
@@ -924,13 +1002,12 @@ app.whenReady().then(() => {
       closeDbConnection(sourcePath, true)
       closeDbConnection(destPath, true)
 
-      // Wait for file locks to be released (especially important on Windows)
-      await waitForFileLockRelease()
-
-      // Delete destination if it exists
+      // Delete destination if it exists (with retry logic)
       if (fs.existsSync(destPath)) {
         try {
-          fs.unlinkSync(destPath)
+          await retryFileOperation(() => {
+            fs.unlinkSync(destPath)
+          })
         } catch (unlinkError) {
           const errCode = (unlinkError as NodeJS.ErrnoException).code
           if (errCode === 'EBUSY' || errCode === 'EPERM') {
@@ -945,8 +1022,10 @@ app.whenReady().then(() => {
         }
       }
 
-      // Copy the file
-      fs.copyFileSync(sourcePath, destPath)
+      // Copy the file (with retry logic)
+      await retryFileOperation(() => {
+        fs.copyFileSync(sourcePath, destPath)
+      })
 
       // Verify destination is a valid SQLite database
       try {
