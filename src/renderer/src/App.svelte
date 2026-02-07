@@ -85,9 +85,6 @@
   let contextMenuVisible = $state(false)
   let contextMenuPosition = $state({ x: 0, y: 0 })
 
-  // Save operation state to prevent concurrent saves
-  let isSaving = false
-
   /**
    * Auto-save debounce delay in milliseconds.
    * 300ms is fast enough to feel instant while batching rapid changes
@@ -100,6 +97,9 @@
    */
   const NEW_PRESENTATION_RETRY_DELAY_MS = 500
 
+  // Promise-based lock to prevent concurrent saves
+  let savePromise: Promise<void> | null = null
+
   // Debounced auto-save
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
 
@@ -108,23 +108,30 @@
     saveTimeoutId = setTimeout(async () => {
       saveTimeoutId = null
 
-      // Check and set isSaving atomically to prevent race condition
-      if (isSaving) return
-      isSaving = true
+      // Wait for any in-flight save to complete
+      if (savePromise) {
+        await savePromise
+      }
 
       // Check if we have valid state to save
       if (!appState.currentSlide || !appState.currentFilePath) {
-        isSaving = false
         return
       }
 
+      // Start new save operation with promise lock
+      savePromise = (async () => {
+        try {
+          const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+          await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+        } catch (error) {
+          console.error('Auto-save failed:', error)
+        }
+      })()
+
       try {
-        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-      } catch (error) {
-        console.error('Auto-save failed:', error)
+        await savePromise
       } finally {
-        isSaving = false
+        savePromise = null
       }
     }, AUTO_SAVE_DEBOUNCE_MS)
   }
@@ -140,23 +147,31 @@
       saveTimeoutId = null
     }
 
-    // Check and set isSaving to prevent race condition
-    if (isSaving) return
-    isSaving = true
+    // Wait for any in-flight save to complete
+    if (savePromise) {
+      await savePromise
+    }
 
     // Check if we have valid state to save
     if (!appState.currentSlide || !appState.currentFilePath) {
-      isSaving = false
       return
     }
 
+    // Start new save operation with promise lock
+    savePromise = (async () => {
+      try {
+        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
+        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+      } catch (error) {
+        console.error('Failed to flush pending save:', error)
+        throw error // Re-throw to caller can handle it
+      }
+    })()
+
     try {
-      const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-      await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-    } catch (error) {
-      console.error('Failed to flush pending save:', error)
+      await savePromise
     } finally {
-      isSaving = false
+      savePromise = null
     }
   }
 
@@ -180,12 +195,13 @@
     await loadSystemFonts()
     await handleNewPresentation()
 
-    // Expose state to window for console debugging
+    // Expose state and utility functions to window for console debugging
     if (typeof window !== 'undefined') {
       ;(window as any).__DECKHAND_STATE__ = {
         appState,
         loadingState
       }
+      ;(window as any).__DECKHAND_FLUSH_SAVE__ = flushPendingSave
       console.log(
         '💡 Debug tip: Access app state via window.__DECKHAND_STATE__ or press Cmd/Ctrl+Shift+D'
       )
@@ -1131,7 +1147,7 @@
   /**
    * Saves the current slide to the existing file.
    * If this is a temp file, triggers Save As instead.
-   * Prevents concurrent save operations using the isSaving flag.
+   * Uses promise lock to prevent concurrent save operations.
    */
   async function handleSave(): Promise<void> {
     // If this is a temp file (unsaved presentation), delegate to Save As
@@ -1148,12 +1164,13 @@
   /**
    * Opens a save dialog and saves the presentation to a new file.
    * For temp files, moves the database. For saved files, copies the database.
-   * Prevents concurrent save operations using the isSaving flag.
+   * Prevents concurrent save operations using promise lock.
    */
   async function handleSaveAs(): Promise<void> {
-    // Prevent concurrent saves
-    if (isSaving) return
-    isSaving = true
+    // Wait for any in-flight save
+    if (savePromise) {
+      await savePromise
+    }
 
     // Save original state in case we need to recover from an error
     const originalFilePath = appState.currentFilePath
@@ -1225,8 +1242,6 @@
           console.error('Failed to recover original state:', recoveryError)
         }
       }
-    } finally {
-      isSaving = false
     }
   }
 
@@ -1234,7 +1249,7 @@
    * Keyboard shortcut handler for Cmd/Ctrl+S (Save)
    */
   keys.onKeys(['meta', 's'], async () => {
-    if (!isSaving) await handleSave()
+    await handleSave()
   })
 
   // ============================================================================

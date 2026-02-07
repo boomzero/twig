@@ -549,19 +549,20 @@ function createWindow(): void {
     // Ask renderer to flush pending saves
     mainWindow.webContents.send('lifecycle:before-close')
 
-    // Set timeout for flush operation
-    flushTimeoutId = setTimeout(() => {
-      console.warn('Flush timeout - forcing window close')
-      flushTimeoutId = null
-      performClose()
-    }, FLUSH_TIMEOUT_MS)
-
     // Listen for flush complete
     const flushCompleteHandler = () => {
-      ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
       performClose()
     }
     ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
+
+    // Set timeout for flush operation
+    flushTimeoutId = setTimeout(() => {
+      console.warn('Flush timeout - forcing window close')
+      // Remove the listener since we're closing anyway
+      ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
+      flushTimeoutId = null
+      performClose()
+    }, FLUSH_TIMEOUT_MS)
   })
 
   // Open external links in the system browser instead of within the app
@@ -1240,56 +1241,61 @@ app.whenReady().then(() => {
  * Flag to prevent cleanup from running multiple times.
  * On macOS, both window-all-closed and before-quit can fire.
  */
-let cleanupCompleted = false
+let cleanupPromise: Promise<void> | null = null
 
 /**
  * Cleans up all database connections and temp files.
  * Called on app shutdown and when all windows are closed.
+ * Uses promise-based guard to prevent concurrent cleanup attempts.
  */
-function cleanupResources(): void {
-  if (cleanupCompleted) return
-  cleanupCompleted = true
-  // Close all database connections with error handling
-  for (const [filePath, connection] of connectionCache.entries()) {
-    try {
-      connection.close()
-    } catch (error) {
-      console.error(`Error closing database connection for ${filePath}:`, error)
-      // Continue closing other connections
-    }
-  }
-  connectionCache.clear()
+async function cleanupResources(): Promise<void> {
+  if (cleanupPromise) return cleanupPromise
 
-  // Clean up temp files
-  for (const tempPath of tempFilePaths) {
+  cleanupPromise = (async () => {
+    // Close all database connections with error handling
+    for (const [filePath, connection] of connectionCache.entries()) {
+      try {
+        connection.close()
+      } catch (error) {
+        console.error(`Error closing database connection for ${filePath}:`, error)
+        // Continue closing other connections
+      }
+    }
+    connectionCache.clear()
+
+    // Clean up temp files
+    for (const tempPath of tempFilePaths) {
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath)
+          console.log(`Deleted temp file: ${tempPath}`)
+        }
+      } catch (error) {
+        console.warn(`Failed to delete temp file ${tempPath}:`, error)
+      }
+    }
+    tempFilePaths.clear()
+
+    // Clean up temp directory
     try {
-      if (fs.existsSync(tempPath)) {
-        fs.unlinkSync(tempPath)
-        console.log(`Deleted temp file: ${tempPath}`)
+      if (fs.existsSync(TEMP_DIR)) {
+        fs.rmSync(TEMP_DIR, { recursive: true, force: true })
+        console.log('Cleaned up temp directory')
       }
     } catch (error) {
-      console.warn(`Failed to delete temp file ${tempPath}:`, error)
+      console.warn('Failed to clean up temp directory:', error)
     }
-  }
-  tempFilePaths.clear()
+  })()
 
-  // Clean up temp directory
-  try {
-    if (fs.existsSync(TEMP_DIR)) {
-      fs.rmSync(TEMP_DIR, { recursive: true, force: true })
-      console.log('Cleaned up temp directory')
-    }
-  } catch (error) {
-    console.warn('Failed to clean up temp directory:', error)
-  }
+  return cleanupPromise
 }
 
 /**
  * Clean up resources when all windows are closed.
  * On macOS, the app stays running even when all windows are closed.
  */
-app.on('window-all-closed', () => {
-  cleanupResources()
+app.on('window-all-closed', async () => {
+  await cleanupResources()
 
   // On non-macOS platforms, quit the app when all windows are closed
   if (process.platform !== 'darwin') {
@@ -1301,6 +1307,6 @@ app.on('window-all-closed', () => {
  * Clean up resources before the app quits completely.
  * This handles cleanup on macOS when the app is actually quitting.
  */
-app.on('before-quit', () => {
-  cleanupResources()
+app.on('before-quit', async () => {
+  await cleanupResources()
 })

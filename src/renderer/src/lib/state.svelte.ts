@@ -219,13 +219,14 @@ export async function loadSlide(slideId: string): Promise<void> {
 
   loadingState.isLoadingSlide = true
   try {
-    // Auto-save current slide to DB before switching to prevent data loss
-    if (appState.currentSlide && appState.currentFilePath) {
+    // Flush any pending auto-save to prevent duplicate saves
+    // This cancels the debounced save and saves immediately if needed
+    const flushSave = (window as any).__DECKHAND_FLUSH_SAVE__
+    if (typeof flushSave === 'function') {
       try {
-        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+        await flushSave()
       } catch (error) {
-        console.error('Failed to auto-save slide before navigation:', error)
+        console.error('Failed to flush pending save before navigation:', error)
         // Continue with navigation despite save failure
       }
     }
