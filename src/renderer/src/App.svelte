@@ -1470,9 +1470,9 @@
     }
 
     // All presentations now have a currentFilePath (can be temp or saved)
+    // If this check fails, it indicates a programming error
     if (!appState.currentFilePath) {
-      console.warn('No current file path, cannot embed font')
-      return
+      throw new Error('Invariant violation: no currentFilePath when embedding font')
     }
 
     try {

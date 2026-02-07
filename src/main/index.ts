@@ -70,8 +70,9 @@ function validateSlideId(slideId: string): void {
 /**
  * Temporary directory for unsaved presentations.
  * Each new presentation gets a temp database here until the user saves it.
+ * Uses userData directory (user-specific) instead of system temp for security.
  */
-const TEMP_DIR = join(app.getPath('temp'), 'deckhand-temp')
+const TEMP_DIR = join(app.getPath('userData'), 'temp')
 
 /**
  * Maximum age for orphaned temp files before automatic cleanup (24 hours).
@@ -236,6 +237,18 @@ function getDbConnection(filePath: string): Database.Database {
     // Close connection on initialization error to prevent leak
     db.close()
     throw error
+  }
+}
+
+/**
+ * Waits for file locks to be released on Windows.
+ * On Windows, closing a database connection doesn't immediately release the file lock.
+ * This function adds a small delay to allow the OS to release locks.
+ */
+async function waitForFileLockRelease(): Promise<void> {
+  if (process.platform === 'win32') {
+    // Wait 100ms on Windows to allow file locks to be released
+    await new Promise(resolve => setTimeout(resolve, 100))
   }
 }
 
@@ -460,8 +473,17 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // Guard flag to prevent multiple simultaneous close operations
+  let isClosing = false
+
   // Prevent window from closing until pending saves are flushed
   mainWindow.on('close', (event) => {
+    // Prevent race condition from multiple close attempts
+    if (isClosing) {
+      return
+    }
+    isClosing = true
+
     // Prevent immediate close
     event.preventDefault()
 
@@ -472,14 +494,18 @@ function createWindow(): void {
     const flushTimeout = setTimeout(() => {
       // If flush doesn't complete in 5 seconds, force close anyway
       console.warn('Flush timeout - forcing window close')
-      mainWindow.destroy()
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.destroy()
+      }
     }, 5000)
 
     // Listen for flush complete
     const flushCompleteHandler = () => {
       clearTimeout(flushTimeout)
       ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
-      mainWindow.destroy()
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.destroy()
+      }
     }
     ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
   })
@@ -799,7 +825,7 @@ app.whenReady().then(() => {
    * Moves a temp database to a user-chosen location (Save operation).
    * Handles cross-device moves by falling back to copy+delete.
    */
-  ipcMain.handle('db:save-to-location', (_event, sourcePath: string, destPath: string): string => {
+  ipcMain.handle('db:save-to-location', async (_event, sourcePath: string, destPath: string): Promise<string> => {
     try {
       validateFilePath(sourcePath)
       validateFilePath(destPath)
@@ -812,6 +838,9 @@ app.whenReady().then(() => {
       // Close connections to both paths and checkpoint WAL
       closeDbConnection(sourcePath, true)
       closeDbConnection(destPath, true)
+
+      // Wait for file locks to be released (especially important on Windows)
+      await waitForFileLockRelease()
 
       // Delete destination if it exists
       if (fs.existsSync(destPath)) {
@@ -881,7 +910,7 @@ app.whenReady().then(() => {
   /**
    * Copies a database to a new location (Save As from an already-saved file).
    */
-  ipcMain.handle('db:copy-to-location', (_event, sourcePath: string, destPath: string): string => {
+  ipcMain.handle('db:copy-to-location', async (_event, sourcePath: string, destPath: string): Promise<string> => {
     try {
       validateFilePath(sourcePath)
       validateFilePath(destPath)
@@ -894,6 +923,9 @@ app.whenReady().then(() => {
       // Close connections and checkpoint WAL
       closeDbConnection(sourcePath, true)
       closeDbConnection(destPath, true)
+
+      // Wait for file locks to be released (especially important on Windows)
+      await waitForFileLockRelease()
 
       // Delete destination if it exists
       if (fs.existsSync(destPath)) {
