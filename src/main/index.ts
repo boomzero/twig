@@ -222,7 +222,7 @@ function getDbConnection(filePath: string): Database.Database {
         try {
           connectionCache.get(lruPath)!.close()
           connectionCache.delete(lruPath)
-          console.log(`Closed LRU database connection: ${lruPath}`)
+          safeLog(`Closed LRU database connection: ${lruPath}`)
         } catch (closeError) {
           console.error(`Error closing LRU connection for ${lruPath}:`, closeError)
           // Continue anyway - we'll still add the new connection
@@ -326,7 +326,19 @@ function verifyDatabaseIntegrity(filePath: string, context: string): void {
     testDb.close()
   }
 
-  console.log(`Database integrity verified (${context}): ${filePath}`)
+  safeLog(`Database integrity verified (${context}): ${filePath}`)
+}
+
+/**
+ * Safely logs a message, ignoring errors if console is unavailable (e.g., during shutdown).
+ * This prevents crashes when logging during application exit.
+ */
+function safeLog(message: string, level: 'log' | 'warn' | 'error' = 'log'): void {
+  try {
+    console[level](message)
+  } catch {
+    // Ignore logging errors during shutdown - console streams may be closed
+  }
 }
 
 /**
@@ -346,16 +358,16 @@ function closeDbConnection(filePath: string, checkpointMode: 'none' | 'passive' 
         try {
           const mode = checkpointMode === 'passive' ? 'PASSIVE' : 'TRUNCATE'
           db.pragma(`wal_checkpoint(${mode})`)
-          console.log(`Checkpointed WAL (${mode}) for ${filePath}`)
+          safeLog(`Checkpointed WAL (${mode}) for ${filePath}`)
         } catch (checkpointError) {
-          console.warn(`Failed to checkpoint WAL for ${filePath}:`, checkpointError)
+          safeLog(`Failed to checkpoint WAL for ${filePath}: ${checkpointError}`, 'warn')
           // Continue anyway - close will still work
         }
       }
 
       db.close()
     } catch (error) {
-      console.error(`Error closing database connection for ${filePath}:`, error)
+      safeLog(`Error closing database connection for ${filePath}: ${error}`, 'error')
       // Continue anyway - we still want to remove it from cache
     }
     connectionCache.delete(filePath)
@@ -909,7 +921,7 @@ app.whenReady().then(() => {
       // Track this as a temp file for cleanup
       tempFilePaths.add(tempPath)
 
-      console.log(`Created temp database: ${tempPath}`)
+      safeLog(`Created temp database: ${tempPath}`)
       return tempPath
     } catch (error) {
       console.error('Error in db:create-temp:', error)
@@ -964,7 +976,7 @@ app.whenReady().then(() => {
           throw new Error('File still exists after deletion - possible file system error')
         }
 
-        console.log(`Deleted temp database: ${filePath}`)
+        safeLog(`Deleted temp database: ${filePath}`)
       }
 
       // Remove from temp files tracking
@@ -1079,7 +1091,7 @@ app.whenReady().then(() => {
       // Open connection at destination
       getDbConnection(destPath)
 
-      console.log(`Moved temp database from ${sourcePath} to ${destPath}`)
+      safeLog(`Moved temp database from ${sourcePath} to ${destPath}`)
       return destPath
     } catch (error) {
       console.error('Error in db:save-to-location:', error)
@@ -1167,7 +1179,7 @@ app.whenReady().then(() => {
       // Open connection at destination
       getDbConnection(destPath)
 
-      console.log(`Copied database from ${sourcePath} to ${destPath}`)
+      safeLog(`Copied database from ${sourcePath} to ${destPath}`)
       return destPath
     } catch (error) {
       console.error('Error in db:copy-to-location:', error)
@@ -1358,10 +1370,10 @@ async function cleanupResources(): Promise<void> {
       try {
         if (fs.existsSync(tempPath)) {
           fs.unlinkSync(tempPath)
-          console.log(`Deleted temp file: ${tempPath}`)
+          safeLog(`Deleted temp file: ${tempPath}`)
         }
       } catch (error) {
-        console.warn(`Failed to delete temp file ${tempPath}:`, error)
+        safeLog(`Failed to delete temp file ${tempPath}: ${error}`, 'warn')
       }
     }
     tempFilePaths.clear()
@@ -1370,10 +1382,10 @@ async function cleanupResources(): Promise<void> {
     try {
       if (fs.existsSync(TEMP_DIR)) {
         fs.rmSync(TEMP_DIR, { recursive: true, force: true })
-        console.log('Cleaned up temp directory')
+        safeLog('Cleaned up temp directory')
       }
     } catch (error) {
-      console.warn('Failed to clean up temp directory:', error)
+      safeLog(`Failed to clean up temp directory: ${error}`, 'warn')
     }
   })()
 
