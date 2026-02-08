@@ -9,7 +9,7 @@
  */
 
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join, isAbsolute, normalize, basename, extname } from 'path'
+import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Database from 'better-sqlite3'
@@ -589,8 +589,13 @@ function createWindow(): void {
       // Ask renderer to flush pending saves
       mainWindow.webContents.send('lifecycle:before-close')
 
-      // Listen for flush complete
-      const flushCompleteHandler = () => {
+      // Listen for flush complete (only from the main window)
+      const flushCompleteHandler = (_event: any) => {
+        // Validate that the message came from the main window
+        if (_event.sender !== mainWindow.webContents) {
+          console.warn('Received lifecycle:flush-complete from non-main window, ignoring')
+          return
+        }
         ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
         performClose()
       }
@@ -923,7 +928,13 @@ app.whenReady().then(() => {
       // Resolve symlinks and normalize paths
       const realPath = fs.realpathSync(filePath)
       const realTempDir = fs.realpathSync(TEMP_DIR)
-      return realPath.startsWith(realTempDir)
+
+      // Ensure the path is inside TEMP_DIR (not just a prefix match)
+      // Check if path starts with tempDir followed by a separator, or is exactly tempDir
+      const isInTempDir =
+        realPath === realTempDir || realPath.startsWith(realTempDir + sep)
+
+      return isInTempDir
     } catch (error) {
       // If file doesn't exist or path is invalid, it's not a temp file
       return false
@@ -1083,6 +1094,17 @@ app.whenReady().then(() => {
     try {
       validateFilePath(sourcePath)
       validateFilePath(destPath)
+
+      // Prevent data loss by checking if source and destination are the same path
+      // Use normalize to handle trailing slashes and relative path segments
+      const normalizedSourcePath = normalize(sourcePath)
+      const normalizedDestPath = normalize(destPath)
+
+      if (normalizedSourcePath === normalizedDestPath) {
+        throw new Error(
+          'Cannot save to the same file. Please choose a different filename or location.'
+        )
+      }
 
       // Verify source file exists
       if (!fs.existsSync(sourcePath)) {
