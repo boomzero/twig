@@ -166,6 +166,11 @@ export function resetState(): void {
 export async function loadPresentation(filePath: string): Promise<void> {
   const ids = await window.api.db.getSlideIds(filePath)
 
+  // Clear current slide BEFORE changing currentFilePath to prevent
+  // flushPendingSave() in loadSlide() from saving old slide into new database
+  appState.currentSlide = null
+  appState.currentSlideIndex = -1
+
   // Set file path and check if it's temporary
   appState.currentFilePath = filePath
   appState.isTempFile = await window.api.db.isTempFile(filePath)

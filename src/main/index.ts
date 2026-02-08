@@ -871,9 +871,13 @@ app.whenReady().then(() => {
 
   /**
    * Checks if a database file path is a temporary file.
+   * Uses path-based detection (checks if under TEMP_DIR) to persist across restarts,
+   * so recovered temp files from crashes are still recognized as temporary.
    */
   ipcMain.handle('db:is-temp-file', (_event, filePath: string): boolean => {
-    return tempFilePaths.has(filePath)
+    const normalizedFilePath = normalize(filePath)
+    const normalizedTempDir = normalize(TEMP_DIR)
+    return normalizedFilePath.startsWith(normalizedTempDir)
   })
 
   /**

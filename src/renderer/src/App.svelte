@@ -1069,6 +1069,10 @@
         // Flush any pending saves before switching presentations
         await flushPendingSave()
 
+        // Clear current slide to prevent any accidental saves to new database
+        appState.currentSlide = null
+        appState.currentSlideIndex = -1
+
         // Close any existing database connection
         if (appState.currentFilePath) {
           await window.api.db.closeConnection(appState.currentFilePath)
