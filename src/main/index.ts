@@ -292,22 +292,61 @@ async function retryFileOperation<T>(
 }
 
 /**
+ * Verifies database integrity using PRAGMA integrity_check.
+ * Performs robust validation of the pragma result format.
+ *
+ * @param filePath - Path to the database file to check
+ * @param context - Description of when/why this check is being performed (for error messages)
+ * @throws Error if integrity check fails or returns unexpected format
+ */
+function verifyDatabaseIntegrity(filePath: string, context: string): void {
+  const testDb = new Database(filePath, { readonly: true })
+
+  try {
+    const integrityResult = testDb.pragma('integrity_check')
+
+    // Robust validation of pragma result
+    if (!Array.isArray(integrityResult)) {
+      throw new Error(
+        `Integrity check returned non-array result: ${JSON.stringify(integrityResult)}`
+      )
+    }
+
+    if (integrityResult.length === 0) {
+      throw new Error('Integrity check returned empty array')
+    }
+
+    const firstResult = integrityResult[0] as { integrity_check?: string }
+    if (!firstResult || firstResult.integrity_check !== 'ok') {
+      throw new Error(
+        `Integrity check failed: ${JSON.stringify(integrityResult)}`
+      )
+    }
+  } finally {
+    testDb.close()
+  }
+
+  console.log(`Database integrity verified (${context}): ${filePath}`)
+}
+
+/**
  * Closes and removes a database connection from the cache.
  * This should be called before overwriting or deleting a database file.
  *
  * @param filePath - Absolute path to the .db file
- * @param checkpoint - Whether to force a WAL checkpoint before closing (default: false)
+ * @param checkpointMode - WAL checkpoint mode: 'none' (no checkpoint), 'passive' (non-blocking), 'truncate' (full checkpoint)
  */
-function closeDbConnection(filePath: string, checkpoint: boolean = false): void {
+function closeDbConnection(filePath: string, checkpointMode: 'none' | 'passive' | 'truncate' = 'none'): void {
   if (connectionCache.has(filePath)) {
     try {
       const db = connectionCache.get(filePath)!
 
       // Force WAL checkpoint to ensure all data is written to the main file
-      if (checkpoint) {
+      if (checkpointMode !== 'none') {
         try {
-          db.pragma('wal_checkpoint(TRUNCATE)')
-          console.log(`Checkpointed WAL for ${filePath}`)
+          const mode = checkpointMode === 'passive' ? 'PASSIVE' : 'TRUNCATE'
+          db.pragma(`wal_checkpoint(${mode})`)
+          console.log(`Checkpointed WAL (${mode}) for ${filePath}`)
         } catch (checkpointError) {
           console.warn(`Failed to checkpoint WAL for ${filePath}:`, checkpointError)
           // Continue anyway - close will still work
@@ -512,57 +551,60 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  // Close state management to prevent race conditions
+  // Promise-based guard to prevent concurrent close operations
   const FLUSH_TIMEOUT_MS = 5000
-  let closeState: 'idle' | 'flushing' | 'closed' = 'idle'
-  let flushTimeoutId: NodeJS.Timeout | null = null
+  let closePromise: Promise<void> | null = null
 
   // Prevent window from closing until pending saves are flushed
   mainWindow.on('close', (event) => {
-    // Only handle close if we're in idle state
-    if (closeState !== 'idle') {
-      event.preventDefault()
-      return
-    }
-
-    // Transition to flushing state
-    closeState = 'flushing'
+    // Always prevent default close - we'll destroy manually when ready
     event.preventDefault()
 
-    // Function to safely close the window
-    const performClose = () => {
-      if (closeState === 'closed') return // Already closed
-      closeState = 'closed'
+    // If close already in progress, ignore
+    if (closePromise) return
 
-      // Clean up timeout if it exists
-      if (flushTimeoutId) {
-        clearTimeout(flushTimeoutId)
+    closePromise = new Promise<void>((resolve) => {
+      let flushTimeoutId: NodeJS.Timeout | null = null
+      let isResolved = false
+
+      // Function to safely close the window
+      const performClose = () => {
+        if (isResolved) return // Already closed
+        isResolved = true
+
+        // Clean up timeout if it exists
+        if (flushTimeoutId) {
+          clearTimeout(flushTimeoutId)
+          flushTimeoutId = null
+        }
+
+        // Close window if not already destroyed
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.destroy()
+        }
+
+        resolve()
+      }
+
+      // Ask renderer to flush pending saves
+      mainWindow.webContents.send('lifecycle:before-close')
+
+      // Listen for flush complete
+      const flushCompleteHandler = () => {
+        ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
+        performClose()
+      }
+      ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
+
+      // Set timeout for flush operation
+      flushTimeoutId = setTimeout(() => {
+        console.warn('Flush timeout - forcing window close')
+        // Remove the listener since we're closing anyway
+        ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
         flushTimeoutId = null
-      }
-
-      // Close window if not already destroyed
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.destroy()
-      }
-    }
-
-    // Ask renderer to flush pending saves
-    mainWindow.webContents.send('lifecycle:before-close')
-
-    // Listen for flush complete
-    const flushCompleteHandler = () => {
-      performClose()
-    }
-    ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
-
-    // Set timeout for flush operation
-    flushTimeoutId = setTimeout(() => {
-      console.warn('Flush timeout - forcing window close')
-      // Remove the listener since we're closing anyway
-      ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
-      flushTimeoutId = null
-      performClose()
-    }, FLUSH_TIMEOUT_MS)
+        performClose()
+      }, FLUSH_TIMEOUT_MS)
+    })
   })
 
   // Open external links in the system browser instead of within the app
@@ -840,10 +882,11 @@ app.whenReady().then(() => {
   /**
    * Closes a database connection and removes it from the cache.
    * Used before overwriting or deleting a file.
+   * Uses PASSIVE checkpoint mode for non-blocking WAL flush.
    */
   ipcMain.handle('db:close-connection', (_event, filePath: string): void => {
     validateFilePath(filePath)
-    closeDbConnection(filePath)
+    closeDbConnection(filePath, 'passive')
   })
 
   /**
@@ -873,11 +916,18 @@ app.whenReady().then(() => {
    * Checks if a database file path is a temporary file.
    * Uses path-based detection (checks if under TEMP_DIR) to persist across restarts,
    * so recovered temp files from crashes are still recognized as temporary.
+   * Resolves symlinks to prevent path traversal attacks.
    */
   ipcMain.handle('db:is-temp-file', (_event, filePath: string): boolean => {
-    const normalizedFilePath = normalize(filePath)
-    const normalizedTempDir = normalize(TEMP_DIR)
-    return normalizedFilePath.startsWith(normalizedTempDir)
+    try {
+      // Resolve symlinks and normalize paths
+      const realPath = fs.realpathSync(filePath)
+      const realTempDir = fs.realpathSync(TEMP_DIR)
+      return realPath.startsWith(realTempDir)
+    } catch (error) {
+      // If file doesn't exist or path is invalid, it's not a temp file
+      return false
+    }
   })
 
   /**
@@ -897,6 +947,12 @@ app.whenReady().then(() => {
       // Delete the file if it exists
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath)
+
+        // Verify file is actually deleted
+        if (fs.existsSync(filePath)) {
+          throw new Error('File still exists after deletion - possible file system error')
+        }
+
         console.log(`Deleted temp database: ${filePath}`)
       }
 
@@ -922,9 +978,9 @@ app.whenReady().then(() => {
         throw new Error(`Source file does not exist: ${sourcePath}`)
       }
 
-      // Close connections to both paths and checkpoint WAL
-      closeDbConnection(sourcePath, true)
-      closeDbConnection(destPath, true)
+      // Close connections to both paths and checkpoint WAL with full TRUNCATE
+      closeDbConnection(sourcePath, 'truncate')
+      closeDbConnection(destPath, 'truncate')
 
       // Delete destination if it exists (with retry logic for file locks)
       if (fs.existsSync(destPath)) {
@@ -957,6 +1013,15 @@ app.whenReady().then(() => {
         if (errCode === 'EXDEV') {
           console.log('Cross-device move detected, using copy+delete fallback')
 
+          // Verify source database integrity before copying
+          try {
+            verifyDatabaseIntegrity(sourcePath, 'before cross-device copy')
+          } catch (sourceVerifyError) {
+            throw new Error(
+              `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
+            )
+          }
+
           // Copy with retry logic
           await retryFileOperation(() => {
             fs.copyFileSync(sourcePath, destPath)
@@ -964,15 +1029,7 @@ app.whenReady().then(() => {
 
           // Verify destination database integrity before deleting source
           try {
-            const testDb = new Database(destPath, { readonly: true })
-
-            // Run integrity check to verify data, not just header
-            const integrityResult = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>
-            testDb.close()
-
-            if (!integrityResult || integrityResult[0]?.integrity_check !== 'ok') {
-              throw new Error('Database integrity check failed')
-            }
+            verifyDatabaseIntegrity(destPath, 'after cross-device copy')
           } catch (verifyError) {
             // Destination is corrupted, delete it and don't delete source
             try {
@@ -1004,6 +1061,10 @@ app.whenReady().then(() => {
       // Remove from temp files set
       tempFilePaths.delete(sourcePath)
 
+      // Evict source path from connection cache to prevent memory leak
+      // The connection was already closed before the move operation
+      connectionCache.delete(sourcePath)
+
       // Open connection at destination
       getDbConnection(destPath)
 
@@ -1028,9 +1089,9 @@ app.whenReady().then(() => {
         throw new Error(`Source file does not exist: ${sourcePath}`)
       }
 
-      // Close connections and checkpoint WAL
-      closeDbConnection(sourcePath, true)
-      closeDbConnection(destPath, true)
+      // Close connections and checkpoint WAL with full TRUNCATE
+      closeDbConnection(sourcePath, 'truncate')
+      closeDbConnection(destPath, 'truncate')
 
       // Delete destination if it exists (with retry logic)
       if (fs.existsSync(destPath)) {
@@ -1052,6 +1113,15 @@ app.whenReady().then(() => {
         }
       }
 
+      // Verify source database integrity before copying
+      try {
+        verifyDatabaseIntegrity(sourcePath, 'before Save As copy')
+      } catch (sourceVerifyError) {
+        throw new Error(
+          `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
+        )
+      }
+
       // Copy the file (with retry logic)
       await retryFileOperation(() => {
         fs.copyFileSync(sourcePath, destPath)
@@ -1059,15 +1129,7 @@ app.whenReady().then(() => {
 
       // Verify destination database integrity
       try {
-        const testDb = new Database(destPath, { readonly: true })
-
-        // Run integrity check to verify data, not just header
-        const integrityResult = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>
-        testDb.close()
-
-        if (!integrityResult || integrityResult[0]?.integrity_check !== 'ok') {
-          throw new Error('Database integrity check failed')
-        }
+        verifyDatabaseIntegrity(destPath, 'after Save As copy')
       } catch (verifyError) {
         // Destination is corrupted, delete it and throw
         try {
@@ -1262,16 +1324,12 @@ async function cleanupResources(): Promise<void> {
   if (cleanupPromise) return cleanupPromise
 
   cleanupPromise = (async () => {
-    // Close all database connections with error handling
-    for (const [filePath, connection] of connectionCache.entries()) {
-      try {
-        connection.close()
-      } catch (error) {
-        console.error(`Error closing database connection for ${filePath}:`, error)
-        // Continue closing other connections
-      }
+    // Close all database connections with full WAL checkpoint
+    // Copy keys to array to avoid modifying map while iterating
+    const filePaths = Array.from(connectionCache.keys())
+    for (const filePath of filePaths) {
+      closeDbConnection(filePath, 'truncate')
     }
-    connectionCache.clear()
 
     // Clean up temp files
     for (const tempPath of tempFilePaths) {

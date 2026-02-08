@@ -228,11 +228,36 @@ export async function loadSlide(slideId: string): Promise<void> {
     // This cancels the debounced save and saves immediately if needed
     const flushSave = (window as any).__DECKHAND_FLUSH_SAVE__
     if (typeof flushSave === 'function') {
-      try {
-        await flushSave()
-      } catch (error) {
-        console.error('Failed to flush pending save before navigation:', error)
-        // Continue with navigation despite save failure
+      let flushAttempts = 0
+      const maxFlushAttempts = 3
+
+      while (flushAttempts < maxFlushAttempts) {
+        try {
+          await flushSave()
+          break // Success!
+        } catch (error) {
+          flushAttempts++
+          console.error(`Failed to flush pending save before navigation (attempt ${flushAttempts}/${maxFlushAttempts}):`, error)
+
+          if (flushAttempts >= maxFlushAttempts) {
+            // All retries failed - ask user what to do
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            const userChoice = confirm(
+              `Failed to save current slide before navigation:\n${errorMessage}\n\n` +
+              'Click OK to discard unsaved changes and continue, or Cancel to stay on this slide.'
+            )
+
+            if (!userChoice) {
+              // User cancelled - abort navigation
+              return
+            }
+            // User chose to discard changes - continue with navigation
+            break
+          }
+
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       }
     }
 

@@ -103,50 +103,13 @@
   // Debounced auto-save
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
 
-  function scheduleSave(): void {
-    if (saveTimeoutId) clearTimeout(saveTimeoutId)
-    saveTimeoutId = setTimeout(async () => {
-      saveTimeoutId = null
-
-      // Wait for any in-flight save to complete
-      if (savePromise) {
-        await savePromise
-      }
-
-      // Check if we have valid state to save
-      if (!appState.currentSlide || !appState.currentFilePath) {
-        return
-      }
-
-      // Start new save operation with promise lock
-      savePromise = (async () => {
-        try {
-          const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-          await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-        } catch (error) {
-          console.error('Auto-save failed:', error)
-        }
-      })()
-
-      try {
-        await savePromise
-      } finally {
-        savePromise = null
-      }
-    }, AUTO_SAVE_DEBOUNCE_MS)
-  }
-
   /**
-   * Flushes any pending auto-save immediately.
-   * Called before critical operations like navigation, closing, or presenting.
+   * Performs the actual save operation with promise-based locking.
+   * This is the single source of truth for all save operations.
+   *
+   * @param rethrowErrors - If true, errors are re-thrown to the caller. If false, errors are logged only.
    */
-  async function flushPendingSave(): Promise<void> {
-    // Cancel pending debounced save
-    if (saveTimeoutId) {
-      clearTimeout(saveTimeoutId)
-      saveTimeoutId = null
-    }
-
+  async function performSave(rethrowErrors: boolean = false): Promise<void> {
     // Wait for any in-flight save to complete
     if (savePromise) {
       await savePromise
@@ -163,8 +126,11 @@
         const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
         await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
       } catch (error) {
-        console.error('Failed to flush pending save:', error)
-        throw error // Re-throw to caller can handle it
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Save operation failed:', errorMessage)
+        if (rethrowErrors) {
+          throw error
+        }
       }
     })()
 
@@ -173,6 +139,28 @@
     } finally {
       savePromise = null
     }
+  }
+
+  function scheduleSave(): void {
+    if (saveTimeoutId) clearTimeout(saveTimeoutId)
+    saveTimeoutId = setTimeout(async () => {
+      saveTimeoutId = null
+      await performSave(false) // Log errors but don't throw
+    }, AUTO_SAVE_DEBOUNCE_MS)
+  }
+
+  /**
+   * Flushes any pending auto-save immediately.
+   * Called before critical operations like navigation, closing, or presenting.
+   */
+  async function flushPendingSave(): Promise<void> {
+    // Cancel pending debounced save
+    if (saveTimeoutId) {
+      clearTimeout(saveTimeoutId)
+      saveTimeoutId = null
+    }
+
+    await performSave(true) // Re-throw errors for caller to handle
   }
 
   /**
@@ -1101,8 +1089,11 @@
         if (tempPath) {
           try {
             await window.api.db.deleteTemp(tempPath)
+            console.log(`Cleaned up failed temp file: ${tempPath}`)
           } catch (cleanupError) {
             console.error('Failed to clean up temp file:', cleanupError)
+            // If cleanup fails, the file will be cleaned up by the 24-hour orphan cleanup
+            // This is non-fatal, so we continue with the retry
           }
         }
 
@@ -1177,11 +1168,6 @@
    * Prevents concurrent save operations using promise lock.
    */
   async function handleSaveAs(): Promise<void> {
-    // Wait for any in-flight save
-    if (savePromise) {
-      await savePromise
-    }
-
     // Save original state in case we need to recover from an error
     const originalFilePath = appState.currentFilePath
     const originalSlideId = appState.currentSlide?.id
@@ -1192,10 +1178,7 @@
       }
 
       // Save current slide to database first to flush all edits
-      if (appState.currentSlide) {
-        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-      }
+      await performSave(true)
 
       // Show save dialog
       const newPath = await window.api.dialog.showSaveDialog()
