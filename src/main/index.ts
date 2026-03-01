@@ -596,6 +596,13 @@ function createWindow(): void {
         }
 
         resolve()
+
+        // On macOS, event.preventDefault() in the close handler cancels the quit
+        // sequence. After destroying the window, we must explicitly re-trigger quit
+        // so the user doesn't have to press Cmd+Q twice.
+        if (isQuitting) {
+          app.quit()
+        }
       }
 
       // Ask renderer to flush pending saves
@@ -1334,8 +1341,6 @@ app.whenReady().then(() => {
       mainWindow.webContents.send('debug:request-state-from-main')
     }
   })
-
-  createWindow()
 })
 
 // ============================================================================
@@ -1344,17 +1349,32 @@ app.whenReady().then(() => {
 
 /**
  * Flag to prevent cleanup from running multiple times.
- * On macOS, both window-all-closed and before-quit can fire.
+ * On macOS, both window-all-closed and will-quit can fire.
  */
 let cleanupPromise: Promise<void> | null = null
+
+/**
+ * Flag to track if cleanup has completed.
+ * Used to prevent re-running cleanup and to allow quit to proceed.
+ */
+let cleanupCompleted = false
+
+/**
+ * Flag to track if the user is explicitly trying to quit the app (Cmd+Q).
+ * This helps distinguish between "close all windows" and "quit app" on macOS.
+ */
+let isQuitting = false
 
 /**
  * Cleans up all database connections and temp files.
  * Called on app shutdown and when all windows are closed.
  * Uses promise-based guard to prevent concurrent cleanup attempts.
- * The guard resets after completion to allow cleanup on subsequent window cycles.
  */
 async function cleanupResources(): Promise<void> {
+  // If cleanup already completed, don't run again
+  if (cleanupCompleted) return
+
+  // If cleanup is in progress, wait for it
   if (cleanupPromise) return cleanupPromise
 
   cleanupPromise = (async () => {
@@ -1391,29 +1411,47 @@ async function cleanupResources(): Promise<void> {
 
   try {
     await cleanupPromise
+    cleanupCompleted = true
+    safeLog('Cleanup completed successfully')
   } finally {
-    // Reset promise guard so cleanup can run again on subsequent cycles
     cleanupPromise = null
   }
 }
 
 /**
+ * Track when the user explicitly tries to quit the app.
+ * This fires before windows start closing.
+ */
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
+/**
  * Clean up resources when all windows are closed.
- * On macOS, the app stays running even when all windows are closed.
  */
 app.on('window-all-closed', async () => {
   await cleanupResources()
 
-  // On non-macOS platforms, quit the app when all windows are closed
-  if (process.platform !== 'darwin') {
+  // Quit the app after cleanup
+  // On macOS, this is only reached when user explicitly quits (Cmd+Q)
+  // because isQuitting is tracked
+  if (process.platform !== 'darwin' || isQuitting) {
     app.quit()
   }
 })
 
 /**
- * Clean up resources before the app quits completely.
- * This handles cleanup on macOS when the app is actually quitting.
+ * Clean up resources before the app quits (backup handler).
+ * This should rarely be needed since window-all-closed handles cleanup,
+ * but provides a safety net.
  */
-app.on('before-quit', async () => {
-  await cleanupResources()
+app.on('will-quit', async (event) => {
+  // If cleanup hasn't been completed yet, prevent quit to do it now
+  if (!cleanupCompleted) {
+    event.preventDefault()
+    await cleanupResources()
+    // Trigger quit again, this time it will proceed since cleanupCompleted is true
+    app.quit()
+  }
+  // Otherwise cleanup was already done (by window-all-closed), let quit proceed naturally
 })
