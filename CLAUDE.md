@@ -72,12 +72,12 @@ Deckhand follows Electron's standard architecture:
 
 - Global application state using Svelte 5's `$state` rune
 - Tracks:
-  - Current file path (null for unsaved presentations)
-  - In-memory slides (for new, unsaved presentations)
+  - Current file path (always set - either temp database or saved file)
   - Current slide and slide index
   - Selected object ID
-  - Dirty flag for unsaved changes
+  - Whether current file is a temp file (unsaved presentation)
 - State updates trigger reactive re-renders via `$effect` in App.svelte
+- Auto-save: Changes are automatically saved to the database with 300ms debouncing
 
 ### Canvas Rendering (`src/renderer/src/App.svelte`)
 
@@ -108,16 +108,24 @@ This project uses Svelte 5's runes syntax. See `svelte-docs-for-llms.md` for ful
 
 ### File Persistence Model
 
-**Saved presentations** (has `currentFilePath`):
+**All presentations are backed by SQLite databases:**
 
-- Slides stored in SQLite database
-- Individual slides loaded on-demand from DB
-- Save operation updates only the current slide
+- **New/unsaved presentations**: Use temporary database in `userData/temp` directory
+- **Saved presentations**: Use user-chosen location on disk
 
-**Unsaved presentations** (no `currentFilePath`):
+**Auto-save behavior:**
 
-- All slides stored in `inMemorySlides` array
-- Save As operation required to persist to disk
+- All changes are automatically saved to the database with 300ms debouncing
+- No manual save required for data safety
+- Save button for temp files prompts for location (Save As)
+- Save button for saved files triggers immediate flush of pending auto-save
+
+**Database operations:**
+
+- Individual slides loaded on-demand from database
+- Connection caching for performance
+- WAL mode with checkpointing for data integrity
+- Temp files cleaned up on app shutdown (24-hour orphan cleanup on startup)
 
 ### fabric.js Custom Properties
 
@@ -137,6 +145,27 @@ This ID is crucial for synchronizing Canvas modifications back to the state.
 - `src/renderer/src/lib/state.svelte.ts`: Global state management
 - `src/preload/index.ts`: IPC bridge definitions
 - `AGENTS.md`: Notes about technology choices
+
+## Debugging & Development Tools
+
+### Debug Window
+
+A separate debug window allows real-time inspection of the application state:
+
+- **Keyboard shortcut**: Press `Cmd/Ctrl+Shift+D` to open the debug window
+- **UI button**: Click the "Debug" button in the toolbar
+- **Console access**: State is exposed on `window.__DECKHAND_STATE__` for console inspection
+- **Features**:
+  - Real-time state updates - automatically reflects changes from the main window
+  - View current file path and persistence mode
+  - Inspect all slide IDs and current slide details
+  - Monitor selection state and loading flags
+  - View all elements on the current slide
+  - Copy state snapshot to clipboard
+  - Log full state to console
+  - Separate window can be positioned on another monitor
+
+The debug window is implemented in `src/renderer/src/Debug.svelte` and uses IPC to receive state updates from the main window.
 
 ## Known Dependencies
 

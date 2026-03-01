@@ -16,6 +16,14 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [svelte(), tailwindcss()]
+    plugins: [svelte(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          debug: resolve(__dirname, 'src/renderer/debug.html')
+        }
+      }
+    }
   }
 })

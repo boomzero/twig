@@ -39,6 +39,40 @@ export interface ImageData {
   filename: string
 }
 
+/**
+ * Represents a snapshot of the application state for debugging
+ */
+export interface DebugState {
+  currentFilePath: string | null
+  slideIds: string[]
+  currentSlideIndex: number
+  currentSlideId: string | null
+  currentSlideElementCount: number
+  selectedObjectId: string | null
+  isPresentingMode: boolean
+  isTempFile: boolean
+  isLoadingSlide: boolean
+  currentSlide: {
+    id: string
+    elements: Array<{
+      type: 'rect' | 'text' | 'image'
+      id: string
+      x: number
+      y: number
+      width: number
+      height: number
+      angle: number
+      fill?: string
+      text?: string
+      fontSize?: number
+      fontFamily?: string
+      styles?: Record<string, any>
+      src?: string
+      filename?: string
+    }>
+  } | null
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -55,6 +89,11 @@ declare global {
         saveSlide: (filePath: string, slide: Slide) => Promise<void>
         saveAs: (filePath: string, slides: Slide[]) => Promise<void>
         closeConnection: (filePath: string) => Promise<void>
+        createTemp: () => Promise<string>
+        isTempFile: (filePath: string) => Promise<boolean>
+        saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
+        copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
+        deleteTemp: (filePath: string) => Promise<void>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>
@@ -67,6 +106,17 @@ declare global {
         getEmbeddedFonts: (filePath: string) => Promise<FontData[]>
         getFontData: (filePath: string, fontFamily: string, variant?: string) => Promise<FontData | null>
         loadFontFile: (fontPath: string) => Promise<Buffer>
+      }
+      debug: {
+        openWindow: () => Promise<void>
+        sendStateUpdate: (state: DebugState) => void
+        onStateUpdate: (callback: (state: DebugState) => void) => () => void
+        requestState: () => void
+        onStateRequest: (callback: () => void) => () => void
+      }
+      lifecycle: {
+        onBeforeClose: (callback: () => void) => () => void
+        flushComplete: () => void
       }
     }
   }

@@ -15,15 +15,16 @@
   4. Selection state is preserved across re-renders when possible
 
   fabric.js Customization:
-  - Objects use center origin (originX/Y = 'center')
+  - Objects use center origin (fabric.js v7 default)
   - Objects are extended with an 'id' property to link them to state
 -->
 
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
-  import type { DeckElement, SelectionState, Slide } from './lib/state.svelte'
+  import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
+  import type { DeckElement, SelectionState } from './lib/state.svelte'
   import {
     Canvas,
     type FabricObject,
@@ -32,13 +33,12 @@
     FabricImage,
     ActiveSelection,
     util,
-    BaseFabricObject
+    cache
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import PresentationView from './components/PresentationView.svelte'
   import { PressedKeys } from 'runed'
-
 
   // ============================================================================
   // Component State
@@ -52,6 +52,8 @@
 
   // Currently active text object (for rich text editing)
   let activeTextObject: IText | null = null
+  let lastTextSelectionRange: { start: number; end: number } | null = null
+  let suppressSelectionTracking = false
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -60,6 +62,7 @@
   let isSelectionUnderlined = $state(false)
   let selectionFontSize = $state(40)
   let selectionFontFamily = $state('Arial')
+  let selectionFillColor = $state('#333333')
   let selectionRangeToRestore: { start: number; end: number } | null = null
   let wasEditing = false
 
@@ -67,7 +70,6 @@
   let systemFonts: { family: string; path: string; format: string }[] = []
   let availableFonts = $state(['Arial', 'Helvetica', 'Times New Roman', 'Courier New']) // Default fallbacks
   let loadedFonts = new Set<string>() // Track which fonts have been loaded via @font-face
-  let pendingFontsToEmbed = new Set<string>() // Track fonts that need to be embedded on next save
 
   // Custom font dropdown state
   let fontDropdownOpen = $state(false)
@@ -83,8 +85,94 @@
   let contextMenuVisible = $state(false)
   let contextMenuPosition = $state({ x: 0, y: 0 })
 
-  // Save operation state to prevent concurrent saves
-  let isSaving = false
+  /**
+   * Auto-save debounce delay in milliseconds.
+   * 300ms is fast enough to feel instant while batching rapid changes
+   * (e.g., dragging objects, typing in text boxes).
+   */
+  const AUTO_SAVE_DEBOUNCE_MS = 300
+
+  /**
+   * Delay between retry attempts when creating a new presentation fails.
+   */
+  const NEW_PRESENTATION_RETRY_DELAY_MS = 500
+
+  // Promise-based lock to prevent concurrent saves
+  let savePromise: Promise<void> | null = null
+
+  // Debounced auto-save
+  let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Performs the actual save operation with promise-based locking.
+   * This is the single source of truth for all save operations.
+   *
+   * @param rethrowErrors - If true, errors are re-thrown to the caller. If false, errors are logged only.
+   */
+  async function performSave(rethrowErrors: boolean = false): Promise<void> {
+    // Wait for any in-flight save to complete
+    if (savePromise) {
+      await savePromise
+    }
+
+    // Snapshot state before any async operation to prevent race conditions
+    // (currentFilePath could change while we're awaiting savePromise)
+    const filePath = appState.currentFilePath
+    const slide = appState.currentSlide
+
+    // Check if we have valid state to save
+    if (!slide || !filePath) {
+      return
+    }
+
+    // Start new save operation with promise lock
+    savePromise = (async () => {
+      try {
+        const plainSlide = JSON.parse(JSON.stringify(slide))
+        await window.api.db.saveSlide(filePath, plainSlide)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Save operation failed:', errorMessage)
+        if (rethrowErrors) {
+          throw error
+        }
+      }
+    })()
+
+    try {
+      await savePromise
+    } finally {
+      savePromise = null
+    }
+  }
+
+  function scheduleSave(): void {
+    if (saveTimeoutId) clearTimeout(saveTimeoutId)
+    saveTimeoutId = setTimeout(async () => {
+      saveTimeoutId = null
+      await performSave(false) // Log errors but don't throw
+    }, AUTO_SAVE_DEBOUNCE_MS)
+  }
+
+  /**
+   * Flushes any pending auto-save immediately.
+   * Called before critical operations like navigation, closing, or presenting.
+   */
+  async function flushPendingSave(): Promise<void> {
+    // Cancel pending debounced save
+    if (saveTimeoutId) {
+      clearTimeout(saveTimeoutId)
+      saveTimeoutId = null
+    }
+
+    // If a text object is actively being edited, sync its current content to
+    // state before saving (normally this only happens on deselection via object:modified)
+    if (activeTextObject?.id) {
+      updateStateFromObject(activeTextObject as DeckFabricObject)
+    }
+
+    await performSave(true) // Re-throw errors for caller to handle
+  }
 
   /**
    * Extended fabric.js object type that includes our custom 'id' property.
@@ -99,24 +187,112 @@
   /**
    * Initialize the app on mount by creating a new presentation.
    */
+  let unsubscribeBeforeClose: (() => void) | undefined
+  let unsubscribeStateRequest: (() => void) | undefined
+
   onMount(async () => {
     await loadSystemFonts()
-    handleNewPresentation()
+    await handleNewPresentation()
+
+    // Expose state and utility functions to window for console debugging
+    if (typeof window !== 'undefined') {
+      ;(window as any).__DECKHAND_STATE__ = {
+        appState,
+        loadingState
+      }
+      registerFlushSave(flushPendingSave)
+    }
+
+    // Listen for state requests from the debug window
+    unsubscribeStateRequest = window.api?.debug?.onStateRequest(() => {
+      sendStateToDebugWindow()
+    })
+
+    // Listen for window close event - flush pending saves before closing
+    unsubscribeBeforeClose = window.api?.lifecycle?.onBeforeClose(async () => {
+      await flushPendingSave()
+      window.api?.lifecycle?.flushComplete()
+    })
   })
 
   /**
-   * Reactive effect that tracks changes to the current slide.
-   * Marks the presentation as "dirty" (unsaved) when the slide is modified.
-   * Tracks the last loaded slide ID to avoid marking as dirty when switching slides.
+   * Clean up pending auto-save timeout and event listeners on component unmount.
+   * Prevents memory leaks from dangling timeouts and IPC listeners.
+   */
+  onDestroy(() => {
+    // Clear pending auto-save timeout
+    if (saveTimeoutId) {
+      clearTimeout(saveTimeoutId)
+      saveTimeoutId = null
+    }
+
+    // Unsubscribe from IPC event listeners
+    unsubscribeBeforeClose?.()
+    unsubscribeStateRequest?.()
+
+    // Unregister flush save callback
+    unregisterFlushSave()
+  })
+
+  /**
+   * Reactive effect that broadcasts state changes to the debug window.
+   * Runs whenever any tracked state changes.
+   */
+  $effect(() => {
+    // Track all relevant state
+    const _ = [
+      appState.currentFilePath,
+      appState.slideIds,
+      appState.currentSlideIndex,
+      appState.currentSlide,
+      appState.selectedObjectId,
+      appState.isPresentingMode,
+      loadingState.isLoadingSlide
+    ]
+
+    // Send state update to debug window (if open)
+    sendStateToDebugWindow()
+  })
+
+  /**
+   * Sends the current application state to the debug window.
+   */
+  function sendStateToDebugWindow(): void {
+    const stateSnapshot = {
+      currentFilePath: appState.currentFilePath,
+      slideIds: [...appState.slideIds],
+      currentSlideIndex: appState.currentSlideIndex,
+      currentSlideId: appState.currentSlide?.id || null,
+      currentSlideElementCount: appState.currentSlide?.elements.length || 0,
+      selectedObjectId: appState.selectedObjectId,
+      isPresentingMode: appState.isPresentingMode,
+      isTempFile: appState.isTempFile,
+      isLoadingSlide: loadingState.isLoadingSlide,
+      currentSlide: appState.currentSlide ? JSON.parse(JSON.stringify(appState.currentSlide)) : null
+    }
+
+    window.api?.debug?.sendStateUpdate(stateSnapshot)
+  }
+
+  /**
+   * Opens the debug window.
+   */
+  function openDebugWindow(): void {
+    window.api?.debug?.openWindow()
+  }
+
+  /**
+   * Reactive effect that auto-saves the current slide when it changes.
+   * Tracks the last loaded slide ID to avoid saving when switching slides.
    */
   let lastLoadedSlideId: string | null = null
   $effect(() => {
     if (appState.currentSlide) {
       if (lastLoadedSlideId === appState.currentSlide.id) {
-        // Same slide reloading - mark as dirty (user made changes)
-        appState.isDirty = true
+        // Same slide updated — schedule auto-save
+        scheduleSave()
       } else {
-        // Different slide loaded - don't mark dirty (just switching slides)
+        // Different slide loaded — just track it
         lastLoadedSlideId = appState.currentSlide.id
       }
     }
@@ -150,7 +326,13 @@
     }
 
     if (!appState.currentSlide) {
-      fabCanvas?.clear()
+      // Dispose the canvas instance when there's no slide
+      // This ensures a fresh canvas is created when a new slide loads
+      // (The UI is destroyed when currentSlide is null, so we need to dispose the old canvas)
+      if (fabCanvas) {
+        fabCanvas.dispose()
+        fabCanvas = undefined
+      }
       return
     }
 
@@ -194,8 +376,12 @@
       }
     }
 
-    // Step 2: Create canvas if it doesn't exist yet
-    if (!fabCanvas) {
+    // Step 2: Create canvas if it doesn't exist yet OR if it's not connected to the current canvas element
+    // This handles cases where the DOM element was recreated but fabCanvas still exists
+    if (!fabCanvas || fabCanvas.getElement() !== canvasEl) {
+      if (fabCanvas) {
+        fabCanvas.dispose()
+      }
       fabCanvas = new Canvas(canvasEl)
     }
 
@@ -219,8 +405,23 @@
         }
         fabCanvas.setActiveObject(selection)
         fabCanvas.renderAll()
+
+        // Restore text cursor/selection position if this is a text object
+        if (selectionRangeToRestore && selection instanceof IText) {
+          const range = { ...selectionRangeToRestore }
+          selectionRangeToRestore = null
+          setTimeout(() => {
+            if (selection && selection instanceof IText) {
+              selection.setSelectionStart(range.start)
+              selection.setSelectionEnd(range.end)
+              fabCanvas?.requestRenderAll()
+              handleTextSelectionChange()
+            }
+          }, 10)
+        }
       }
     }
+
   })
 
   /**
@@ -236,18 +437,72 @@
   })
 
   // ============================================================================
-  // fabric.js Configuration and Canvas Rendering
+  // Utility Functions
   // ============================================================================
 
   /**
-   * Configure fabric.js defaults to use center origin for all objects.
-   * This makes rotation and scaling more intuitive.
+   * Removes unwanted "transparent" values from fabric.js character styles.
+   * fabric.js sometimes adds transparent values for fill, stroke, and textBackgroundColor
+   * which we don't want to persist in the state.
    */
+  function cleanStylesObject(styles: Record<string, any>): Record<string, any> {
+    const cleaned: Record<string, any> = {}
 
+    Object.keys(styles).forEach((lineIndex) => {
+      const lineStyles = styles[lineIndex]
+      if (!lineStyles || typeof lineStyles !== 'object') return
 
+      cleaned[lineIndex] = {}
 
-  BaseFabricObject.ownDefaults.originY = 'center'
-  BaseFabricObject.ownDefaults.originX = 'center'
+      Object.keys(lineStyles).forEach((charIndex) => {
+        const charStyle = lineStyles[charIndex]
+        if (!charStyle || typeof charStyle !== 'object') return
+
+        const cleanedCharStyle: Record<string, any> = {}
+
+        Object.keys(charStyle).forEach((key) => {
+          const value = charStyle[key]
+          // Skip transparent values for these properties
+          if (
+            (key === 'fill' || key === 'stroke' || key === 'textBackgroundColor') &&
+            value === 'transparent'
+          ) {
+            return
+          }
+          cleanedCharStyle[key] = value
+        })
+
+        // Only keep character style if it has properties
+        if (Object.keys(cleanedCharStyle).length > 0) {
+          cleaned[lineIndex][charIndex] = cleanedCharStyle
+        }
+      })
+
+      // Only keep line if it has character styles
+      if (Object.keys(cleaned[lineIndex]).length === 0) {
+        delete cleaned[lineIndex]
+      }
+    })
+
+    return cleaned
+  }
+
+  /**
+   * Escapes a font family name for use in CSS.
+   * Handles special characters like quotes and backslashes.
+   */
+  function escapeCssFontFamily(fontFamily: string): string {
+    // If the font name contains spaces or special characters, wrap in quotes
+    // and escape any existing quotes or backslashes
+    if (/["\\\s,]/.test(fontFamily)) {
+      return `"${fontFamily.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    }
+    return fontFamily
+  }
+
+  // ============================================================================
+  // fabric.js Configuration and Canvas Rendering
+  // ============================================================================
 
   /**
    * Renders the current slide's elements onto the fabric.js canvas.
@@ -261,11 +516,15 @@
    * Called whenever the current slide changes (via $effect).
    */
   function renderCanvasFromState(): void {
-    if (!fabCanvas || !appState.currentSlide) return
+    if (!fabCanvas || !appState.currentSlide) {
+      return
+    }
+
     const currentSlide = appState.currentSlide
 
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
+    fabCanvas.off('text:changed', handleTextChanged)
     fabCanvas.off('selection:created', handleSelection)
     fabCanvas.off('selection:updated', handleSelection)
     fabCanvas.off('selection:cleared', handleSelectionCleared)
@@ -301,6 +560,9 @@
           id: element.id
         })
       } else if (element.type === 'text') {
+        // Clean up any unwanted "transparent" values from styles before creating the object
+        const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
+
         fabObj = new IText(element.text || 'Hello', {
           left: element.x,
           top: element.y,
@@ -309,7 +571,7 @@
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
-          styles: element.styles || {}
+          styles: cleanedStyles
         })
       }
 
@@ -323,25 +585,27 @@
       if (element.src) {
         FabricImage.fromURL(element.src, {
           crossOrigin: 'anonymous'
-        }).then((img) => {
-          // Calculate scale to match the stored width/height
-          const scaleX = element.width / (img.width || 1)
-          const scaleY = element.height / (img.height || 1)
-
-          img.set({
-            left: element.x,
-            top: element.y,
-            angle: element.angle,
-            scaleX: scaleX,
-            scaleY: scaleY,
-            id: element.id
-          })
-
-          fabCanvas.add(img)
-          fabCanvas.renderAll()
-        }).catch((error) => {
-          console.error('Failed to load image:', error)
         })
+          .then((img) => {
+            // Calculate scale to match the stored width/height
+            const scaleX = element.width / (img.width || 1)
+            const scaleY = element.height / (img.height || 1)
+
+            img.set({
+              left: element.x,
+              top: element.y,
+              angle: element.angle,
+              scaleX: scaleX,
+              scaleY: scaleY,
+              id: element.id
+            })
+
+            fabCanvas.add(img)
+            fabCanvas.renderAll()
+          })
+          .catch((error) => {
+            console.error('Failed to load image:', error)
+          })
       }
     })
 
@@ -349,6 +613,7 @@
 
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)
+    fabCanvas.on('text:changed', handleTextChanged)
     fabCanvas.on('selection:created', handleSelection)
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
@@ -404,7 +669,9 @@
       elementInState.text = obj.text
       elementInState.fontSize = obj.fontSize
       elementInState.fontFamily = obj.fontFamily
-      elementInState.styles = obj.styles
+      elementInState.fill = obj.fill as string
+      // Clean up any unwanted transparent values before saving to state
+      elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
     }
   }
 
@@ -417,11 +684,15 @@
    * Updates app state and manages rich text editor visibility.
    */
   function handleSelection(event: { selected?: DeckFabricObject[] }): void {
-    console.log('🎯 handleSelection called', { selectedCount: event.selected?.length })
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
     } else {
       appState.selectedObjectId = null
+    }
+
+    // Sync previous text object state before switching - object:modified doesn't always fire
+    if (activeTextObject) {
+      updateStateFromObject(activeTextObject as DeckFabricObject)
     }
 
     // Remove old text selection change listener
@@ -429,11 +700,6 @@
 
     const selection = event.selected?.[0]
     if (selection instanceof IText) {
-      console.log('📝 Text object selected', {
-        isEditing: selection.isEditing,
-        wasEditing,
-        text: selection.text
-      })
       // Text object selected - enable rich text controls
       activeTextObject = selection
       showRichTextControls = true
@@ -443,7 +709,6 @@
 
       // If user was editing before, restore editing mode
       if (wasEditing) {
-        console.log('🔄 Restoring editing mode')
         activeTextObject.enterEditing()
         wasEditing = false
       }
@@ -451,20 +716,6 @@
       // Listen for text selection changes to update formatting buttons
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
-
-      // Restore text cursor position if saved
-      if (selectionRangeToRestore) {
-        const range = { ...selectionRangeToRestore }
-        selectionRangeToRestore = null
-        setTimeout(() => {
-          if (activeTextObject) {
-            activeTextObject.setSelectionStart(range.start)
-            activeTextObject.setSelectionEnd(range.end)
-            fabCanvas?.requestRenderAll()
-            handleTextSelectionChange()
-          }
-        }, 10)
-      }
     } else {
       // Non-text object selected - hide rich text controls
       activeTextObject = null
@@ -480,6 +731,10 @@
    * Handles selection cleared event - resets selection state.
    */
   function handleSelectionCleared(): void {
+    // Sync state before clearing - object:modified doesn't always fire reliably
+    if (activeTextObject) {
+      updateStateFromObject(activeTextObject as DeckFabricObject)
+    }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
     activeTextObject = null
@@ -488,7 +743,16 @@
     isSelectionItalic = false
     isSelectionUnderlined = false
     selectionFontSize = 40
+    selectionFillColor = '#333333'
     wasEditing = false
+    lastTextSelectionRange = null
+    suppressSelectionTracking = false
+  }
+
+  function handleTextChanged(event: { target?: DeckFabricObject }): void {
+    const target = event.target
+    if (!(target instanceof IText)) return
+    // Text changed - no special handling needed
   }
 
   // ============================================================================
@@ -500,39 +764,114 @@
    * If no text is selected, applies the style to the entire text object.
    */
   function applyStyleToSelection(style: Record<string, string | number | boolean>): void {
-    console.log('🎨 applyStyleToSelection called', { style, hasActiveText: !!activeTextObject })
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
-    console.log('📝 Text state before apply:', {
-      hasSelection,
-      isEditing: activeTextObject.isEditing,
-      selectionStart: activeTextObject.selectionStart,
-      selectionEnd: activeTextObject.selectionEnd,
-      text: activeTextObject.text
-    })
 
     if (hasSelection) {
       // Apply to selected text range
-      activeTextObject.setSelectionStyles(style)
+      // Instead of using setSelectionStyles (which can accumulate styles incorrectly),
+      // manually manage character-level styles to avoid corruption
+      const start = activeTextObject.selectionStart ?? 0
+      const end = activeTextObject.selectionEnd ?? 0
+
+      for (let i = start; i < end; i++) {
+        const loc = activeTextObject.get2DCursorLocation(i, true)
+        const lineIndex = loc.lineIndex
+        const charIndex = loc.charIndex
+
+        // Ensure the styles structure exists
+        if (!activeTextObject.styles[lineIndex]) {
+          activeTextObject.styles[lineIndex] = {}
+        }
+        if (!activeTextObject.styles[lineIndex][charIndex]) {
+          activeTextObject.styles[lineIndex][charIndex] = {}
+        }
+
+        // Apply each style property
+        Object.keys(style).forEach((key) => {
+          const newValue = style[key]
+          const baseValue = activeTextObject[key]
+
+          if (newValue === baseValue) {
+            // New value matches base - remove character-level override
+            delete activeTextObject.styles[lineIndex][charIndex][key]
+          } else {
+            // New value differs from base - set character-level style
+            activeTextObject.styles[lineIndex][charIndex][key] = newValue
+          }
+        })
+
+        // Clean up empty style objects
+        if (Object.keys(activeTextObject.styles[lineIndex][charIndex]).length === 0) {
+          delete activeTextObject.styles[lineIndex][charIndex]
+        }
+        if (Object.keys(activeTextObject.styles[lineIndex]).length === 0) {
+          delete activeTextObject.styles[lineIndex]
+        }
+      }
+
+      activeTextObject.dirty = true
+      activeTextObject.initDimensions()
+
+      // Clean up any transparent values that fabric.js might have added during initDimensions
+      if (activeTextObject.styles) {
+        activeTextObject.styles = cleanStylesObject(activeTextObject.styles)
+      }
+
       handleTextSelectionChange()
     } else {
-      // No selection - apply to entire text object
-      // First select all text temporarily
-      activeTextObject.selectAll()
-      // Apply the style to all characters
-      activeTextObject.setSelectionStyles(style)
-
-      // Also apply to object's base properties so new characters inherit the style
-      Object.keys(style).forEach(key => {
+      // No selection - apply style to the entire text object
+      // Just update the base properties - do NOT use setSelectionStyles which creates
+      // character-level overrides that accumulate as the user types
+      Object.keys(style).forEach((key) => {
         activeTextObject[key] = style[key]
       })
 
-      // Restore no selection state
-      activeTextObject.selectionStart = 0
-      activeTextObject.selectionEnd = 0
+      // Update any character-level overrides with the new values
+      // This ensures all characters use the new font/color/etc, even if they have other formatting
+      if (activeTextObject.styles) {
+        const styleKeys = Object.keys(style)
+        Object.keys(activeTextObject.styles).forEach((lineIndex) => {
+          const lineNum = parseInt(lineIndex)
+          if (!activeTextObject.styles[lineNum]) return
+          Object.keys(activeTextObject.styles[lineNum]).forEach((charIndex) => {
+            const charNum = parseInt(charIndex)
+            const charStyles = activeTextObject.styles[lineNum][charNum]
+            if (!charStyles) return
 
-      // Update UI state to match what we just applied
+            // Update the properties we're changing at the base level
+            // This is important for properties like fontFamily - if a character has
+            // { fontFamily: 'Arial', fontWeight: 'bold' } and we change the whole text
+            // to 'Helvetica', we want { fontFamily: 'Helvetica', fontWeight: 'bold' }
+            styleKeys.forEach((key) => {
+              if (charStyles[key] !== undefined) {
+                charStyles[key] = style[key]
+              }
+            })
+
+            // If no styles left, remove the character entry
+            if (Object.keys(charStyles).length === 0) {
+              delete activeTextObject.styles[lineNum][charNum]
+            }
+          })
+          // If no characters left in line, remove line entry
+          if (Object.keys(activeTextObject.styles[lineNum]).length === 0) {
+            delete activeTextObject.styles[lineNum]
+          }
+        })
+      }
+
+      // Mark as dirty so fabric.js re-renders
+      activeTextObject.dirty = true
+      activeTextObject.initDimensions()
+
+      // Clean up any transparent values that fabric.js might have added during initDimensions
+      if (activeTextObject.styles) {
+        activeTextObject.styles = cleanStylesObject(activeTextObject.styles)
+      }
+
+      // Update UI state
       if (style.fontWeight !== undefined) {
         isSelectionBold = style.fontWeight === 'bold'
       }
@@ -548,19 +887,16 @@
       if (style.fontFamily !== undefined) {
         selectionFontFamily = style.fontFamily as string
       }
+
+      // Update button states based on actual text state (not just what we applied)
+      handleTextSelectionChange()
     }
 
-    console.log('📝 Text state after apply:', {
-      isEditing: activeTextObject.isEditing,
-      selectionStart: activeTextObject.selectionStart,
-      selectionEnd: activeTextObject.selectionEnd,
-      hasHiddenTextarea: !!activeTextObject.hiddenTextarea
-    })
-
     fabCanvas?.renderAll()
-    // Note: Do NOT call updateStateFromObject() here - it causes the canvas to re-render,
-    // which loses the text selection and input focus. The state will be updated when the
-    // user finishes editing via the object:modified event handler.
+
+    // Note: Do NOT update state here - it triggers the $effect which re-renders the canvas
+    // and loses the text selection/cursor. State is synced when editing finishes via the
+    // object:modified event handler, which calls updateStateFromObject().
   }
 
   /** Toggles bold formatting on the selected text */
@@ -578,34 +914,13 @@
     applyStyleToSelection({ underline: !isSelectionUnderlined })
   }
 
-  /** Changes the color of the selected text */
-  function changeSelectionColor(event: Event): void {
-    const color = (event.target as HTMLInputElement).value
-    applyStyleToSelection({ fill: color })
-  }
-
   /** Changes the font size of the selected text */
   function changeFontSize(event: Event): void {
     const size = parseInt((event.target as HTMLInputElement).value)
-    console.log('📏 changeFontSize called', { size, hasActiveText: !!activeTextObject })
     if (!isNaN(size) && size > 0 && activeTextObject) {
       applyStyleToSelection({ fontSize: size })
       // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
     }
-  }
-
-  /** Changes the font family of the selected text */
-  async function changeFontFamily(event: Event): Promise<void> {
-    const family = (event.target as HTMLSelectElement).value
-    console.log('🔤 changeFontFamily called', { family, hasActiveText: !!activeTextObject })
-    if (!family || !activeTextObject) return
-
-    // Embed the font if needed
-    await embedFontIfNeeded(family)
-
-    // Apply to selection
-    applyStyleToSelection({ fontFamily: family })
-    // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
   }
 
   /**
@@ -613,73 +928,116 @@
    * Checks if the selected text has bold, italic, underline, font size, and font family.
    */
   function handleTextSelectionChange(): void {
-    console.log('🔄 handleTextSelectionChange called')
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
-    console.log('📍 Selection state:', {
-      hasSelection,
-      isEditing: activeTextObject.isEditing,
-      selectionStart: activeTextObject.selectionStart,
-      selectionEnd: activeTextObject.selectionEnd
-    })
-
     const textLength = activeTextObject.text?.length ?? 0
 
-    if (hasSelection) {
-      // Has text selection - check character-level styles
-      const styles = activeTextObject.getSelectionStyles(
-        activeTextObject.selectionStart,
-        activeTextObject.selectionEnd
-      )
-      isSelectionBold = styles.length > 0 && styles.every((style) => style.fontWeight === 'bold')
-      isSelectionItalic = styles.length > 0 && styles.every((style) => style.fontStyle === 'italic')
-      isSelectionUnderlined = styles.length > 0 && styles.every((style) => style.underline === true)
+    // Helper to get effective style value using fabric's getValueOfPropertyAt
+    // which properly handles base + character-level style inheritance
+    type StyleProperty = 'fontWeight' | 'fontStyle' | 'underline' | 'fontFamily' | 'fontSize' | 'fill'
+    const getEffectiveStyle = (charIndex: number, property: StyleProperty): unknown => {
+      const loc = activeTextObject.get2DCursorLocation(charIndex, true)
+      return activeTextObject.getValueOfPropertyAt(loc.lineIndex, loc.charIndex, property)
+    }
 
-      // Get font size from first character in selection
-      if (styles.length > 0 && styles[0].fontSize) {
-        selectionFontSize = styles[0].fontSize
+    if (hasSelection) {
+      if (!suppressSelectionTracking) {
+        lastTextSelectionRange = {
+          start: activeTextObject.selectionStart ?? 0,
+          end: activeTextObject.selectionEnd ?? 0
+        }
+      }
+
+      const start = activeTextObject.selectionStart ?? 0
+      const end = activeTextObject.selectionEnd ?? 0
+
+      // Check effective styles for all characters in selection
+      let allBold = true
+      let allItalic = true
+      let allUnderlined = true
+      const fontFamilies = new Set<string>()
+      let firstFontSize: number | null = null
+
+      for (let i = start; i < end; i++) {
+        if (getEffectiveStyle(i, 'fontWeight') !== 'bold') allBold = false
+        if (getEffectiveStyle(i, 'fontStyle') !== 'italic') allItalic = false
+        if (getEffectiveStyle(i, 'underline') !== true) allUnderlined = false
+        fontFamilies.add(String(getEffectiveStyle(i, 'fontFamily') || activeTextObject.fontFamily))
+        if (firstFontSize === null) {
+          firstFontSize = (getEffectiveStyle(i, 'fontSize') as number) || activeTextObject.fontSize
+        }
+      }
+
+      isSelectionBold = end > start && allBold
+      isSelectionItalic = end > start && allItalic
+      isSelectionUnderlined = end > start && allUnderlined
+
+      if (firstFontSize !== null) {
+        selectionFontSize = firstFontSize
       } else if (activeTextObject.fontSize) {
         selectionFontSize = activeTextObject.fontSize
       }
 
-      // Get font family - check if selection has mixed fonts
-      const fontFamilies = new Set(styles.map(style => style.fontFamily || activeTextObject.fontFamily))
-
       if (fontFamilies.size > 1) {
         selectionFontFamily = 'Multiple'
-      } else if (styles.length > 0 && styles[0].fontFamily) {
-        selectionFontFamily = styles[0].fontFamily
+      } else if (fontFamilies.size === 1) {
+        selectionFontFamily = fontFamilies.values().next().value
       } else if (activeTextObject.fontFamily) {
         selectionFontFamily = activeTextObject.fontFamily
+      }
+
+      // Read fill color from first selected character
+      if (end > start) {
+        selectionFillColor = (getEffectiveStyle(start, 'fill') as string) || activeTextObject.fill as string || '#333333'
       }
     } else {
-      // No text selection - check if ALL characters have the same style without mutating the cursor
-      const allStyles = textLength > 0 ? activeTextObject.getSelectionStyles(0, textLength) : []
+      if (!suppressSelectionTracking) {
+        lastTextSelectionRange = null
+      }
 
-      // Button lights up only if ALL characters have that style
-      isSelectionBold = allStyles.length > 0 && allStyles.every((style) => style.fontWeight === 'bold')
-      isSelectionItalic = allStyles.length > 0 && allStyles.every((style) => style.fontStyle === 'italic')
-      isSelectionUnderlined = allStyles.length > 0 && allStyles.every((style) => style.underline === true)
+      // No text selection - check effective styles for ALL characters
+      let allBold = true
+      let allItalic = true
+      let allUnderlined = true
+      const fontFamilies = new Set<string>()
+      let firstFontSize: number | null = null
 
-      // Get font size - use first character or object default
-      if (allStyles.length > 0 && allStyles[0].fontSize) {
-        selectionFontSize = allStyles[0].fontSize
+      for (let i = 0; i < textLength; i++) {
+        if (getEffectiveStyle(i, 'fontWeight') !== 'bold') allBold = false
+        if (getEffectiveStyle(i, 'fontStyle') !== 'italic') allItalic = false
+        if (getEffectiveStyle(i, 'underline') !== true) allUnderlined = false
+        fontFamilies.add(String(getEffectiveStyle(i, 'fontFamily') || activeTextObject.fontFamily))
+        if (firstFontSize === null) {
+          firstFontSize = (getEffectiveStyle(i, 'fontSize') as number) || activeTextObject.fontSize
+        }
+      }
+
+      isSelectionBold = textLength > 0 && allBold
+      isSelectionItalic = textLength > 0 && allItalic
+      isSelectionUnderlined = textLength > 0 && allUnderlined
+
+      if (firstFontSize !== null) {
+        selectionFontSize = firstFontSize
       } else if (activeTextObject.fontSize) {
         selectionFontSize = activeTextObject.fontSize
       }
 
-      // Check for mixed fonts
-      const fontFamilies = new Set(allStyles.map(style => style.fontFamily || activeTextObject.fontFamily))
-
       if (fontFamilies.size > 1) {
         selectionFontFamily = 'Multiple'
-      } else if (allStyles.length > 0 && allStyles[0].fontFamily) {
-        selectionFontFamily = allStyles[0].fontFamily
+      } else if (fontFamilies.size === 1) {
+        selectionFontFamily = fontFamilies.values().next().value
       } else if (activeTextObject.fontFamily) {
         selectionFontFamily = activeTextObject.fontFamily
       }
 
+      // Read fill color from first character
+      if (textLength > 0) {
+        selectionFillColor =
+          (getEffectiveStyle(0, 'fill') as string) ||
+          (activeTextObject.fill as string) ||
+          '#333333'
+      }
     }
   }
 
@@ -688,30 +1046,97 @@
   // ============================================================================
 
   /**
-   * Creates a new, unsaved presentation with one blank slide.
+   * Creates a new, unsaved presentation with one blank slide in a temp database.
    * Checks for unsaved changes before proceeding.
    */
-  function handleNewPresentation(): void {
-    // Check for unsaved changes before proceeding
-    if (appState.isDirty) {
-      const shouldProceed = confirm(
-        'You have unsaved changes. Do you want to discard them and create a new presentation?'
-      )
-      if (!shouldProceed) return
+  async function handleNewPresentation(): Promise<void> {
+    let retryCount = 0
+    const maxRetries = 3
+    let userInitiatedRetries = 0
+    const maxUserRetries = 2 // Cap user-initiated retries to prevent infinite loops
+
+    while (retryCount < maxRetries) {
+      let tempPath: string | null = null
+
+      try {
+        // Flush any pending saves before switching presentations
+        await flushPendingSave()
+
+        // Clear current slide to prevent any accidental saves to new database
+        appState.currentSlide = null
+        appState.currentSlideIndex = -1
+
+        // Close any existing database connection
+        if (appState.currentFilePath) {
+          await window.api.db.closeConnection(appState.currentFilePath)
+        }
+
+        // Create a new temp database
+        tempPath = await window.api.db.createTemp()
+
+        // Create the first slide in the temp database
+        const newSlide = await window.api.db.createSlide(tempPath)
+
+        // Update state
+        appState.currentFilePath = tempPath
+        appState.isTempFile = true
+        appState.slideIds = [newSlide.id]
+        appState.currentSlide = newSlide
+        appState.currentSlideIndex = 0
+        appState.selectedObjectId = null
+
+        console.log('Created new presentation with temp database:', tempPath)
+        return // Success!
+      } catch (error) {
+        console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
+
+        // Clean up the temp file if it was created
+        if (tempPath) {
+          try {
+            await window.api.db.deleteTemp(tempPath)
+            console.log(`Cleaned up failed temp file: ${tempPath}`)
+          } catch (cleanupError) {
+            console.error('Failed to clean up temp file:', cleanupError)
+            // If cleanup fails, the file will be cleaned up by the 24-hour orphan cleanup
+            // This is non-fatal, so we continue with the retry
+          }
+        }
+
+        retryCount++
+
+        if (retryCount >= maxRetries) {
+          // All retries failed - show error and offer recovery
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          const retry = confirm(
+            `Failed to create new presentation after ${maxRetries} attempts: ${errorMessage}\n\n` +
+            'This might be due to:\n' +
+            '• Insufficient disk space\n' +
+            '• Permission issues\n' +
+            '• Corrupted temp directory\n\n' +
+            'Would you like to try again?'
+          )
+
+          if (retry) {
+            // Cap user-initiated retries to prevent infinite looping
+            userInitiatedRetries++
+            if (userInitiatedRetries > maxUserRetries) {
+              alert(
+                'Unable to create a new presentation after multiple attempts. ' +
+                'Please check your system resources and try again later.'
+              )
+              return
+            }
+            retryCount = 0 // Reset and try again
+          } else {
+            // User gave up - leave them with current state (if any)
+            return
+          }
+        } else {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, NEW_PRESENTATION_RETRY_DELAY_MS))
+        }
+      }
     }
-
-    // Create the new slide BEFORE resetting to prevent UI flicker
-    const newSlide: Slide = { id: uuid_v4(), elements: [] }
-
-    // Reset state and immediately assign the new slide
-    // This ensures currentSlide is never null during the transition
-    appState.slideIds = [newSlide.id]
-    appState.currentSlide = newSlide
-    appState.inMemorySlides = [newSlide]
-    appState.currentSlideIndex = 0
-    appState.currentFilePath = null
-    appState.selectedObjectId = null
-    appState.isDirty = false
   }
 
   /**
@@ -719,17 +1144,12 @@
    * Checks for unsaved changes before proceeding.
    */
   async function handleOpen(): Promise<void> {
-    // Check for unsaved changes before proceeding
-    if (appState.isDirty) {
-      const shouldProceed = confirm(
-        'You have unsaved changes. Do you want to discard them and open a different file?'
-      )
-      if (!shouldProceed) return
-    }
-
     const filePath = await window.api.dialog.showOpenDialog()
     if (filePath) {
       try {
+        // Flush any pending saves before switching presentations
+        await flushPendingSave()
+
         await loadPresentation(filePath)
       } catch (error) {
         console.error('Failed to open presentation:', error)
@@ -741,187 +1161,63 @@
 
   /**
    * Saves the current slide to the existing file.
-   * If no file is open, triggers Save As instead.
-   * Prevents concurrent save operations using the isSaving flag.
+   * If this is a temp file, triggers Save As instead.
+   * Uses promise lock to prevent concurrent save operations.
    */
   async function handleSave(): Promise<void> {
-    // If no file path, delegate to Save As (it will handle the isSaving flag)
-    if (!appState.currentFilePath) {
+    // If this is a temp file (unsaved presentation), delegate to Save As
+    if (appState.isTempFile) {
       await handleSaveAs()
       return
     }
 
-    // Prevent concurrent saves
-    if (isSaving) return
-    isSaving = true
-
-    try {
-      if (!appState.currentSlide || !appState.isDirty) return
-
-      // Convert the reactive Svelte state to a plain JS object before sending to IPC
-      const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-
-      // Debug: Log what we're saving
-      console.log('Saving slide with elements:', plainSlide.elements.length)
-      plainSlide.elements.forEach((el: DeckElement) => {
-        if (el.type === 'image') {
-          console.log(`  Image ${el.id}: src length = ${el.src?.length || 0}`)
-        }
-      })
-
-      // Save just the current slide to the existing file
-      await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-
-      // Reset the dirty flag
-      appState.isDirty = false
-      console.log('Saved to', appState.currentFilePath)
-    } catch (error) {
-      console.error('Save failed:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      alert(`Failed to save: ${errorMessage}`)
-    } finally {
-      isSaving = false
-    }
+    // Flush any pending auto-save immediately
+    await flushPendingSave()
+    console.log('Saved to', appState.currentFilePath)
   }
 
   /**
-   * Opens a save dialog and saves all slides to a new file.
-   * Works for both saved and unsaved presentations.
-   * Prevents concurrent save operations using the isSaving flag.
+   * Opens a save dialog and saves the presentation to a new file.
+   * For temp files, moves the database. For saved files, copies the database.
+   * Prevents concurrent save operations using promise lock.
    */
   async function handleSaveAs(): Promise<void> {
-    // Prevent concurrent saves
-    if (isSaving) return
-    isSaving = true
-
     // Save original state in case we need to recover from an error
     const originalFilePath = appState.currentFilePath
     const originalSlideId = appState.currentSlide?.id
 
     try {
+      if (!appState.currentFilePath) {
+        throw new Error('No current file path')
+      }
+
+      // Save current slide to database first to flush all edits
+      await performSave(true)
+
+      // Show save dialog
       const newPath = await window.api.dialog.showSaveDialog()
       if (!newPath) return
 
       // Remember which slide we're currently viewing so we can restore it
       const currentSlideId = appState.currentSlide?.id
 
-      // If the target file already exists, close its connection first
-      await window.api.db.closeConnection(newPath)
-
-      // Collect all slides to save
-      let slidesToSave: Slide[] = []
-      if (appState.currentFilePath) {
-        // Saved presentation: Load all slides from the database
-        for (const slideId of appState.slideIds) {
-          if (slideId === appState.currentSlide?.id) {
-            // Use the current slide (with latest edits, even if unsaved)
-            slidesToSave.push(appState.currentSlide)
-          } else {
-            // Load from database
-            const slide = await window.api.db.getSlide(appState.currentFilePath, slideId)
-            if (slide) {
-              slidesToSave.push(slide)
-            } else {
-              console.error(`Failed to load slide ${slideId} from database during Save As`)
-              throw new Error(`Failed to load slide ${slideId}. The database may be corrupted.`)
-            }
-          }
-        }
+      // Move or copy the database depending on whether it's a temp file
+      let resultPath: string
+      if (appState.isTempFile) {
+        // For temp files, move the database to the new location
+        resultPath = await window.api.db.saveToLocation(appState.currentFilePath, newPath)
       } else {
-        // Unsaved presentation: First save current slide back to inMemorySlides to prevent data loss
-        if (appState.currentSlide) {
-          const currentIndex = appState.inMemorySlides.findIndex(
-            (s) => s.id === appState.currentSlide!.id
-          )
-          if (currentIndex !== -1) {
-            appState.inMemorySlides[currentIndex] = appState.currentSlide
-          } else {
-            // Slide not found in memory - add it to prevent data loss
-            console.warn(`Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`)
-            appState.inMemorySlides.push(appState.currentSlide)
-          }
-        }
-
-        // Build slides array manually to ensure current slide is included
-        for (const slideId of appState.slideIds) {
-          if (slideId === appState.currentSlide?.id) {
-            // Use the current slide (with latest edits)
-            slidesToSave.push(appState.currentSlide)
-          } else {
-            // Load from inMemorySlides
-            const slide = appState.inMemorySlides.find((s) => s.id === slideId)
-            if (slide) {
-              slidesToSave.push(slide)
-            } else {
-              console.error(`Slide ${slideId} not found in inMemorySlides during Save As`)
-              throw new Error(`Failed to find slide ${slideId} in memory. State may be corrupted.`)
-            }
-          }
-        }
+        // For saved files, copy the database to the new location
+        resultPath = await window.api.db.copyToLocation(appState.currentFilePath, newPath)
       }
 
-      // Validate we have slides to save
-      if (slidesToSave.length === 0) {
-        throw new Error('No slides to save')
-      }
+      // Update state
+      appState.currentFilePath = resultPath
+      appState.isTempFile = false
 
-      // Convert reactive Svelte state to plain JS objects for IPC
-      let plainSlides: Slide[]
-      try {
-        plainSlides = JSON.parse(JSON.stringify(slidesToSave))
-      } catch (serializationError) {
-        console.error('Failed to serialize slides:', serializationError)
-        throw new Error('Failed to serialize presentation data. Some elements may contain invalid data.')
-      }
-
-      // Debug: Log what we're saving
-      console.log('Save As: Saving', plainSlides.length, 'slides')
-      plainSlides.forEach((slide, i) => {
-        console.log(`  Slide ${i}: ${slide.elements.length} elements`)
-        slide.elements.forEach((el) => {
-          if (el.type === 'image') {
-            console.log(`    Image ${el.id}: src length = ${el.src?.length || 0}`)
-          }
-        })
-      })
-
-      // Save to new file
-      try {
-        await window.api.db.saveAs(newPath, plainSlides)
-      } catch (saveError) {
-        console.error('Failed to save to file:', saveError)
-        const errorMessage = saveError instanceof Error ? saveError.message : 'Unknown error'
-        throw new Error(`Failed to save presentation: ${errorMessage}`)
-      }
-
-      // Embed any pending fonts (from unsaved presentation) before reloading
-      try {
-        await embedPendingFonts(newPath)
-      } catch (fontError) {
-        console.error('Failed to embed fonts:', fontError)
-        // Don't throw - fonts are non-critical, presentation is saved
-      }
-
-      // Reload the presentation from the new file
-      try {
-        await loadPresentation(newPath)
-      } catch (loadError) {
-        console.error('Failed to reload presentation after Save As:', loadError)
-        // The file was saved successfully, but we failed to reload it
-        // Try to recover by reloading the original file
-        if (originalFilePath) {
-          try {
-            await loadPresentation(originalFilePath)
-            alert(
-              `Presentation was saved to ${newPath}, but failed to load the new file. Your original file has been reloaded.`
-            )
-            return
-          } catch (recoveryError) {
-            console.error('Failed to recover original file:', recoveryError)
-          }
-        }
-        throw new Error('Presentation was saved, but failed to load the new file. Please try opening it manually.')
-      }
+      // Reload slide IDs from the new file
+      const ids = await window.api.db.getSlideIds(resultPath)
+      appState.slideIds = ids
 
       // Restore the slide the user was viewing
       if (currentSlideId && appState.slideIds.includes(currentSlideId)) {
@@ -929,10 +1225,14 @@
           await loadSlide(currentSlideId)
         } catch (slideLoadError) {
           console.error('Failed to restore original slide:', slideLoadError)
-          // Not critical - the presentation was saved successfully
-          // Just log the error and continue
+          // Not critical - load the first slide instead
+          if (ids.length > 0) {
+            await loadSlide(ids[0])
+          }
         }
       }
+
+      console.log(`Saved presentation to ${resultPath}`)
     } catch (error) {
       console.error('Save As operation failed:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -949,8 +1249,6 @@
           console.error('Failed to recover original state:', recoveryError)
         }
       }
-    } finally {
-      isSaving = false
     }
   }
 
@@ -958,7 +1256,7 @@
    * Keyboard shortcut handler for Cmd/Ctrl+S (Save)
    */
   keys.onKeys(['meta', 's'], async () => {
-    if (!isSaving) await handleSave()
+    await handleSave()
   })
 
   // ============================================================================
@@ -983,15 +1281,21 @@
 
     // Filter out STIX math symbol variants
     // Keep only main STIX Two variants
-    if (family.startsWith('STIX') &&
-        !['STIX Two Math', 'STIX Two Text'].includes(family)) return true
+    if (family.startsWith('STIX') && !['STIX Two Math', 'STIX Two Text'].includes(family))
+      return true
 
     // Symbol and dingbat fonts (cross-platform)
     const symbolFonts = [
-      'Webdings', 'Wingdings', 'Wingdings 2', 'Wingdings 3',
-      'Zapf Dingbats', 'Symbol',
-      'Apple Symbols', 'Apple Braille',
-      'OpenSymbol', 'Standard Symbols'
+      'Webdings',
+      'Wingdings',
+      'Wingdings 2',
+      'Wingdings 3',
+      'Zapf Dingbats',
+      'Symbol',
+      'Apple Symbols',
+      'Apple Braille',
+      'OpenSymbol',
+      'Standard Symbols'
     ]
     if (symbolFonts.includes(family)) return true
 
@@ -1013,10 +1317,13 @@
     try {
       systemFonts = await window.api.fonts.getSystemFonts()
       // Extract unique font families, filtering out unwanted fonts
-      const families = Array.from(new Set(systemFonts.map((f) => f.family)))
-        .filter((family) => !shouldExcludeFont(family))
+      const families = Array.from(new Set(systemFonts.map((f) => f.family))).filter(
+        (family) => !shouldExcludeFont(family)
+      )
       availableFonts = [...new Set([...availableFonts, ...families])].sort()
-      console.log(`Loaded ${families.length} system fonts (${systemFonts.length - families.length} filtered out)`)
+      console.log(
+        `Loaded ${families.length} system fonts (${systemFonts.length - families.length} filtered out)`
+      )
     } catch (error) {
       console.error('Failed to load system fonts:', error)
       // Continue with default fonts
@@ -1048,11 +1355,94 @@
         await injectFontFace(font.fontFamily, font.fontData, font.format, font.variant)
       }
 
+      if (document?.fonts?.ready) {
+        await document.fonts.ready
+      }
+
       if (embeddedFonts.length > 0) {
-        console.log(`Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`)
+        console.log(
+          `Loaded ${embeddedFonts.length} embedded fonts from presentation (${embeddedFamilies.length} families)`
+        )
+        refreshTextRendering()
       }
     } catch (error) {
       console.error('Failed to load embedded fonts:', error)
+    }
+  }
+
+  function refreshTextRendering(): void {
+    if (!fabCanvas) return
+    fabCanvas.getObjects().forEach((obj) => {
+      if (obj instanceof IText) {
+        obj.dirty = true
+        obj.initDimensions()
+      }
+    })
+    fabCanvas.requestRenderAll()
+  }
+
+  type FontBytes = Buffer | ArrayBuffer | Uint8Array | { data: number[] } | { data: Uint8Array }
+
+  function fontDataToBase64(fontData: FontBytes): string {
+    const bytes = normalizeFontBytes(fontData)
+    if (!bytes) {
+      throw new Error('Unsupported font data type')
+    }
+
+    try {
+      if (typeof Buffer !== 'undefined') {
+        return Buffer.from(bytes).toString('base64')
+      }
+    } catch {
+      // Fall back to manual base64 conversion.
+    }
+
+    const chunkSize = 0x8000
+    let binary = ''
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+    }
+
+    return btoa(binary)
+  }
+
+  function normalizeFontBytes(fontData: FontBytes): Uint8Array | null {
+    if (fontData instanceof Uint8Array) {
+      return fontData
+    }
+
+    if (fontData instanceof ArrayBuffer) {
+      return new Uint8Array(fontData)
+    }
+
+    if (typeof Buffer !== 'undefined' && fontData instanceof Buffer) {
+      return new Uint8Array(fontData)
+    }
+
+    if (fontData && typeof fontData === 'object' && 'data' in fontData) {
+      const data = fontData.data
+      if (data instanceof Uint8Array) {
+        return data
+      }
+      if (Array.isArray(data)) {
+        return new Uint8Array(data)
+      }
+    }
+
+    return null
+  }
+
+  async function ensureFontReady(fontFamily: string, weight: string, style: string): Promise<void> {
+    if (!document?.fonts?.load) return
+
+    const normalizedStyle = style === 'italic' ? 'italic' : 'normal'
+    const normalizedWeight = weight === 'bold' ? 'bold' : 'normal'
+
+    try {
+      await document.fonts.load(`${normalizedStyle} ${normalizedWeight} 16px '${fontFamily}'`)
+    } catch (error) {
+      console.warn(`Failed to load font via FontFaceSet: ${fontFamily}`, error)
     }
   }
 
@@ -1077,12 +1467,13 @@
 
     try {
       // Convert Buffer to base64 for data URI
-      const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(fontData))))
+      const base64 = fontDataToBase64(fontData)
 
       // Determine font format for @font-face
-      let fontFormat = format
-      if (format === 'ttf') fontFormat = 'truetype'
-      else if (format === 'otf') fontFormat = 'opentype'
+      const normalizedFormat = format === 'ttc' ? 'ttf' : format
+      let fontFormat = normalizedFormat
+      if (normalizedFormat === 'ttf') fontFormat = 'truetype'
+      else if (normalizedFormat === 'otf') fontFormat = 'opentype'
 
       // Parse variant to get weight and style
       const [weight, style] = variant.split('-')
@@ -1091,7 +1482,7 @@
       const fontFaceRule = `
         @font-face {
           font-family: '${fontFamily}';
-          src: url(data:font/${format};base64,${base64}) format('${fontFormat}');
+          src: url(data:font/${normalizedFormat};base64,${base64}) format('${fontFormat}');
           font-weight: ${weight};
           font-style: ${style};
         }
@@ -1103,11 +1494,34 @@
       document.head.appendChild(styleEl)
 
       loadedFonts.add(key)
+      await ensureFontReady(fontFamily, weight, style)
+      cache.clearFontCache(fontFamily)
       console.log(`Injected font: ${fontFamily} (${variant})`)
     } catch (error) {
       console.error(`Failed to inject font ${fontFamily}:`, error)
     }
   }
+
+  /**
+   * List of web-safe fonts that are available in browsers by default.
+   * These fonts don't need to be embedded or loaded via @font-face.
+   */
+  const WEB_SAFE_FONTS = [
+    'Arial',
+    'Helvetica',
+    'Times New Roman',
+    'Times',
+    'Courier New',
+    'Courier',
+    'Verdana',
+    'Georgia',
+    'Palatino',
+    'Garamond',
+    'Bookman',
+    'Comic Sans MS',
+    'Trebuchet MS',
+    'Impact'
+  ]
 
   /**
    * Embeds a font file into the database.
@@ -1116,13 +1530,16 @@
    * @param fontFamily - The font family name to embed
    */
   async function embedFontIfNeeded(fontFamily: string): Promise<void> {
-    // For unsaved presentations, track fonts that need to be embedded later
-    if (!appState.currentFilePath) {
-      pendingFontsToEmbed.add(fontFamily)
-      console.log(`Font ${fontFamily} will be embedded when presentation is saved`)
-      // Still load the font for preview
-      await loadFontForPreview(fontFamily)
+    // Skip embedding for web-safe fonts that are already available in browsers
+    if (WEB_SAFE_FONTS.includes(fontFamily)) {
+      console.log(`Skipping embed for web-safe font: ${fontFamily}`)
       return
+    }
+
+    // All presentations now have a currentFilePath (can be temp or saved)
+    // If this check fails, it indicates a programming error
+    if (!appState.currentFilePath) {
+      throw new Error('Invariant violation: no currentFilePath when embedding font')
     }
 
     try {
@@ -1160,7 +1577,12 @@
       )
 
       if (fontData) {
-        await injectFontFace(fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
+        await injectFontFace(
+          fontData.fontFamily,
+          fontData.fontData,
+          fontData.format,
+          fontData.variant
+        )
         console.log(`Embedded and loaded font: ${fontFamily}`)
       }
     } catch (error) {
@@ -1169,48 +1591,16 @@
   }
 
   /**
-   * Embeds all pending fonts into the database after a file is saved.
-   * Called after Save As to embed fonts that were used in unsaved presentations.
-   *
-   * @param filePath - The path to the database file
-   */
-  async function embedPendingFonts(filePath: string): Promise<void> {
-    if (pendingFontsToEmbed.size === 0) return
-
-    console.log(`Embedding ${pendingFontsToEmbed.size} pending fonts...`)
-
-    for (const fontFamily of pendingFontsToEmbed) {
-      try {
-        // Find the system font
-        const systemFont = systemFonts.find((f) => f.family === fontFamily)
-        if (!systemFont) {
-          console.warn(`Font ${fontFamily} not found in system fonts, skipping embed`)
-          continue
-        }
-
-        // Embed the font
-        await window.api.fonts.embedFont(
-          filePath,
-          systemFont.path,
-          fontFamily,
-          'normal-normal'
-        )
-        console.log(`Embedded pending font: ${fontFamily}`)
-      } catch (error) {
-        console.error(`Failed to embed pending font ${fontFamily}:`, error)
-      }
-    }
-
-    // Clear the pending list
-    pendingFontsToEmbed.clear()
-  }
-
-  /**
    * Loads a system font for preview in the font dropdown (without embedding in DB).
    *
    * @param fontFamily - The font family name to load for preview
    */
   async function loadFontForPreview(fontFamily: string): Promise<void> {
+    // Skip loading for web-safe fonts that are already available in browsers
+    if (WEB_SAFE_FONTS.includes(fontFamily)) {
+      return
+    }
+
     const key = `${fontFamily}-normal-normal`
     if (loadedFonts.has(key)) {
       return // Already loaded
@@ -1258,7 +1648,7 @@
     for (const font of batch) {
       await loadFontForPreview(font)
       // Small delay to prevent blocking the UI
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await new Promise((resolve) => setTimeout(resolve, 10))
     }
 
     isLoadingFonts = false
@@ -1275,13 +1665,38 @@
   function toggleFontDropdown(): void {
     fontDropdownOpen = !fontDropdownOpen
     if (fontDropdownOpen) {
+      if (activeTextObject) {
+        suppressSelectionTracking = true
+        lastTextSelectionRange = {
+          start: activeTextObject.selectionStart ?? 0,
+          end: activeTextObject.selectionEnd ?? 0
+        }
+        const restoreStart = lastTextSelectionRange.start
+        const restoreEnd = lastTextSelectionRange.end
+
+        setTimeout(() => {
+          if (!activeTextObject) {
+            suppressSelectionTracking = false
+            return
+          }
+          if (wasEditing || activeTextObject.isEditing) {
+            activeTextObject.enterEditing()
+          }
+          activeTextObject.setSelectionStart(restoreStart)
+          activeTextObject.setSelectionEnd(restoreEnd)
+          fabCanvas?.requestRenderAll()
+          suppressSelectionTracking = false
+        }, 0)
+      }
       fontSearchQuery = ''
       // Load the currently selected font and a few common ones
       if (selectionFontFamily !== 'Multiple') {
         queueFontForLoading(selectionFontFamily)
       }
       const commonFonts = ['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana']
-      commonFonts.forEach(font => queueFontForLoading(font))
+      commonFonts.forEach((font) => queueFontForLoading(font))
+    } else {
+      suppressSelectionTracking = false
     }
   }
 
@@ -1289,7 +1704,6 @@
    * Selects a font from the custom dropdown
    */
   async function selectFontFromDropdown(fontFamily: string): Promise<void> {
-    console.log('🎯 selectFontFromDropdown called', { fontFamily, hasActiveText: !!activeTextObject })
     fontDropdownOpen = false
     selectionFontFamily = fontFamily
 
@@ -1309,9 +1723,8 @@
   function getFilteredFonts(): string[] {
     if (!fontSearchQuery) return availableFonts
     const query = fontSearchQuery.toLowerCase()
-    return availableFonts.filter(font => font.toLowerCase().includes(query))
+    return availableFonts.filter((font) => font.toLowerCase().includes(query))
   }
-
 
   /**
    * Handles click outside to close font dropdown
@@ -1345,7 +1758,6 @@
       fill: '#333333'
     }
     appState.currentSlide.elements.push(newText)
-    appState.isDirty = true
   }
 
   /**
@@ -1364,7 +1776,6 @@
       fill: '#FF6F61'
     }
     appState.currentSlide.elements.push(newRect)
-    appState.isDirty = true
   }
 
   /**
@@ -1420,7 +1831,6 @@
       }
 
       appState.currentSlide.elements.push(newImage)
-      appState.isDirty = true
     } catch (error) {
       console.error('Failed to add image:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -1433,45 +1843,33 @@
    * Handles both saved (file-based) and unsaved (in-memory) presentations.
    */
   async function addNewSlide(): Promise<void> {
-    const newSlide: Slide = { id: uuid_v4(), elements: [] }
-    if (appState.currentFilePath) {
-      // Saved presentation: save slide to database with error handling
-      try {
-        // Save the new slide to the database
-        await window.api.db.saveSlide(appState.currentFilePath, newSlide)
+    if (!appState.currentFilePath) {
+      console.error('Cannot add slide: no current file path')
+      return
+    }
 
-        // Update slideIds only after successful save
-        appState.slideIds = [...appState.slideIds, newSlide.id]
+    let newSlideId: string | null = null
+    try {
+      // Create new slide in the database (works for both temp and saved files)
+      const newSlide = await window.api.db.createSlide(appState.currentFilePath)
+      newSlideId = newSlide.id
 
-        // Load the new slide
-        await loadSlide(newSlide.id)
-      } catch (error) {
-        console.error('Failed to create new slide:', error)
-
-        // Roll back slideIds if it was added but loading failed
-        appState.slideIds = appState.slideIds.filter((id) => id !== newSlide.id)
-
-        // Show user-friendly error message
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        alert(`Failed to create new slide: ${errorMessage}`)
-      }
-    } else {
-      // Unsaved presentation: save current slide back to memory before switching
-      if (appState.currentSlide) {
-        const currentIndex = appState.inMemorySlides.findIndex(
-          (s) => s.id === appState.currentSlide!.id
-        )
-        if (currentIndex !== -1) {
-          // Deep copy to prevent reference issues
-          appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
-        }
-      }
-
-      // Add new slide to in-memory array
-      appState.inMemorySlides.push(newSlide)
+      // Update slideIds
       appState.slideIds = [...appState.slideIds, newSlide.id]
-      appState.currentSlide = newSlide
-      appState.currentSlideIndex = appState.slideIds.length - 1
+
+      // Load the new slide
+      await loadSlide(newSlide.id)
+    } catch (error) {
+      console.error('Failed to create new slide:', error)
+
+      // Roll back slideIds if it was added but loading failed
+      if (newSlideId) {
+        appState.slideIds = appState.slideIds.filter((id) => id !== newSlideId)
+      }
+
+      // Show user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to create new slide: ${errorMessage}`)
     }
   }
 
@@ -1504,9 +1902,16 @@
 
   /**
    * Global keyboard event handler for shortcuts.
-   * Handles Cmd/Ctrl+A (Select All) and Delete/Backspace (Delete object).
+   * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
    */
   function handleKeyDown(event: KeyboardEvent): void {
+    // Cmd/Ctrl+Shift+D: Open debug window
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'd') {
+      event.preventDefault()
+      openDebugWindow()
+      return
+    }
+
     // Cmd/Ctrl+A: Select all objects on the canvas (unless editing text)
     if ((event.metaKey || event.ctrlKey) && event.key === 'a') {
       // Don't intercept if user is editing text - let them select text normally
@@ -1580,10 +1985,10 @@
 
   /**
    * Enters presentation mode (fullscreen slideshow).
-   * Preserves the current slide state for unsaved presentations.
+   * Preserves the current slide state.
    */
   async function enterPresentationMode(): Promise<void> {
-    // Save a snapshot of current slide state (for unsaved presentations)
+    // Save a snapshot of current slide state
     if (appState.currentSlide) {
       slideStateBeforePresentation = {
         slideId: appState.currentSlide.id,
@@ -1591,19 +1996,19 @@
       }
     }
 
-    // For unsaved presentations, sync current slide to inMemorySlides before presenting
-    if (!appState.currentFilePath && appState.currentSlide) {
-      const currentIndex = appState.inMemorySlides.findIndex(
-        (s) => s.id === appState.currentSlide!.id
+    // Flush any pending auto-save before presenting
+    try {
+      await flushPendingSave()
+    } catch (error) {
+      console.error('Failed to save before presenting:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const proceed = confirm(
+        `Failed to save recent changes: ${errorMessage}\n\n` +
+        'Your presentation may show stale data. Continue to presentation mode anyway?'
       )
-      if (currentIndex !== -1) {
-        appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
+      if (!proceed) {
+        return // Abort entering presentation mode
       }
-    }
-
-    // Save to file if dirty and has file path
-    if (appState.isDirty && appState.currentFilePath) {
-      await handleSave()
     }
 
     // Dispose the edit canvas before entering presentation mode
@@ -1645,6 +2050,13 @@
       await enterPresentationMode()
     }
   })
+
+  /**
+   * Keyboard shortcut handler for Cmd/Ctrl+Shift+D (Open Debug Window)
+   */
+  keys.onKeys(['meta', 'shift', 'd'], () => {
+    openDebugWindow()
+  })
 </script>
 
 <svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
@@ -1684,7 +2096,6 @@
       <button
         onclick={handleSave}
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-        disabled={!appState.isDirty && appState.currentFilePath !== null}
       >
         Save
       </button>
@@ -1701,6 +2112,13 @@
         title="Start presentation (F5)"
       >
         Present
+      </button>
+      <button
+        onclick={openDebugWindow}
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        title="Open debug window (Cmd/Ctrl+Shift+D)"
+      >
+        Debug
       </button>
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
@@ -1760,13 +2178,29 @@
             onclick={toggleFontDropdown}
             onkeydown={(e) => e.stopPropagation()}
             class="h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center min-w-[120px] relative"
-            style={selectionFontFamily !== 'Multiple' ? `font-family: ${selectionFontFamily}` : ''}
+            style={selectionFontFamily !== 'Multiple'
+              ? `font-family: ${escapeCssFontFamily(selectionFontFamily)}`
+              : ''}
           >
-            <span class="truncate" class:italic={selectionFontFamily === 'Multiple'} class:text-gray-500={selectionFontFamily === 'Multiple'}>
+            <span
+              class="truncate"
+              class:italic={selectionFontFamily === 'Multiple'}
+              class:text-gray-500={selectionFontFamily === 'Multiple'}
+            >
               {selectionFontFamily}
             </span>
-            <svg class="w-4 h-4 absolute right-1 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            <svg
+              class="w-4 h-4 absolute right-1 pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              ></path>
             </svg>
           </button>
 
@@ -1795,7 +2229,7 @@
                     onmouseenter={() => queueFontForLoading(font)}
                     class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
                     class:bg-blue-100={font === selectionFontFamily}
-                    style="font-family: '{font}'; contain: layout style;"
+                    style="font-family: {escapeCssFontFamily(font)}; contain: layout style;"
                   >
                     {font}
                   </button>
@@ -1806,7 +2240,8 @@
         </div>
         <input
           type="color"
-          oninput={changeSelectionColor}
+          bind:value={selectionFillColor}
+          oninput={() => applyStyleToSelection({ fill: selectionFillColor })}
           class="w-8 h-8 p-0 border-none bg-transparent"
         />
       {/if}
