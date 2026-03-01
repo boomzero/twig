@@ -53,7 +53,22 @@ const api = {
     saveAs: (filePath, slides) => ipcRenderer.invoke('db:save-as', filePath, slides),
 
     /** Close a database connection (used before overwriting files) */
-    closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath)
+    closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath),
+
+    /** Create a new temporary database for unsaved presentations */
+    createTemp: () => ipcRenderer.invoke('db:create-temp'),
+
+    /** Check if a file path is a temporary file */
+    isTempFile: (filePath) => ipcRenderer.invoke('db:is-temp-file', filePath),
+
+    /** Move a temp database to a user-chosen location (Save) */
+    saveToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:save-to-location', sourcePath, destPath),
+
+    /** Copy a database to a new location (Save As) */
+    copyToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath),
+
+    /** Delete a temporary database file */
+    deleteTemp: (filePath) => ipcRenderer.invoke('db:delete-temp', filePath)
   },
 
   // Font operations
@@ -100,6 +115,19 @@ const api = {
       ipcRenderer.on('debug:request-state-from-main', handler)
       return () => ipcRenderer.removeListener('debug:request-state-from-main', handler)
     }
+  },
+
+  // Window lifecycle
+  lifecycle: {
+    /** Called by main process before window closes to flush pending saves */
+    onBeforeClose: (callback) => {
+      const listener = () => callback()
+      ipcRenderer.on('lifecycle:before-close', listener)
+      return () => ipcRenderer.removeListener('lifecycle:before-close', listener)
+    },
+
+    /** Notify main process that flush is complete */
+    flushComplete: () => ipcRenderer.send('lifecycle:flush-complete')
   }
 }
 

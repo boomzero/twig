@@ -10,6 +10,8 @@
  * - When currentFilePath is null: all slides are kept in inMemorySlides array
  */
 
+import { getFlushSave } from './saveCallbacks'
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -101,8 +103,9 @@ export interface SelectionState {
  * the entire application.
  *
  * Persistence model:
- * - currentFilePath !== null: Saved presentation (slides loaded from DB on-demand)
- * - currentFilePath === null: Unsaved presentation (all slides in inMemorySlides)
+ * - All presentations are backed by a SQLite database
+ * - isTempFile = true: Unsaved presentation (temp DB that will be moved on Save)
+ * - isTempFile = false: Saved presentation (user-chosen location)
  */
 export const appState = $state({
   /** IDs of all slides in the presentation, in display order */
@@ -111,25 +114,21 @@ export const appState = $state({
   /** Currently displayed slide with all its elements */
   currentSlide: null as Slide | null,
 
-  /** All slides for unsaved presentations (when currentFilePath is null) */
-  inMemorySlides: [] as Slide[],
-
   /** Index of the current slide in slideIds array */
   currentSlideIndex: -1,
 
-  /** Absolute path to the .db file, or null for unsaved presentations */
+  /** Absolute path to the .db file (can be temp or user-chosen) */
   currentFilePath: null as string | null,
+
+  /** Whether the current file is a temporary file (unsaved presentation) */
+  isTempFile: false,
 
   /** ID of the currently selected object on the canvas, or null */
   selectedObjectId: null as string | null,
 
-  /** Whether there are unsaved changes to the current slide */
-  isDirty: false,
-
   /** Whether the presentation is in presenting mode (fullscreen slideshow) */
   isPresentingMode: false
 })
-
 
 /**
  * Lock flag to prevent concurrent loadSlide operations.
@@ -150,11 +149,10 @@ export const loadingState = $state({
 export function resetState(): void {
   appState.slideIds = []
   appState.currentSlide = null
-  appState.inMemorySlides = []
   appState.currentSlideIndex = -1
   appState.currentFilePath = null
+  appState.isTempFile = false
   appState.selectedObjectId = null
-  appState.isDirty = false
 }
 
 /**
@@ -162,7 +160,7 @@ export function resetState(): void {
  *
  * This function:
  * 1. Reads all slide IDs from the file
- * 2. Sets currentFilePath to enable file-based persistence mode
+ * 2. Sets currentFilePath and checks if it's a temp file
  * 3. Loads the first slide (or creates one if the file is empty)
  *
  * @param filePath - Absolute path to the .db file to load
@@ -170,11 +168,15 @@ export function resetState(): void {
 export async function loadPresentation(filePath: string): Promise<void> {
   const ids = await window.api.db.getSlideIds(filePath)
 
-  // Switch to file-based mode
+  // Clear current slide BEFORE changing currentFilePath to prevent
+  // flushPendingSave() in loadSlide() from saving old slide into new database
+  appState.currentSlide = null
+  appState.currentSlideIndex = -1
+
+  // Set file path and check if it's temporary
   appState.currentFilePath = filePath
-  appState.inMemorySlides = [] // Clear in-memory slides when loading from a file
+  appState.isTempFile = await window.api.db.isTempFile(filePath)
   appState.slideIds = ids
-  appState.isDirty = false
   appState.selectedObjectId = null
 
   // Load the first slide, or create one if the file is empty
@@ -202,13 +204,10 @@ export async function loadPresentation(filePath: string): Promise<void> {
 /**
  * Loads a specific slide and makes it the current slide.
  *
- * The slide is loaded from either:
- * - The database (if currentFilePath is set)
- * - The inMemorySlides array (if currentFilePath is null)
+ * The slide is always loaded from the database (which may be a temp file for unsaved presentations).
  *
- * Important: Before switching slides, this function auto-saves the current slide to prevent data loss:
- * - For saved presentations: Saves the current slide to the database
- * - For unsaved presentations: Saves the current slide back to inMemorySlides
+ * Important: Before switching slides, this function auto-saves the current slide to the database
+ * to prevent data loss.
  *
  * @param slideId - The ID of the slide to load
  */
@@ -227,55 +226,56 @@ export async function loadSlide(slideId: string): Promise<void> {
 
   loadingState.isLoadingSlide = true
   try {
-    // Save current slide before switching to prevent data loss
-    if (appState.currentSlide) {
-      if (appState.currentFilePath) {
-        // For saved presentations, auto-save current slide to database before switching
+    // Flush any pending auto-save to prevent duplicate saves
+    // This cancels the debounced save and saves immediately if needed
+    const flushSave = getFlushSave()
+    if (flushSave) {
+      let flushAttempts = 0
+      const maxFlushAttempts = 3
+
+      while (flushAttempts < maxFlushAttempts) {
         try {
-          const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-          await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
-          // Clear dirty flag since we just saved
-          appState.isDirty = false
+          await flushSave()
+          break // Success!
         } catch (error) {
-          console.error('Failed to auto-save slide before navigation:', error)
-          // Continue with navigation despite save failure
-        }
-      } else {
-        // For unsaved presentations, save current slide back to inMemorySlides before switching
-        const currentIndex = appState.inMemorySlides.findIndex(
-          (s) => s.id === appState.currentSlide!.id
-        )
-        if (currentIndex !== -1) {
-          // Deep copy to prevent reference issues
-          appState.inMemorySlides[currentIndex] = JSON.parse(JSON.stringify(appState.currentSlide))
-        } else {
-          console.warn(`Current slide ${appState.currentSlide.id} not found in inMemorySlides, adding it`)
-          appState.inMemorySlides.push(JSON.parse(JSON.stringify(appState.currentSlide)))
+          flushAttempts++
+          console.error(`Failed to flush pending save before navigation (attempt ${flushAttempts}/${maxFlushAttempts}):`, error)
+
+          if (flushAttempts >= maxFlushAttempts) {
+            // All retries failed - ask user what to do
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+            const userChoice = confirm(
+              `Failed to save current slide before navigation:\n${errorMessage}\n\n` +
+              'Click OK to discard unsaved changes and continue, or Cancel to stay on this slide.'
+            )
+
+            if (!userChoice) {
+              // User cancelled - abort navigation
+              return
+            }
+            // User chose to discard changes - continue with navigation
+            break
+          }
+
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 100))
         }
       }
     }
 
-    // Load the new slide
-    let newSlide: Slide | null = null
-
-    if (appState.currentFilePath) {
-      // File-based mode: load from database
-      newSlide = await window.api.db.getSlide(appState.currentFilePath, slideId)
-      if (!newSlide) {
-        console.error(`Failed to load slide ${slideId} from database`)
-        return
-      }
-    } else {
-      // In-memory mode: load from memory (deep copy to prevent reference issues)
-      const foundSlide = appState.inMemorySlides.find((s) => s.id === slideId)
-      newSlide = foundSlide ? JSON.parse(JSON.stringify(foundSlide)) : null
-      if (!newSlide) {
-        console.error(`Failed to find slide ${slideId} in memory`)
-        return
-      }
+    // Load the new slide from database
+    if (!appState.currentFilePath) {
+      console.error('Cannot load slide: no current file path')
+      return
     }
 
-    // Only update state if we successfully loaded the slide
+    const newSlide = await window.api.db.getSlide(appState.currentFilePath, slideId)
+    if (!newSlide) {
+      console.error(`Failed to load slide ${slideId} from database`)
+      return
+    }
+
+    // Update state
     appState.currentSlide = newSlide
     appState.currentSlideIndex = slideIndex
   } finally {

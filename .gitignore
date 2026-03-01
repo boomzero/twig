@@ -4,3 +4,7 @@ out
 .DS_Store
 .eslintcache
 *.log*
+logs/
+.env
+.enject/
+.idea/

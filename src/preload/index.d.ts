@@ -49,9 +49,8 @@ export interface DebugState {
   currentSlideId: string | null
   currentSlideElementCount: number
   selectedObjectId: string | null
-  isDirty: boolean
   isPresentingMode: boolean
-  inMemorySlidesCount: number
+  isTempFile: boolean
   isLoadingSlide: boolean
   currentSlide: {
     id: string
@@ -90,6 +89,11 @@ declare global {
         saveSlide: (filePath: string, slide: Slide) => Promise<void>
         saveAs: (filePath: string, slides: Slide[]) => Promise<void>
         closeConnection: (filePath: string) => Promise<void>
+        createTemp: () => Promise<string>
+        isTempFile: (filePath: string) => Promise<boolean>
+        saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
+        copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
+        deleteTemp: (filePath: string) => Promise<void>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>
@@ -109,6 +113,10 @@ declare global {
         onStateUpdate: (callback: (state: DebugState) => void) => () => void
         requestState: () => void
         onStateRequest: (callback: () => void) => () => void
+      }
+      lifecycle: {
+        onBeforeClose: (callback: () => void) => () => void
+        flushComplete: () => void
       }
     }
   }

@@ -1,4 +1,4 @@
-appId: com.electron.app
+appId: com.deckhand.app
 productName: deckhand
 directories:
   buildResources: build
@@ -20,6 +20,9 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
