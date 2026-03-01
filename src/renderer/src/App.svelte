@@ -9,13 +9,13 @@
   - Keyboard shortcuts and context menus
 
   Key Architecture Patterns:
-  1. State is the source of truth - canvas reflects state
+  1. State is the source of truth - canvas reflekcts state
   2. When state changes → canvas re-renders (via $effect)
   3. When canvas objects are modified → state is updated
   4. Selection state is preserved across re-renders when possible
 
   fabric.js Customization:
-  - Objects use center origin (originX/Y = 'center')
+  - Objects use center origin (fabric.js v7 default)
   - Objects are extended with an 'id' property to link them to state
 -->
 
@@ -32,7 +32,6 @@
     FabricImage,
     ActiveSelection,
     util,
-    BaseFabricObject,
     cache
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
@@ -309,21 +308,33 @@
    * user selections across state updates.
    */
   $effect(() => {
+    console.log('[RENDER EFFECT] Triggered - isPresentingMode:', appState.isPresentingMode, 'currentSlide:', appState.currentSlide?.id, 'elements:', appState.currentSlide?.elements.length)
+
     // Skip canvas operations during presentation mode - the edit canvas is not rendered
     if (appState.isPresentingMode) {
+      console.log('[RENDER EFFECT] Skipping - in presentation mode')
       return
     }
 
     if (!appState.currentSlide) {
-      fabCanvas?.clear()
+      console.log('[RENDER EFFECT] No current slide - disposing canvas')
+      // Dispose the canvas instance when there's no slide
+      // This ensures a fresh canvas is created when a new slide loads
+      // (The UI is destroyed when currentSlide is null, so we need to dispose the old canvas)
+      if (fabCanvas) {
+        fabCanvas.dispose()
+        fabCanvas = undefined
+      }
       return
     }
 
     // canvasEl binding might not be ready yet after exiting presentation mode
     // Use requestAnimationFrame to defer to the next frame when DOM is ready
     if (!canvasEl) {
+      console.log('[RENDER EFFECT] canvasEl not ready - using requestAnimationFrame')
       requestAnimationFrame(() => {
         if (canvasEl && appState.currentSlide && !appState.isPresentingMode) {
+          console.log('[RENDER EFFECT RAF] Creating canvas and rendering')
           if (!fabCanvas) {
             fabCanvas = new Canvas(canvasEl)
           }
@@ -359,12 +370,21 @@
       }
     }
 
-    // Step 2: Create canvas if it doesn't exist yet
-    if (!fabCanvas) {
+    // Step 2: Create canvas if it doesn't exist yet OR if it's not connected to the current canvas element
+    // This handles cases where the DOM element was recreated but fabCanvas still exists
+    if (!fabCanvas || fabCanvas.getElement() !== canvasEl) {
+      if (fabCanvas) {
+        console.log('[RENDER EFFECT] Disposing stale canvas instance')
+        fabCanvas.dispose()
+      }
+      console.log('[RENDER EFFECT] Creating new Canvas instance')
       fabCanvas = new Canvas(canvasEl)
+    } else {
+      console.log('[RENDER EFFECT] Using existing Canvas instance')
     }
 
     // Step 3: Re-render all objects from state
+    console.log('[RENDER EFFECT] Calling renderCanvasFromState()')
     renderCanvasFromState()
 
     // Step 4: Restore previous selection if it existed
@@ -400,6 +420,8 @@
         }
       }
     }
+
+    console.log('[RENDER EFFECT] Completed - canvas object count:', fabCanvas?.getObjects().length)
   })
 
   /**
@@ -483,14 +505,6 @@
   // ============================================================================
 
   /**
-   * Configure fabric.js defaults to use center origin for all objects.
-   * This makes rotation and scaling more intuitive.
-   */
-
-  BaseFabricObject.ownDefaults.originY = 'center'
-  BaseFabricObject.ownDefaults.originX = 'center'
-
-  /**
    * Renders the current slide's elements onto the fabric.js canvas.
    *
    * This function:
@@ -502,8 +516,15 @@
    * Called whenever the current slide changes (via $effect).
    */
   function renderCanvasFromState(): void {
-    if (!fabCanvas || !appState.currentSlide) return
+    console.log('[renderCanvasFromState] Called - fabCanvas:', !!fabCanvas, 'currentSlide:', appState.currentSlide?.id)
+
+    if (!fabCanvas || !appState.currentSlide) {
+      console.log('[renderCanvasFromState] Early return - fabCanvas:', !!fabCanvas, 'currentSlide:', !!appState.currentSlide)
+      return
+    }
+
     const currentSlide = appState.currentSlide
+    console.log('[renderCanvasFromState] Rendering slide with', currentSlide.elements.length, 'elements')
 
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
@@ -527,12 +548,20 @@
       }
     })
 
+    console.log(
+      '[renderCanvasFromState] Non-image elements:',
+      nonImageElements.length,
+      'Image elements:',
+      imageElements.length
+    )
+
     // Add non-image elements synchronously
     nonImageElements.forEach((element) => {
       let fabObj: FabricObject | undefined
 
       // Create fabric.js object based on element type
       if (element.type === 'rect') {
+        console.log('[renderCanvasFromState] Creating rect:', element.id)
         fabObj = new Rect({
           left: element.x,
           top: element.y,
@@ -543,6 +572,7 @@
           id: element.id
         })
       } else if (element.type === 'text') {
+        console.log('[renderCanvasFromState] Creating text:', element.id, 'font:', element.fontFamily, 'size:', element.fontSize)
         // Clean up any unwanted "transparent" values from styles before creating the object
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
 
@@ -560,12 +590,14 @@
 
       if (fabObj) {
         fabCanvas.add(fabObj)
+        console.log('[renderCanvasFromState] Added object to canvas:', element.type, element.id)
       }
     })
 
     // Add image elements asynchronously
     imageElements.forEach((element) => {
       if (element.src) {
+        console.log('[renderCanvasFromState] Loading image:', element.id, 'src length:', element.src.length)
         FabricImage.fromURL(element.src, {
           crossOrigin: 'anonymous'
         })
@@ -585,6 +617,7 @@
 
             fabCanvas.add(img)
             fabCanvas.renderAll()
+            console.log('[renderCanvasFromState] Image loaded and added:', element.id)
           })
           .catch((error) => {
             console.error('Failed to load image:', error)
@@ -593,6 +626,7 @@
     })
 
     fabCanvas.renderAll()
+    console.log('[renderCanvasFromState] Completed - canvas has', fabCanvas.getObjects().length, 'objects')
 
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)

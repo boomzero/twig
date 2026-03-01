@@ -144,8 +144,6 @@
           height: element.height,
           angle: element.angle,
           fill: element.fill,
-          originX: 'center',
-          originY: 'center',
           selectable: false,
           evented: false
         })
@@ -158,8 +156,6 @@
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           styles: element.styles || {},
-          originX: 'center',
-          originY: 'center',
           selectable: false,
           evented: false,
           editable: false
@@ -186,8 +182,6 @@
             angle: element.angle,
             scaleX: scaleX,
             scaleY: scaleY,
-            originX: 'center',
-            originY: 'center',
             selectable: false,
             evented: false
           })
