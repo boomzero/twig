@@ -165,6 +165,12 @@
       saveTimeoutId = null
     }
 
+    // If a text object is actively being edited, sync its current content to
+    // state before saving (normally this only happens on deselection via object:modified)
+    if (activeTextObject?.id) {
+      updateStateFromObject(activeTextObject as DeckFabricObject)
+    }
+
     await performSave(true) // Re-throw errors for caller to handle
   }
 
