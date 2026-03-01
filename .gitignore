@@ -6,5 +6,5 @@ out
 *.log*
 logs/
 .env
-/Deckhand答辩PPT.pptx
-/论文-最终版-修复.pdf
+.enject/
+.idea/
