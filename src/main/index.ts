@@ -944,6 +944,8 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('db:is-temp-file', (_event, filePath: string): boolean => {
     try {
+      validateFilePath(filePath)
+
       // Resolve symlinks and normalize paths
       const realPath = fs.realpathSync(filePath)
       const realTempDir = fs.realpathSync(TEMP_DIR)
@@ -1037,6 +1039,19 @@ app.whenReady().then(() => {
         await retryFileOperation(() => {
           fs.renameSync(sourcePath, destPath)
         })
+
+        // Clean up any orphaned WAL companion files at source path
+        // Even after TRUNCATE checkpoint, .db-shm can persist
+        for (const suffix of ['-wal', '-shm']) {
+          const companionPath = sourcePath + suffix
+          try {
+            if (fs.existsSync(companionPath)) {
+              fs.unlinkSync(companionPath)
+            }
+          } catch {
+            // Non-fatal: orphaned companion files don't affect correctness
+          }
+        }
       } catch (renameError) {
         // If cross-device move (EXDEV), fall back to copy+delete
         const errCode = (renameError as NodeJS.ErrnoException).code
@@ -1082,6 +1097,18 @@ app.whenReady().then(() => {
             throw new Error(
               'Source file still exists after move operation - this indicates a file system error'
             )
+          }
+
+          // Clean up any orphaned WAL companion files at source path
+          for (const suffix of ['-wal', '-shm']) {
+            const companionPath = sourcePath + suffix
+            try {
+              if (fs.existsSync(companionPath)) {
+                fs.unlinkSync(companionPath)
+              }
+            } catch {
+              // Non-fatal: orphaned companion files don't affect correctness
+            }
           }
         } else {
           throw renameError

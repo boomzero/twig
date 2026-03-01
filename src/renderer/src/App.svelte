@@ -9,7 +9,7 @@
   - Keyboard shortcuts and context menus
 
   Key Architecture Patterns:
-  1. State is the source of truth - canvas reflekcts state
+  1. State is the source of truth - canvas reflects state
   2. When state changes → canvas re-renders (via $effect)
   3. When canvas objects are modified → state is updated
   4. Selection state is preserved across re-renders when possible
@@ -23,6 +23,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
+  import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
   import {
     Canvas,
@@ -114,16 +115,21 @@
       await savePromise
     }
 
+    // Snapshot state before any async operation to prevent race conditions
+    // (currentFilePath could change while we're awaiting savePromise)
+    const filePath = appState.currentFilePath
+    const slide = appState.currentSlide
+
     // Check if we have valid state to save
-    if (!appState.currentSlide || !appState.currentFilePath) {
+    if (!slide || !filePath) {
       return
     }
 
     // Start new save operation with promise lock
     savePromise = (async () => {
       try {
-        const plainSlide = JSON.parse(JSON.stringify(appState.currentSlide))
-        await window.api.db.saveSlide(appState.currentFilePath, plainSlide)
+        const plainSlide = JSON.parse(JSON.stringify(slide))
+        await window.api.db.saveSlide(filePath, plainSlide)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('Save operation failed:', errorMessage)
@@ -188,10 +194,7 @@
         appState,
         loadingState
       }
-      ;(window as any).__DECKHAND_FLUSH_SAVE__ = flushPendingSave
-      console.log(
-        '💡 Debug tip: Access app state via window.__DECKHAND_STATE__ or press Cmd/Ctrl+Shift+D'
-      )
+      registerFlushSave(flushPendingSave)
     }
 
     // Listen for state requests from the debug window
@@ -220,6 +223,9 @@
     // Unsubscribe from IPC event listeners
     unsubscribeBeforeClose?.()
     unsubscribeStateRequest?.()
+
+    // Unregister flush save callback
+    unregisterFlushSave()
   })
 
   /**
@@ -308,16 +314,12 @@
    * user selections across state updates.
    */
   $effect(() => {
-    console.log('[RENDER EFFECT] Triggered - isPresentingMode:', appState.isPresentingMode, 'currentSlide:', appState.currentSlide?.id, 'elements:', appState.currentSlide?.elements.length)
-
     // Skip canvas operations during presentation mode - the edit canvas is not rendered
     if (appState.isPresentingMode) {
-      console.log('[RENDER EFFECT] Skipping - in presentation mode')
       return
     }
 
     if (!appState.currentSlide) {
-      console.log('[RENDER EFFECT] No current slide - disposing canvas')
       // Dispose the canvas instance when there's no slide
       // This ensures a fresh canvas is created when a new slide loads
       // (The UI is destroyed when currentSlide is null, so we need to dispose the old canvas)
@@ -331,10 +333,8 @@
     // canvasEl binding might not be ready yet after exiting presentation mode
     // Use requestAnimationFrame to defer to the next frame when DOM is ready
     if (!canvasEl) {
-      console.log('[RENDER EFFECT] canvasEl not ready - using requestAnimationFrame')
       requestAnimationFrame(() => {
         if (canvasEl && appState.currentSlide && !appState.isPresentingMode) {
-          console.log('[RENDER EFFECT RAF] Creating canvas and rendering')
           if (!fabCanvas) {
             fabCanvas = new Canvas(canvasEl)
           }
@@ -374,17 +374,12 @@
     // This handles cases where the DOM element was recreated but fabCanvas still exists
     if (!fabCanvas || fabCanvas.getElement() !== canvasEl) {
       if (fabCanvas) {
-        console.log('[RENDER EFFECT] Disposing stale canvas instance')
         fabCanvas.dispose()
       }
-      console.log('[RENDER EFFECT] Creating new Canvas instance')
       fabCanvas = new Canvas(canvasEl)
-    } else {
-      console.log('[RENDER EFFECT] Using existing Canvas instance')
     }
 
     // Step 3: Re-render all objects from state
-    console.log('[RENDER EFFECT] Calling renderCanvasFromState()')
     renderCanvasFromState()
 
     // Step 4: Restore previous selection if it existed
@@ -421,7 +416,6 @@
       }
     }
 
-    console.log('[RENDER EFFECT] Completed - canvas object count:', fabCanvas?.getObjects().length)
   })
 
   /**
@@ -516,15 +510,11 @@
    * Called whenever the current slide changes (via $effect).
    */
   function renderCanvasFromState(): void {
-    console.log('[renderCanvasFromState] Called - fabCanvas:', !!fabCanvas, 'currentSlide:', appState.currentSlide?.id)
-
     if (!fabCanvas || !appState.currentSlide) {
-      console.log('[renderCanvasFromState] Early return - fabCanvas:', !!fabCanvas, 'currentSlide:', !!appState.currentSlide)
       return
     }
 
     const currentSlide = appState.currentSlide
-    console.log('[renderCanvasFromState] Rendering slide with', currentSlide.elements.length, 'elements')
 
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
@@ -548,20 +538,12 @@
       }
     })
 
-    console.log(
-      '[renderCanvasFromState] Non-image elements:',
-      nonImageElements.length,
-      'Image elements:',
-      imageElements.length
-    )
-
     // Add non-image elements synchronously
     nonImageElements.forEach((element) => {
       let fabObj: FabricObject | undefined
 
       // Create fabric.js object based on element type
       if (element.type === 'rect') {
-        console.log('[renderCanvasFromState] Creating rect:', element.id)
         fabObj = new Rect({
           left: element.x,
           top: element.y,
@@ -572,7 +554,6 @@
           id: element.id
         })
       } else if (element.type === 'text') {
-        console.log('[renderCanvasFromState] Creating text:', element.id, 'font:', element.fontFamily, 'size:', element.fontSize)
         // Clean up any unwanted "transparent" values from styles before creating the object
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
 
@@ -590,14 +571,12 @@
 
       if (fabObj) {
         fabCanvas.add(fabObj)
-        console.log('[renderCanvasFromState] Added object to canvas:', element.type, element.id)
       }
     })
 
     // Add image elements asynchronously
     imageElements.forEach((element) => {
       if (element.src) {
-        console.log('[renderCanvasFromState] Loading image:', element.id, 'src length:', element.src.length)
         FabricImage.fromURL(element.src, {
           crossOrigin: 'anonymous'
         })
@@ -617,7 +596,6 @@
 
             fabCanvas.add(img)
             fabCanvas.renderAll()
-            console.log('[renderCanvasFromState] Image loaded and added:', element.id)
           })
           .catch((error) => {
             console.error('Failed to load image:', error)
@@ -626,7 +604,6 @@
     })
 
     fabCanvas.renderAll()
-    console.log('[renderCanvasFromState] Completed - canvas has', fabCanvas.getObjects().length, 'objects')
 
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)
@@ -1033,20 +1010,6 @@
       isSelectionBold = textLength > 0 && allBold
       isSelectionItalic = textLength > 0 && allItalic
       isSelectionUnderlined = textLength > 0 && allUnderlined
-      console.log(
-        '[handleTextSelectionChange] no-selection: allBold:',
-        allBold,
-        'allItalic:',
-        allItalic,
-        'allUnderlined:',
-        allUnderlined
-      )
-      console.log(
-        '[handleTextSelectionChange] => isSelectionBold:',
-        isSelectionBold,
-        'isSelectionItalic:',
-        isSelectionItalic
-      )
 
       if (firstFontSize !== null) {
         selectionFontSize = firstFontSize
@@ -1083,6 +1046,8 @@
   async function handleNewPresentation(): Promise<void> {
     let retryCount = 0
     const maxRetries = 3
+    let userInitiatedRetries = 0
+    const maxUserRetries = 2 // Cap user-initiated retries to prevent infinite loops
 
     while (retryCount < maxRetries) {
       let tempPath: string | null = null
@@ -1146,6 +1111,15 @@
           )
 
           if (retry) {
+            // Cap user-initiated retries to prevent infinite looping
+            userInitiatedRetries++
+            if (userInitiatedRetries > maxUserRetries) {
+              alert(
+                'Unable to create a new presentation after multiple attempts. ' +
+                'Please check your system resources and try again later.'
+              )
+              return
+            }
             retryCount = 0 // Reset and try again
           } else {
             // User gave up - leave them with current state (if any)

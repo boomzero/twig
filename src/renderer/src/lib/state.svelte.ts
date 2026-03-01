@@ -10,6 +10,8 @@
  * - When currentFilePath is null: all slides are kept in inMemorySlides array
  */
 
+import { getFlushSave } from './saveCallbacks'
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -226,8 +228,8 @@ export async function loadSlide(slideId: string): Promise<void> {
   try {
     // Flush any pending auto-save to prevent duplicate saves
     // This cancels the debounced save and saves immediately if needed
-    const flushSave = (window as any).__DECKHAND_FLUSH_SAVE__
-    if (typeof flushSave === 'function') {
+    const flushSave = getFlushSave()
+    if (flushSave) {
       let flushAttempts = 0
       const maxFlushAttempts = 3
 
