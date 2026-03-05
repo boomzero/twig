@@ -165,6 +165,12 @@
       await savePromise
     } finally {
       savePromise = null
+      // Safety net: if status is still 'saving' here, something bypassed both
+      // setSaveStatus('saved') and setSaveStatus('error') — reset to avoid a
+      // permanently stuck indicator.
+      if (saveStatus === 'saving') {
+        setSaveStatus('error')
+      }
     }
   }
 
