@@ -141,6 +141,7 @@
 
     // Check if we have valid state to save
     if (!slide || !filePath) {
+      setSaveStatus('idle')
       return
     }
 
@@ -175,7 +176,7 @@
   }
 
   function scheduleSave(): void {
-    setSaveStatus('pending')
+    if (saveStatus !== 'saving') setSaveStatus('pending')
     if (saveTimeoutId) clearTimeout(saveTimeoutId)
     saveTimeoutId = setTimeout(async () => {
       saveTimeoutId = null
