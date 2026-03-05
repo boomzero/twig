@@ -104,9 +104,26 @@
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
 
   // Auto-save status indicator
+  // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
+  // 'pending' — unsaved changes exist, debounced save queued
+  // 'saving'  — save in flight
+  // 'saved'   — just saved (green flash for 2s, then transitions to 'idle')
+  // 'error'   — last save failed
   type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
   let saveStatus = $state<SaveStatus>('idle')
   let savedResetTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  // Timestamp of the last successful save, used to render "Saved Xs ago" in idle state.
+  // Starts as null (no save has occurred yet). The toolbar is only rendered when
+  // appState.currentSlide is set, which happens after handleNewPresentation/handleOpen
+  // complete — both call setSaveStatus('saved'), so lastSavedAt is set before the
+  // idle indicator ever appears.
+  let lastSavedAt: number | null = null
+
+  // Reactive clock for updating the relative timestamp in idle state.
+  // Only ticks once a save has occurred (interval started lazily in setSaveStatus).
+  let now = $state(Date.now())
+  let nowTickId: ReturnType<typeof setInterval> | null = null
 
   function setSaveStatus(status: SaveStatus): void {
     saveStatus = status
@@ -115,11 +132,25 @@
       savedResetTimeoutId = null
     }
     if (status === 'saved') {
+      lastSavedAt = Date.now()
+      // Start the relative-time ticker if not already running
+      if (!nowTickId) {
+        nowTickId = setInterval(() => { now = Date.now() }, 10_000)
+      }
       savedResetTimeoutId = setTimeout(() => {
         saveStatus = 'idle'
         savedResetTimeoutId = null
       }, 2000)
     }
+  }
+
+  function formatRelativeTime(ts: number): string {
+    const secs = Math.floor((now - ts) / 1000)
+    if (secs < 10) return 'just now'
+    if (secs < 60) return `${secs}s ago`
+    const mins = Math.floor(secs / 60)
+    if (mins < 60) return `${mins}m ago`
+    return `${Math.floor(mins / 60)}h ago`
   }
 
   /**
@@ -262,6 +293,10 @@
     if (savedResetTimeoutId) {
       clearTimeout(savedResetTimeoutId)
       savedResetTimeoutId = null
+    }
+    if (nowTickId) {
+      clearInterval(nowTickId)
+      nowTickId = null
     }
 
     // Unsubscribe from IPC event listeners
@@ -742,6 +777,7 @@
     // Sync previous text object state before switching - object:modified doesn't always fire
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as DeckFabricObject)
+      // Explicit call: $effect doesn't subscribe to deep element property changes
       scheduleSave()
     }
 
@@ -784,6 +820,7 @@
     // Sync state before clearing - object:modified doesn't always fire reliably
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as DeckFabricObject)
+      // Explicit call: $effect doesn't subscribe to deep element property changes
       scheduleSave()
     }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
@@ -1137,6 +1174,7 @@
         appState.selectedObjectId = null
 
         console.log('Created new presentation with temp database:', tempPath)
+        setSaveStatus('saved')
         return // Success!
       } catch (error) {
         console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
@@ -1202,6 +1240,7 @@
         await flushPendingSave()
 
         await loadPresentation(filePath)
+        setSaveStatus('saved')
       } catch (error) {
         console.error('Failed to open presentation:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -2160,15 +2199,15 @@
       >
         Save As
       </button>
-      <div class="flex items-center mr-2 w-24">
-        {#if saveStatus === 'idle'}
-          <span class="flex items-center gap-1 text-xs text-gray-300">
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div class="flex items-center mr-2 w-28">
+        {#if saveStatus === 'idle' && lastSavedAt !== null}
+          <span class="flex items-center gap-1 text-xs text-gray-400">
+            <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
               <polyline points="17 21 17 13 7 13 7 21"/>
               <polyline points="7 3 7 8 15 8"/>
             </svg>
-            Saved
+            {formatRelativeTime(lastSavedAt)}
           </span>
         {:else if saveStatus === 'pending'}
           <span class="flex items-center gap-1 text-xs text-gray-400">
