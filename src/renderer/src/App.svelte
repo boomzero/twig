@@ -2146,7 +2146,7 @@
       >
         Save As
       </button>
-      <div class="flex items-center mr-2 min-w-[90px]">
+      <div class="flex items-center mr-2">
         {#if saveStatus === 'pending'}
           <span class="flex items-center gap-1 text-xs text-gray-400">
             <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8">
