@@ -176,7 +176,11 @@
   }
 
   function scheduleSave(): void {
-    if (saveStatus !== 'saving') setSaveStatus('pending')
+    // Always mark as pending — a queued debounced save IS pending, even if
+    // a save is currently in-flight. This prevents a false "Saved" indicator
+    // during the window between an in-flight save completing and the next
+    // debounced save starting.
+    setSaveStatus('pending')
     if (saveTimeoutId) clearTimeout(saveTimeoutId)
     saveTimeoutId = setTimeout(async () => {
       saveTimeoutId = null
@@ -2179,13 +2183,18 @@
             Saved
           </span>
         {:else if saveStatus === 'error'}
-          <span class="flex items-center gap-1 text-xs text-red-500" title="Auto-save failed">
+          <span class="flex items-center gap-1 text-xs text-red-500">
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
             Save failed
+            <button
+              onclick={scheduleSave}
+              class="underline hover:no-underline"
+              title="Retry save"
+            >Retry</button>
           </span>
         {/if}
       </div>
