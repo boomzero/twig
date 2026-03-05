@@ -2160,8 +2160,17 @@
       >
         Save As
       </button>
-      <div class="flex items-center mr-2">
-        {#if saveStatus === 'pending'}
+      <div class="flex items-center mr-2 w-24">
+        {#if saveStatus === 'idle'}
+          <span class="flex items-center gap-1 text-xs text-gray-300">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Saved
+          </span>
+        {:else if saveStatus === 'pending'}
           <span class="flex items-center gap-1 text-xs text-gray-400">
             <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8">
               <circle cx="4" cy="4" r="3" />
