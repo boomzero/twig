@@ -678,6 +678,10 @@
     } else {
       updateStateFromObject(target as DeckFabricObject)
     }
+
+    // Trigger auto-save directly — the $effect doesn't subscribe to deep element
+    // property changes, so we must call scheduleSave() explicitly here.
+    scheduleSave()
   }
 
   /**
@@ -734,6 +738,7 @@
     // Sync previous text object state before switching - object:modified doesn't always fire
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as DeckFabricObject)
+      scheduleSave()
     }
 
     // Remove old text selection change listener
@@ -775,6 +780,7 @@
     // Sync state before clearing - object:modified doesn't always fire reliably
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as DeckFabricObject)
+      scheduleSave()
     }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
@@ -1799,6 +1805,7 @@
       fill: '#333333'
     }
     appState.currentSlide.elements.push(newText)
+    scheduleSave()
   }
 
   /**
@@ -1817,6 +1824,7 @@
       fill: '#FF6F61'
     }
     appState.currentSlide.elements.push(newRect)
+    scheduleSave()
   }
 
   /**
@@ -1872,6 +1880,7 @@
       }
 
       appState.currentSlide.elements.push(newImage)
+      scheduleSave()
     } catch (error) {
       console.error('Failed to add image:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -1934,6 +1943,7 @@
       )
       // Clear the canvas selection
       fabCanvas.discardActiveObject()
+      scheduleSave()
     }
   }
 
@@ -2347,7 +2357,7 @@
           </div>
         </div>
       </div>
-      <PropertiesPanel />
+      <PropertiesPanel onPropertyChange={scheduleSave} />
     </div>
   </div>
 {:else}
