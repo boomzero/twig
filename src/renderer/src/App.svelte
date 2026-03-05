@@ -133,14 +133,22 @@
     }
     if (status === 'saved') {
       lastSavedAt = Date.now()
-      // Start the relative-time ticker if not already running
+      // Stop the tick during the 2s green-flash; it will restart on idle entry
+      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
+      savedResetTimeoutId = setTimeout(() => {
+        savedResetTimeoutId = null
+        setSaveStatus('idle')
+      }, 2000)
+    } else if (status === 'idle') {
+      // Sync 'now' immediately so the relative timestamp is accurate on entry,
+      // then tick every 10s to keep it fresh.
+      now = Date.now()
       if (!nowTickId) {
         nowTickId = setInterval(() => { now = Date.now() }, 10_000)
       }
-      savedResetTimeoutId = setTimeout(() => {
-        saveStatus = 'idle'
-        savedResetTimeoutId = null
-      }, 2000)
+    } else {
+      // pending / saving / error — relative timestamp not shown, stop the ticker
+      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
     }
   }
 
@@ -170,9 +178,12 @@
     const filePath = appState.currentFilePath
     const slide = appState.currentSlide
 
-    // Check if we have valid state to save
+    // Check if we have valid state to save.
+    // Don't change saveStatus here — if status is 'pending', the changes are still
+    // unwritten; leaving it as-is avoids a false 'idle' flash. The transition
+    // handlers (handleNewPresentation, handleOpen) call setSaveStatus('saved') once
+    // valid state is established, which normalises the indicator.
     if (!slide || !filePath) {
-      setSaveStatus('idle')
       return
     }
 
@@ -1935,6 +1946,16 @@
    * Creates a new blank slide and adds it to the presentation.
    * Handles both saved (file-based) and unsaved (in-memory) presentations.
    */
+  /**
+   * Flush any pending save for the current slide then navigate to the target slide.
+   * This prevents stale status carrying over to the new slide's view.
+   */
+  async function handleSlideSelect(slideId: string): Promise<void> {
+    if (slideId === appState.currentSlide?.id) return
+    await flushPendingSave()
+    await loadSlide(slideId)
+  }
+
   async function addNewSlide(): Promise<void> {
     if (!appState.currentFilePath) {
       console.error('Cannot add slide: no current file path')
@@ -2251,7 +2272,7 @@
             <line x1="12" y1="9" x2="12" y2="13"/>
             <line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
-          Unsaved
+          Temp file
         </span>
       {/if}
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
@@ -2402,7 +2423,7 @@
             class="p-2 mb-2 text-sm text-center bg-white border rounded-md shadow-md cursor-pointer hover:border-indigo-500 w-full"
             class:border-indigo-500={slideId === appState.currentSlide.id}
             class:bg-indigo-100={slideId === appState.currentSlide.id}
-            onclick={async () => await loadSlide(slideId)}
+            onclick={() => handleSlideSelect(slideId)}
             disabled={loadingState.isLoadingSlide}
           >
             Slide {index + 1}
