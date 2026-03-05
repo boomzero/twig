@@ -111,7 +111,7 @@
    */
   async function performSave(rethrowErrors: boolean = false): Promise<void> {
     // Wait for any in-flight save to complete
-    if (savePromise) {
+    while (savePromise) {
       await savePromise
     }
 
