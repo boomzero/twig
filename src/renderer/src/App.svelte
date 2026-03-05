@@ -555,6 +555,13 @@
 
     const currentSlide = appState.currentSlide
 
+    // Null out the stale text object reference before clearing the canvas.
+    // When selection is restored after re-render, handleSelection fires and would call
+    // updateStateFromObject(activeTextObject) on the now-destroyed old fabric object.
+    // That state mutation re-triggers this $effect, causing an infinite reactive loop.
+    // Nulling here breaks the cycle: handleSelection's guard `if (activeTextObject)` is false.
+    activeTextObject = null
+
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
     fabCanvas.off('text:changed', handleTextChanged)
