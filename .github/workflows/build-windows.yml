@@ -41,7 +41,7 @@ jobs:
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deckhand-windows
+          name: twig-windows
           path: |
             dist/*.exe
             dist/*.msi

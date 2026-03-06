@@ -1,5 +1,5 @@
 /**
- * Global application state management for Deckhand.
+ * Global application state management for twig.
  *
  * This file uses Svelte 5's $state rune to create reactive state that
  * automatically triggers re-renders when modified.
@@ -117,7 +117,7 @@ export const appState = $state({
   /** Index of the current slide in slideIds array */
   currentSlideIndex: -1,
 
-  /** Absolute path to the .db file (can be temp or user-chosen) */
+  /** Absolute path to the .tb file (can be temp or user-chosen) */
   currentFilePath: null as string | null,
 
   /** Whether the current file is a temporary file (unsaved presentation) */
@@ -163,7 +163,7 @@ export function resetState(): void {
  * 2. Sets currentFilePath and checks if it's a temp file
  * 3. Loads the first slide (or creates one if the file is empty)
  *
- * @param filePath - Absolute path to the .db file to load
+ * @param filePath - Absolute path to the .tb file to load
  */
 export async function loadPresentation(filePath: string): Promise<void> {
   const ids = await window.api.db.getSlideIds(filePath)

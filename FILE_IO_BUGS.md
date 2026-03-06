@@ -140,11 +140,11 @@ These test scenarios can be used to verify that all file I/O bugs remain resolve
 
 1. **Slide order validation**
    - Manually modify database to create gaps in slide_order values (e.g., 0, 2, 5)
-   - Add a new slide in Deckhand
+   - Add a new slide in twig
    - Verify that order is automatically repaired to be sequential (0, 1, 2, 3)
 
 2. **Empty file error handling**
    - Create an empty .db file or corrupt database
-   - Try to open file in Deckhand
+   - Try to open file in twig
    - Verify user sees helpful error dialog: "Failed to initialize the presentation file..."
    - Verify app state is properly reset and doesn't crash

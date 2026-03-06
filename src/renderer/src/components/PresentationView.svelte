@@ -1,7 +1,7 @@
 <!--
   PresentationView Component
 
-  Fullscreen presentation mode for Deckhand.
+  Fullscreen presentation mode for twig.
   Displays slides in a clean, fullscreen view without editing controls.
 
   Features:

@@ -1,7 +1,7 @@
 /**
  * Typed callback registry for cross-module save coordination.
  *
- * This replaces the `window.__DECKHAND_FLUSH_SAVE__` global with a type-safe
+ * This replaces the `window.__TWIG_FLUSH_SAVE__` global with a type-safe
  * module-level callback. App.svelte registers its flushPendingSave function
  * on mount, and state.svelte.ts imports it for use during slide navigation.
  */

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Deckhand is a presentation editor built with Electron, Svelte 5, and fabric.js. It allows users to create slide decks with text and shapes, which are stored in SQLite database files (.db format).
+twig is a presentation editor built with Electron, Svelte 5, and fabric.js. It allows users to create slide decks with text and shapes, which are stored in SQLite database files (.tb format).
 
 ## Tech Stack
 
@@ -55,7 +55,7 @@ npm run rebuild          # Rebuild native modules (e.g., after Node version chan
 
 ### Three-Process Model
 
-Deckhand follows Electron's standard architecture:
+twig follows Electron's standard architecture:
 
 1. **Main Process** (`src/main/index.ts`): Node.js process that manages the application lifecycle, native APIs (dialogs, file system), and database connections
 2. **Preload Script** (`src/preload/index.ts`): Bridge layer that safely exposes IPC handlers to the renderer via `contextBridge`
@@ -154,7 +154,7 @@ A separate debug window allows real-time inspection of the application state:
 
 - **Keyboard shortcut**: Press `Cmd/Ctrl+Shift+D` to open the debug window
 - **UI button**: Click the "Debug" button in the toolbar
-- **Console access**: State is exposed on `window.__DECKHAND_STATE__` for console inspection
+- **Console access**: State is exposed on `window.__TWIG_STATE__` for console inspection
 - **Features**:
   - Real-time state updates - automatically reflects changes from the main window
   - View current file path and persistence mode

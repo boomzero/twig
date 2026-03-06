@@ -1,5 +1,5 @@
 /**
- * Main process entry point for Deckhand presentation editor.
+ * Main process entry point for twig presentation editor.
  *
  * This file manages:
  * - Application lifecycle (startup, shutdown)
@@ -37,9 +37,9 @@ function validateFilePath(filePath: string): void {
     throw new Error('File path must be absolute')
   }
 
-  // Ensure it ends with .db
-  if (!filePath.endsWith('.db')) {
-    throw new Error('Invalid file extension. Expected .db file')
+  // Ensure it ends with .tb
+  if (!filePath.endsWith('.tb')) {
+    throw new Error('Invalid file extension. Expected .tb file')
   }
 
   // Prevent path traversal by ensuring normalized path matches original
@@ -101,7 +101,7 @@ function ensureTempDir(): void {
     if (fs.existsSync(TEMP_DIR)) {
       const files = fs.readdirSync(TEMP_DIR)
       for (const file of files) {
-        if (file.endsWith('.db')) {
+        if (file.endsWith('.tb')) {
           const filePath = join(TEMP_DIR, file)
           try {
             const stats = fs.statSync(filePath)
@@ -146,7 +146,7 @@ const accessOrder: string[] = []
  * Retrieves or creates a database connection for the given file.
  * Connections are cached for reuse across multiple operations.
  *
- * @param filePath - Absolute path to the .db file
+ * @param filePath - Absolute path to the .tb file
  * @returns The database connection instance
  * @throws Error if the file is not a valid SQLite database
  */
@@ -176,7 +176,7 @@ function getDbConnection(filePath: string): Database.Database {
 
       if (!fileHeader.startsWith('SQLite format 3')) {
         throw new Error(
-          `File ${filePath} is not a valid SQLite database. Please select a valid Deckhand presentation file.`
+          `File ${filePath} is not a valid SQLite database. Please select a valid twig presentation file.`
         )
       }
     } catch (error) {
@@ -206,7 +206,7 @@ function getDbConnection(filePath: string): Database.Database {
   } catch (error) {
     if (error instanceof Error && error.message.includes('not a database')) {
       throw new Error(
-        `File ${filePath} is not a valid SQLite database. Please select a valid Deckhand presentation file.`
+        `File ${filePath} is not a valid SQLite database. Please select a valid twig presentation file.`
       )
     }
     throw error
@@ -345,7 +345,7 @@ function safeLog(message: string, level: 'log' | 'warn' | 'error' = 'log'): void
  * Closes and removes a database connection from the cache.
  * This should be called before overwriting or deleting a database file.
  *
- * @param filePath - Absolute path to the .db file
+ * @param filePath - Absolute path to the .tb file
  * @param checkpointMode - WAL checkpoint mode: 'none' (no checkpoint), 'passive' (non-blocking), 'truncate' (full checkpoint)
  */
 function closeDbConnection(filePath: string, checkpointMode: 'none' | 'passive' | 'truncate' = 'none'): void {
@@ -665,7 +665,7 @@ function createDebugWindow(): void {
   debugWindow = new BrowserWindow({
     width: 800,
     height: 900,
-    title: 'Deckhand Debug Panel',
+    title: 'twig Debug Panel',
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -722,7 +722,7 @@ app.whenReady().then(() => {
     const { filePaths } = await dialog.showOpenDialog(window!, {
       title: 'Open Presentation',
       properties: ['openFile'],
-      filters: [{ name: 'Deckhand Files', extensions: ['db'] }]
+      filters: [{ name: 'twig Files', extensions: ['tb'] }]
     })
     return filePaths && filePaths.length > 0 ? filePaths[0] : null
   })
@@ -735,8 +735,8 @@ app.whenReady().then(() => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const { filePath } = await dialog.showSaveDialog(window!, {
       title: 'Save Presentation',
-      defaultPath: 'presentation.db',
-      filters: [{ name: 'Deckhand Files', extensions: ['db'] }]
+      defaultPath: 'presentation.tb',
+      filters: [{ name: 'twig Files', extensions: ['tb'] }]
     })
     return filePath
   })
@@ -920,7 +920,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:create-temp', (): string => {
     try {
       ensureTempDir()
-      const tempPath = join(TEMP_DIR, `temp-${crypto.randomUUID()}.db`)
+      const tempPath = join(TEMP_DIR, `temp-${crypto.randomUUID()}.tb`)
 
       // Create and initialize the database
       getDbConnection(tempPath)
@@ -1041,7 +1041,7 @@ app.whenReady().then(() => {
         })
 
         // Clean up any orphaned WAL companion files at source path
-        // Even after TRUNCATE checkpoint, .db-shm can persist
+        // Even after TRUNCATE checkpoint, .tb-shm can persist
         for (const suffix of ['-wal', '-shm']) {
           const companionPath = sourcePath + suffix
           try {

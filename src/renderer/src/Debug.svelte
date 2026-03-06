@@ -89,7 +89,7 @@
 
   // Log full state to console
   function logFullState(): void {
-    console.group('🔍 Deckhand Application State')
+    console.group('🔍 twig Application State')
     console.log('State:', state)
     console.log('Last Update:', lastUpdate)
     console.log('Update Count:', updateCount)
@@ -106,7 +106,7 @@
       win.document.write(`
         <html>
           <head>
-            <title>Deckhand State JSON</title>
+            <title>twig State JSON</title>
             <style>
               body {
                 margin: 0;
@@ -200,7 +200,7 @@
     <div class="bg-gray-800 text-white px-6 py-4 rounded-t-lg">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-xl font-bold">Deckhand Debug Panel</h1>
+          <h1 class="text-xl font-bold">twig Debug Panel</h1>
           <p class="text-sm text-gray-300 mt-1">Real-time application state monitor</p>
         </div>
         <div class="text-right text-sm">

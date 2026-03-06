@@ -1,5 +1,5 @@
-appId: com.deckhand.app
-productName: deckhand
+appId: com.twig.app
+productName: twig
 directories:
   buildResources: build
 files:
@@ -13,7 +13,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: deckhand
+  executableName: twig
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

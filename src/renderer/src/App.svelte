@@ -1,7 +1,7 @@
 <!--
   Main Application Component - App.svelte
 
-  This is the main UI component for Deckhand. It manages:
+  This is the main UI component for twig. It manages:
   - The fabric.js canvas for rendering and editing slides
   - Bi-directional sync between application state and canvas objects
   - Rich text editing capabilities
@@ -272,7 +272,7 @@
 
     // Expose state and utility functions to window for console debugging
     if (typeof window !== 'undefined') {
-      ;(window as any).__DECKHAND_STATE__ = {
+      ;(window as any).__TWIG_STATE__ = {
         appState,
         loadingState
       }

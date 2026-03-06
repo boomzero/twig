@@ -1,4 +1,4 @@
-# Deckhand Bug Audit Report
+# twig Bug Audit Report
 
 **Date**: 2025-10-17
 **Auditor**: Claude Code
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-This audit identified **7 bugs** across the Deckhand codebase, ranging from critical user-facing issues to potential resource leaks. The bugs are categorized by severity:
+This audit identified **7 bugs** across the twig codebase, ranging from critical user-facing issues to potential resource leaks. The bugs are categorized by severity:
 
 - **High Priority**: 3 bugs
 - **Medium Priority**: 2 bugs

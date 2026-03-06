@@ -1,5 +1,5 @@
 /**
- * Preload script for Deckhand.
+ * Preload script for twig.
  *
  * This script runs in a privileged context and safely exposes IPC APIs
  * to the renderer process via contextBridge. It acts as a secure bridge

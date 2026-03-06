@@ -1,6 +1,6 @@
 # macOS Code Signing & Notarization Setup
 
-This guide walks you through setting up code signing and notarization for Deckhand on macOS.
+This guide walks you through setting up code signing and notarization for twig on macOS.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ You should see a line like:
 2. Sign in with your Apple ID
 3. In the **Security** section, click **App-Specific Passwords**
 4. Click **Generate an app-specific password**
-5. Give it a label like "Deckhand Notarization"
+5. Give it a label like "twig Notarization"
 6. Copy the generated password (format: `xxxx-xxxx-xxxx-xxxx`)
 
 **Important**: Save this password securely! You won't be able to see it again.
@@ -117,7 +117,7 @@ Example GitHub Actions:
 
 ## What's Been Configured
 
-- ✓ App ID changed to `com.deckhand.app`
+- ✓ App ID changed to `com.twig.app`
 - ✓ Hardened Runtime enabled
 - ✓ Notarization configured in `electron-builder.yml`
 - ✓ Entitlements file for necessary exceptions
