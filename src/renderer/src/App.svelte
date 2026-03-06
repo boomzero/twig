@@ -1946,16 +1946,6 @@
    * Creates a new blank slide and adds it to the presentation.
    * Handles both saved (file-based) and unsaved (in-memory) presentations.
    */
-  /**
-   * Flush any pending save for the current slide then navigate to the target slide.
-   * This prevents stale status carrying over to the new slide's view.
-   */
-  async function handleSlideSelect(slideId: string): Promise<void> {
-    if (slideId === appState.currentSlide?.id) return
-    await flushPendingSave()
-    await loadSlide(slideId)
-  }
-
   async function addNewSlide(): Promise<void> {
     if (!appState.currentFilePath) {
       console.error('Cannot add slide: no current file path')
@@ -1985,6 +1975,16 @@
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       alert(`Failed to create new slide: ${errorMessage}`)
     }
+  }
+
+  /**
+   * Flush any pending save for the current slide then navigate to the target slide.
+   * This prevents stale status carrying over to the new slide's view.
+   */
+  async function handleSlideSelect(slideId: string): Promise<void> {
+    if (slideId === appState.currentSlide?.id) return
+    await flushPendingSave()
+    await loadSlide(slideId)
   }
 
   /**
@@ -2423,7 +2423,7 @@
             class="p-2 mb-2 text-sm text-center bg-white border rounded-md shadow-md cursor-pointer hover:border-indigo-500 w-full"
             class:border-indigo-500={slideId === appState.currentSlide.id}
             class:bg-indigo-100={slideId === appState.currentSlide.id}
-            onclick={() => handleSlideSelect(slideId)}
+            onclick={async () => await handleSlideSelect(slideId)}
             disabled={loadingState.isLoadingSlide}
           >
             Slide {index + 1}
