@@ -12,6 +12,8 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
 
+  const { onPropertyChange }: { onPropertyChange?: () => void } = $props()
+
   // Reactively compute the currently selected object from app state
   // This will automatically update when the selection changes
   const selectedObject = $derived(
@@ -31,6 +33,7 @@
           type="number"
           id="x"
           bind:value={selectedObject.x}
+          oninput={onPropertyChange}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -40,6 +43,7 @@
           type="number"
           id="y"
           bind:value={selectedObject.y}
+          oninput={onPropertyChange}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -49,6 +53,7 @@
           type="number"
           id="width"
           bind:value={selectedObject.width}
+          oninput={onPropertyChange}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -58,6 +63,7 @@
           type="number"
           id="height"
           bind:value={selectedObject.height}
+          oninput={onPropertyChange}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -67,6 +73,7 @@
           type="number"
           id="angle"
           bind:value={selectedObject.angle}
+          oninput={onPropertyChange}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>

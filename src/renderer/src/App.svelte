@@ -103,6 +103,64 @@
   // Debounced auto-save
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
 
+  // Auto-save status indicator
+  // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
+  // 'pending' — unsaved changes exist, debounced save queued
+  // 'saving'  — save in flight
+  // 'saved'   — just saved (green flash for 2s, then transitions to 'idle')
+  // 'error'   — last save failed
+  type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+  let saveStatus = $state<SaveStatus>('idle')
+  let savedResetTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  // Timestamp of the last successful save, used to render "Saved Xs ago" in idle state.
+  // Starts as null (no save has occurred yet). The toolbar is only rendered when
+  // appState.currentSlide is set, which happens after handleNewPresentation/handleOpen
+  // complete — both call setSaveStatus('saved'), so lastSavedAt is set before the
+  // idle indicator ever appears.
+  let lastSavedAt: number | null = null
+
+  // Reactive clock for updating the relative timestamp in idle state.
+  // Only ticks once a save has occurred (interval started lazily in setSaveStatus).
+  let now = $state(Date.now())
+  let nowTickId: ReturnType<typeof setInterval> | null = null
+
+  function setSaveStatus(status: SaveStatus): void {
+    saveStatus = status
+    if (savedResetTimeoutId) {
+      clearTimeout(savedResetTimeoutId)
+      savedResetTimeoutId = null
+    }
+    if (status === 'saved') {
+      lastSavedAt = Date.now()
+      // Stop the tick during the 2s green-flash; it will restart on idle entry
+      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
+      savedResetTimeoutId = setTimeout(() => {
+        savedResetTimeoutId = null
+        setSaveStatus('idle')
+      }, 2000)
+    } else if (status === 'idle') {
+      // Sync 'now' immediately so the relative timestamp is accurate on entry,
+      // then tick every 10s to keep it fresh.
+      now = Date.now()
+      if (!nowTickId) {
+        nowTickId = setInterval(() => { now = Date.now() }, 10_000)
+      }
+    } else {
+      // pending / saving / error — relative timestamp not shown, stop the ticker
+      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
+    }
+  }
+
+  function formatRelativeTime(ts: number): string {
+    const secs = Math.floor((now - ts) / 1000)
+    if (secs < 10) return 'just now'
+    if (secs < 60) return `${secs}s ago`
+    const mins = Math.floor(secs / 60)
+    if (mins < 60) return `${mins}m ago`
+    return `${Math.floor(mins / 60)}h ago`
+  }
+
   /**
    * Performs the actual save operation with promise-based locking.
    * This is the single source of truth for all save operations.
@@ -120,19 +178,26 @@
     const filePath = appState.currentFilePath
     const slide = appState.currentSlide
 
-    // Check if we have valid state to save
+    // Check if we have valid state to save.
+    // Don't change saveStatus here — if status is 'pending', the changes are still
+    // unwritten; leaving it as-is avoids a false 'idle' flash. The transition
+    // handlers (handleNewPresentation, handleOpen) call setSaveStatus('saved') once
+    // valid state is established, which normalises the indicator.
     if (!slide || !filePath) {
       return
     }
 
     // Start new save operation with promise lock
+    setSaveStatus('saving')
     savePromise = (async () => {
       try {
         const plainSlide = JSON.parse(JSON.stringify(slide))
         await window.api.db.saveSlide(filePath, plainSlide)
+        setSaveStatus('saved')
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('Save operation failed:', errorMessage)
+        setSaveStatus('error')
         if (rethrowErrors) {
           throw error
         }
@@ -143,10 +208,21 @@
       await savePromise
     } finally {
       savePromise = null
+      // Safety net: if status is still 'saving' here, something bypassed both
+      // setSaveStatus('saved') and setSaveStatus('error') — reset to avoid a
+      // permanently stuck indicator.
+      if (saveStatus === 'saving') {
+        setSaveStatus('error')
+      }
     }
   }
 
   function scheduleSave(): void {
+    // Always mark as pending — a queued debounced save IS pending, even if
+    // a save is currently in-flight. This prevents a false "Saved" indicator
+    // during the window between an in-flight save completing and the next
+    // debounced save starting.
+    setSaveStatus('pending')
     if (saveTimeoutId) clearTimeout(saveTimeoutId)
     saveTimeoutId = setTimeout(async () => {
       saveTimeoutId = null
@@ -224,6 +300,14 @@
     if (saveTimeoutId) {
       clearTimeout(saveTimeoutId)
       saveTimeoutId = null
+    }
+    if (savedResetTimeoutId) {
+      clearTimeout(savedResetTimeoutId)
+      savedResetTimeoutId = null
+    }
+    if (nowTickId) {
+      clearInterval(nowTickId)
+      nowTickId = null
     }
 
     // Unsubscribe from IPC event listeners
@@ -522,6 +606,13 @@
 
     const currentSlide = appState.currentSlide
 
+    // Null out the stale text object reference before clearing the canvas.
+    // When selection is restored after re-render, handleSelection fires and would call
+    // updateStateFromObject(activeTextObject) on the now-destroyed old fabric object.
+    // That state mutation re-triggers this $effect, causing an infinite reactive loop.
+    // Nulling here breaks the cycle: handleSelection's guard `if (activeTextObject)` is false.
+    activeTextObject = null
+
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
     fabCanvas.off('text:changed', handleTextChanged)
@@ -637,6 +728,10 @@
     } else {
       updateStateFromObject(target as DeckFabricObject)
     }
+
+    // Trigger auto-save directly — the $effect doesn't subscribe to deep element
+    // property changes, so we must call scheduleSave() explicitly here.
+    scheduleSave()
   }
 
   /**
@@ -693,6 +788,8 @@
     // Sync previous text object state before switching - object:modified doesn't always fire
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as DeckFabricObject)
+      // Explicit call: $effect doesn't subscribe to deep element property changes
+      scheduleSave()
     }
 
     // Remove old text selection change listener
@@ -734,6 +831,8 @@
     // Sync state before clearing - object:modified doesn't always fire reliably
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as DeckFabricObject)
+      // Explicit call: $effect doesn't subscribe to deep element property changes
+      scheduleSave()
     }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
@@ -1086,6 +1185,7 @@
         appState.selectedObjectId = null
 
         console.log('Created new presentation with temp database:', tempPath)
+        setSaveStatus('saved')
         return // Success!
       } catch (error) {
         console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
@@ -1151,6 +1251,7 @@
         await flushPendingSave()
 
         await loadPresentation(filePath)
+        setSaveStatus('saved')
       } catch (error) {
         console.error('Failed to open presentation:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -1758,6 +1859,7 @@
       fill: '#333333'
     }
     appState.currentSlide.elements.push(newText)
+    scheduleSave()
   }
 
   /**
@@ -1776,6 +1878,7 @@
       fill: '#FF6F61'
     }
     appState.currentSlide.elements.push(newRect)
+    scheduleSave()
   }
 
   /**
@@ -1831,6 +1934,7 @@
       }
 
       appState.currentSlide.elements.push(newImage)
+      scheduleSave()
     } catch (error) {
       console.error('Failed to add image:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -1874,6 +1978,16 @@
   }
 
   /**
+   * Flush any pending save for the current slide then navigate to the target slide.
+   * This prevents stale status carrying over to the new slide's view.
+   */
+  async function handleSlideSelect(slideId: string): Promise<void> {
+    if (slideId === appState.currentSlide?.id) return
+    await flushPendingSave()
+    await loadSlide(slideId)
+  }
+
+  /**
    * Deletes the currently selected object(s) from the canvas and state.
    * Supports deleting multiple objects when a multi-selection is active.
    */
@@ -1893,6 +2007,7 @@
       )
       // Clear the canvas selection
       fabCanvas.discardActiveObject()
+      scheduleSave()
     }
   }
 
@@ -2105,6 +2220,61 @@
       >
         Save As
       </button>
+      <div class="flex items-center mr-2 w-28">
+        {#if saveStatus === 'idle' && lastSavedAt !== null}
+          <span class="flex items-center gap-1 text-xs text-gray-400">
+            <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            {formatRelativeTime(lastSavedAt)}
+          </span>
+        {:else if saveStatus === 'pending'}
+          <span class="flex items-center gap-1 text-xs text-gray-400">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8">
+              <circle cx="4" cy="4" r="3" />
+            </svg>
+            Unsaved
+          </span>
+        {:else if saveStatus === 'saving'}
+          <span class="flex items-center gap-1 text-xs text-blue-500">
+            <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke-linecap="round"/>
+            </svg>
+            Saving...
+          </span>
+        {:else if saveStatus === 'saved'}
+          <span class="flex items-center gap-1 text-xs text-green-600">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Saved
+          </span>
+        {:else if saveStatus === 'error'}
+          <span class="flex items-center gap-1 text-xs text-red-500" title="Auto-save failed">
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            Save failed
+          </span>
+        {/if}
+      </div>
+      {#if appState.isTempFile}
+        <span
+          class="flex items-center gap-1 px-2 py-0.5 mr-2 text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md"
+          title="This presentation hasn't been saved to a file yet. Click 'Save' to choose a location."
+        >
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          Temp file
+        </span>
+      {/if}
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
         onclick={enterPresentationMode}
@@ -2253,7 +2423,7 @@
             class="p-2 mb-2 text-sm text-center bg-white border rounded-md shadow-md cursor-pointer hover:border-indigo-500 w-full"
             class:border-indigo-500={slideId === appState.currentSlide.id}
             class:bg-indigo-100={slideId === appState.currentSlide.id}
-            onclick={async () => await loadSlide(slideId)}
+            onclick={async () => await handleSlideSelect(slideId)}
             disabled={loadingState.isLoadingSlide}
           >
             Slide {index + 1}
@@ -2273,7 +2443,7 @@
           </div>
         </div>
       </div>
-      <PropertiesPanel />
+      <PropertiesPanel onPropertyChange={scheduleSave} />
     </div>
   </div>
 {:else}
