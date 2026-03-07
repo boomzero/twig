@@ -706,15 +706,16 @@
     // Add image elements asynchronously, inserting at the correct z-position.
     // When each image resolves, we count how many currently-present canvas objects
     // have a lower zIndex (via ID lookup) to find the right insertAt index.
-    // Known limitation: if two images with adjacent zIndexes resolve in the same
-    // microtask batch, they both read the same canvas state and may end up swapped.
-    // This is very hard to trigger in practice (images load at different speeds)
-    // and does not affect persistence (zIndex values in state remain correct).
+    // insertAt gives correct intermediate rendering as each image arrives.
+    // A Promise.allSettled correction pass below fixes any ordering errors that
+    // occur when two images resolve in the same microtask and see identical state.
+    const imageLoads: Promise<void>[] = []
+
     sortedElements.forEach((element) => {
       if (element.type !== 'image' || !element.src) return
       const imageZIndex = element.zIndex
 
-      FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
+      const load = FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
         .then((img) => {
           if (!fabCanvas) return
           const scaleX = element.width / (img.width || 1)
@@ -739,7 +740,25 @@
         .catch((error) => {
           console.error('Failed to load image:', error)
         })
+
+      imageLoads.push(load)
     })
+
+    // Once all images have settled, sort the internal objects array by zIndex to
+    // guarantee correct final ordering regardless of microtask scheduling.
+    // Sorting _objects directly is safe here — renderAll() reads it top-to-bottom
+    // so a plain sort + re-render is equivalent to removing and re-adding in order
+    // without triggering selection or event side-effects.
+    if (imageLoads.length > 1) {
+      Promise.allSettled(imageLoads).then(() => {
+        if (!fabCanvas) return
+        ;(fabCanvas as any)._objects.sort(
+          (a: DeckFabricObject, b: DeckFabricObject) =>
+            (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0)
+        )
+        fabCanvas.renderAll()
+      })
+    }
 
     fabCanvas.renderAll()
 
