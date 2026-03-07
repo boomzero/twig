@@ -13,7 +13,7 @@
   import { appState } from '../lib/state.svelte'
   import type { DeckElement } from '../lib/state.svelte'
 
-  const { onLayerChange }: { onLayerChange?: () => void } = $props()
+  const { onLayerChange, onSelect }: { onLayerChange?: () => void; onSelect?: (id: string) => void } = $props()
 
   // Elements sorted front-to-back (highest zIndex first) for display
   const sortedElements = $derived(
@@ -41,6 +41,7 @@
 
   function selectElement(id: string): void {
     appState.selectedObjectId = id
+    onSelect?.(id)
   }
 
   /**

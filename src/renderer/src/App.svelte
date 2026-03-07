@@ -2560,7 +2560,18 @@
             role="separator"
             aria-label="Resize layers panel"
           ></div>
-          <StackPanel onLayerChange={() => { renderCanvasFromState(); scheduleSave() }} />
+          <StackPanel
+            onLayerChange={() => { renderCanvasFromState(); scheduleSave() }}
+            onSelect={(id) => {
+              if (!fabCanvas) return
+              const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === id)
+              if (obj) {
+                fabCanvas.discardActiveObject()
+                fabCanvas.setActiveObject(obj)
+                fabCanvas.requestRenderAll()
+              }
+            }}
+          />
         </div>
       {/if}
       <PropertiesPanel onPropertyChange={scheduleSave} />
