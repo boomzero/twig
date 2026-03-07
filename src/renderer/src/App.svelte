@@ -110,22 +110,34 @@
   let contextMenuVisible = $state(false)
   let contextMenuPosition = $state({ x: 0, y: 0 })
 
-  // Boundary flags for disabling layer buttons when already at front/back
+  // Boundary flags for disabling layer buttons when already at front/back.
+  // When there are no elements, selectedIsAtFront/Back both default to false
+  // (no element is selected, so neither boundary applies).
   const selectedElementZIndex = $derived(
-    appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)?.zIndex ?? -Infinity
+    appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)?.zIndex ?? null
   )
   const canvasMaxZ = $derived(
     appState.currentSlide?.elements.length
       ? Math.max(...appState.currentSlide.elements.map((e) => e.zIndex))
-      : -Infinity
+      : null
   )
   const canvasMinZ = $derived(
     appState.currentSlide?.elements.length
       ? Math.min(...appState.currentSlide.elements.map((e) => e.zIndex))
-      : -Infinity
+      : null
   )
-  const selectedIsAtFront = $derived(selectedElementZIndex >= canvasMaxZ)
-  const selectedIsAtBack = $derived(selectedElementZIndex <= canvasMinZ)
+  const selectedIsAtFront = $derived(
+    selectedElementZIndex !== null && canvasMaxZ !== null && selectedElementZIndex >= canvasMaxZ
+  )
+  const selectedIsAtBack = $derived(
+    selectedElementZIndex !== null && canvasMinZ !== null && selectedElementZIndex <= canvasMinZ
+  )
+
+  // Generation counter incremented on each renderCanvasFromState() call.
+  // Async image load callbacks capture their generation and bail out if a newer
+  // render has started (e.g. the user navigated to another slide), preventing
+  // stale images from landing on the wrong canvas and causing duplicates.
+  let renderGeneration = 0
 
   /**
    * Auto-save debounce delay in milliseconds.
@@ -646,6 +658,9 @@
       return
     }
 
+    // Stamp this render so async callbacks can detect staleness
+    const generation = ++renderGeneration
+
     const currentSlide = appState.currentSlide
 
     // Null out the stale text object reference before clearing the canvas.
@@ -717,7 +732,7 @@
 
       const load = FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
         .then((img) => {
-          if (!fabCanvas) return
+          if (!fabCanvas || renderGeneration !== generation) return
           const scaleX = element.width / (img.width || 1)
           const scaleY = element.height / (img.height || 1)
           img.set({
@@ -744,18 +759,18 @@
       imageLoads.push(load)
     })
 
-    // Once all images have settled, sort the internal objects array by zIndex to
-    // guarantee correct final ordering regardless of microtask scheduling.
-    // Sorting _objects directly is safe here — renderAll() reads it top-to-bottom
-    // so a plain sort + re-render is equivalent to removing and re-adding in order
-    // without triggering selection or event side-effects.
+    // Once all images have settled, correct any ordering errors that occurred when
+    // two images resolved simultaneously and computed the same insertAt index.
+    // Uses the public moveTo() API (remove + splice at target index) in ascending
+    // z-order so each placement is stable without triggering selection events.
+    // The generation guard ensures this is a no-op if the slide changed while loading.
     if (imageLoads.length > 1) {
       Promise.allSettled(imageLoads).then(() => {
-        if (!fabCanvas) return
-        ;(fabCanvas as any)._objects.sort(
-          (a: DeckFabricObject, b: DeckFabricObject) =>
-            (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0)
-        )
+        if (!fabCanvas || renderGeneration !== generation) return
+        const sorted = (fabCanvas.getObjects() as DeckFabricObject[])
+          .slice()
+          .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
+        sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
         fabCanvas.renderAll()
       })
     }
@@ -2141,7 +2156,7 @@
       .filter((e) => e.zIndex > el.zIndex)
       .sort((a, b) => a.zIndex - b.zIndex)[0]
     if (!above) return
-    const tmp = el.zIndex; el.zIndex = above.zIndex; above.zIndex = tmp
+    ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
     normalizeZIndexes()
     renderCanvasAndRestoreSelection()
     scheduleSave()
@@ -2155,7 +2170,7 @@
       .filter((e) => e.zIndex < el.zIndex)
       .sort((a, b) => b.zIndex - a.zIndex)[0]
     if (!below) return
-    const tmp = el.zIndex; el.zIndex = below.zIndex; below.zIndex = tmp
+    ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
     normalizeZIndexes()
     renderCanvasAndRestoreSelection()
     scheduleSave()
@@ -2619,6 +2634,13 @@
             role="separator"
             aria-label="Resize layers panel"
           ></div>
+          <!--
+            onLayerChange is only called by the drag-to-reorder path in StackPanel.
+            The button paths (onBringToFront etc.) call layerBringToFront/layerMoveUp/
+            layerMoveDown/layerSendToBack directly, which already invoke
+            renderCanvasAndRestoreSelection + scheduleSave internally, so they do NOT
+            call onLayerChange to avoid double-rendering.
+          -->
           <StackPanel
             onLayerChange={() => { renderCanvasAndRestoreSelection(); scheduleSave() }}
             onSelect={(id) => {
