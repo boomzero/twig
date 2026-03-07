@@ -327,17 +327,13 @@ function validateAndRepairSlideOrder(db: Database): void {
  */
 export function saveSlide(db: Database, slide: Slide): void {
   const transaction = db.transaction((s: Slide) => {
-    // Check if this slide already exists in the database
+    // Ensure the slide record exists
     const slideInfo = db.prepare('SELECT slide_order FROM slides WHERE id = ?').get(s.id) as
       | { slide_order: number }
       | undefined
 
     let isNewSlide = false
-    if (slideInfo) {
-      // Slide exists - delete all its old elements (we'll re-insert them below)
-      db.prepare('DELETE FROM elements WHERE slide_id = ?').run(s.id)
-    } else {
-      // New slide - create the slide entry with the next available order
+    if (!slideInfo) {
       isNewSlide = true
       const maxOrder = db.prepare('SELECT MAX(slide_order) as max FROM slides').get() as {
         max: number | null
@@ -346,26 +342,42 @@ export function saveSlide(db: Database, slide: Slide): void {
       db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(s.id, newOrder)
     }
 
-    // Prepare the element insert statement (reused for all elements for efficiency)
-    const elementInsert = db.prepare(
-      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    )
+    // UPSERT each element. On conflict (element already exists), update all mutable
+    // fields EXCEPT src. Image src is a base64 data URI (potentially megabytes) that
+    // never changes after the image is first imported — skipping it on updates avoids
+    // re-writing large blobs on every autosave triggered by position/size/layer changes.
+    const elementUpsert = db.prepare(`
+      INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        slide_id = excluded.slide_id,
+        type = excluded.type,
+        x = excluded.x,
+        y = excluded.y,
+        width = excluded.width,
+        height = excluded.height,
+        angle = excluded.angle,
+        fill = excluded.fill,
+        text = excluded.text,
+        fontSize = excluded.fontSize,
+        fontFamily = excluded.fontFamily,
+        styles = excluded.styles,
+        filename = excluded.filename,
+        z_index = excluded.z_index
+    `)
 
-    // Insert all elements for this slide
     s.elements.forEach((el) => {
-      // Serialize styles with error handling
       let stylesJson: string | null = null
       if (el.styles) {
         try {
           stylesJson = JSON.stringify(el.styles)
         } catch (error) {
           console.error(`Failed to serialize styles for element ${el.id}:`, error)
-          // Continue without styles rather than failing the entire save
           stylesJson = null
         }
       }
 
-      elementInsert.run(
+      elementUpsert.run(
         el.id,
         s.id,
         el.type,
@@ -374,24 +386,32 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.width,
         el.height,
         el.angle,
-        el.fill,
-        el.text,
-        el.fontSize,
-        el.fontFamily,
+        el.fill ?? null,
+        el.text ?? null,
+        el.fontSize ?? null,
+        el.fontFamily ?? null,
         stylesJson,
-        el.src || null,
-        el.filename || null,
+        el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
+        el.filename ?? null,
         el.zIndex ?? 0
       )
     })
 
-    // If this was a new slide, validate and repair slide order to ensure no gaps
+    // Remove elements that are no longer on this slide
+    if (s.elements.length > 0) {
+      const placeholders = s.elements.map(() => '?').join(', ')
+      db.prepare(
+        `DELETE FROM elements WHERE slide_id = ? AND id NOT IN (${placeholders})`
+      ).run(s.id, ...s.elements.map((el) => el.id))
+    } else {
+      db.prepare('DELETE FROM elements WHERE slide_id = ?').run(s.id)
+    }
+
     if (isNewSlide) {
       validateAndRepairSlideOrder(db)
     }
   })
 
-  // Execute the transaction
   transaction(slide)
 }
 
