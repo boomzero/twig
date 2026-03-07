@@ -2054,6 +2054,23 @@
     sorted.forEach((el, i) => { el.zIndex = i })
   }
 
+  /**
+   * Re-renders the canvas then restores the previously active object.
+   * Used by layer reorder operations so selection is preserved after the canvas is rebuilt.
+   * Note: async image elements will not be re-selected (inherent async limitation).
+   */
+  function renderCanvasAndRestoreSelection(): void {
+    const savedId = appState.selectedObjectId
+    renderCanvasFromState()
+    if (savedId && fabCanvas) {
+      const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
+      if (obj) {
+        fabCanvas.setActiveObject(obj)
+        fabCanvas.requestRenderAll()
+      }
+    }
+  }
+
   function layerBringToFront(id: string): void {
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
@@ -2061,7 +2078,7 @@
     const max = Math.max(...appState.currentSlide.elements.map((e) => e.zIndex))
     el.zIndex = max + 1
     normalizeZIndexes()
-    renderCanvasFromState()
+    renderCanvasAndRestoreSelection()
     scheduleSave()
   }
 
@@ -2072,7 +2089,7 @@
     const min = Math.min(...appState.currentSlide.elements.map((e) => e.zIndex))
     el.zIndex = min - 1
     normalizeZIndexes()
-    renderCanvasFromState()
+    renderCanvasAndRestoreSelection()
     scheduleSave()
   }
 
@@ -2086,7 +2103,7 @@
     if (!above) return
     const tmp = el.zIndex; el.zIndex = above.zIndex; above.zIndex = tmp
     normalizeZIndexes()
-    renderCanvasFromState()
+    renderCanvasAndRestoreSelection()
     scheduleSave()
   }
 
@@ -2100,7 +2117,7 @@
     if (!below) return
     const tmp = el.zIndex; el.zIndex = below.zIndex; below.zIndex = tmp
     normalizeZIndexes()
-    renderCanvasFromState()
+    renderCanvasAndRestoreSelection()
     scheduleSave()
   }
 
@@ -2561,7 +2578,7 @@
             aria-label="Resize layers panel"
           ></div>
           <StackPanel
-            onLayerChange={() => { renderCanvasFromState(); scheduleSave() }}
+            onLayerChange={() => { renderCanvasAndRestoreSelection(); scheduleSave() }}
             onSelect={(id) => {
               if (!fabCanvas) return
               const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === id)
