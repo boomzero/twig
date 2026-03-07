@@ -98,7 +98,12 @@
     dragOverId = id
   }
 
-  function onDragLeave(): void {
+  function onDragLeave(e: DragEvent): void {
+    // Only clear if the pointer genuinely left the row. The browser fires dragleave
+    // when crossing into a child element, which would cause the highlight to flicker.
+    // Checking relatedTarget suppresses those spurious events.
+    const row = e.currentTarget as HTMLElement
+    if (row.contains(e.relatedTarget as Node)) return
     dragOverId = null
   }
 
@@ -149,7 +154,7 @@
     <h3 class="text-sm font-semibold text-gray-700">Layers</h3>
   </div>
 
-  <div class="flex-1 overflow-y-auto">
+  <div class="flex-1 overflow-y-auto" role="listbox" aria-label="Layers">
     {#if sortedElements.length === 0}
       <p class="px-3 py-4 text-xs text-gray-400 text-center">No elements on this slide.</p>
     {:else}
@@ -171,7 +176,7 @@
           draggable={true}
           ondragstart={() => onDragStart(el.id)}
           ondragover={(e) => onDragOver(e, el.id)}
-          ondragleave={onDragLeave}
+          ondragleave={(e) => onDragLeave(e)}
           ondrop={() => onDrop(el.id)}
           ondragend={onDragEnd}
           role="option"

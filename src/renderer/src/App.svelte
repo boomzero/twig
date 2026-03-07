@@ -706,6 +706,10 @@
     // Add image elements asynchronously, inserting at the correct z-position.
     // When each image resolves, we count how many currently-present canvas objects
     // have a lower zIndex (via ID lookup) to find the right insertAt index.
+    // Known limitation: if two images with adjacent zIndexes resolve in the same
+    // microtask batch, they both read the same canvas state and may end up swapped.
+    // This is very hard to trigger in practice (images load at different speeds)
+    // and does not affect persistence (zIndex values in state remain correct).
     sortedElements.forEach((element) => {
       if (element.type !== 'image' || !element.src) return
       const imageZIndex = element.zIndex

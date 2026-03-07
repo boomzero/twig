@@ -165,15 +165,20 @@ export function initializeDatabase(db: Database): void {
     }
     if (!columnNames.includes('z_index')) {
       console.log('Adding z_index column to elements table')
-      db.exec('ALTER TABLE elements ADD COLUMN z_index INTEGER DEFAULT 0')
-      // Backfill: assign sequential per-slide z-indexes ordered by rowid (insertion order)
-      db.exec(`
-        UPDATE elements SET z_index = (
-          SELECT COUNT(*) - 1
-          FROM elements e2
-          WHERE e2.slide_id = elements.slide_id AND e2.rowid <= elements.rowid
-        )
-      `)
+      // Wrap DDL + backfill in a single transaction so that if the UPDATE fails
+      // the column is not left in a partially-backfilled state. SQLite allows
+      // ALTER TABLE inside transactions, and better-sqlite3 supports it.
+      db.transaction(() => {
+        db.exec('ALTER TABLE elements ADD COLUMN z_index INTEGER DEFAULT 0')
+        // Backfill: assign sequential per-slide z-indexes ordered by rowid (insertion order)
+        db.exec(`
+          UPDATE elements SET z_index = (
+            SELECT COUNT(*) - 1
+            FROM elements e2
+            WHERE e2.slide_id = elements.slide_id AND e2.rowid <= elements.rowid
+          )
+        `)
+      })()
     }
   } catch (error) {
     console.error('Failed to migrate database schema:', error)
@@ -508,8 +513,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.fontSize,
           el.fontFamily,
           stylesJson,
-          el.src || null,
-          el.filename || null,
+          el.src ?? null,
+          el.filename ?? null,
           el.zIndex ?? 0
         )
       })
