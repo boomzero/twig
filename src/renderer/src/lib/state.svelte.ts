@@ -63,6 +63,9 @@ export interface DeckElement {
 
   /** Original image filename (only for image elements) */
   filename?: string
+
+  /** Z-index for layer ordering (higher = in front) */
+  zIndex: number
 }
 
 /**

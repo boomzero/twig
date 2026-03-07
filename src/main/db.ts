@@ -52,6 +52,9 @@ export interface DeckElement {
 
   /** Original image filename (only for image elements) */
   filename?: string
+
+  /** Z-index for layer ordering (higher = in front) */
+  zIndex: number
 }
 
 /**
@@ -128,6 +131,7 @@ export function initializeDatabase(db: Database): void {
       styles TEXT,
       src TEXT,
       filename TEXT,
+      z_index INTEGER DEFAULT 0,
       FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
     )
   `)
@@ -158,6 +162,10 @@ export function initializeDatabase(db: Database): void {
     if (!columnNames.includes('filename')) {
       console.log('Adding filename column to elements table')
       db.exec('ALTER TABLE elements ADD COLUMN filename TEXT')
+    }
+    if (!columnNames.includes('z_index')) {
+      console.log('Adding z_index column to elements table')
+      db.exec('ALTER TABLE elements ADD COLUMN z_index INTEGER DEFAULT 0')
     }
   } catch (error) {
     console.error('Failed to migrate database schema:', error)
@@ -200,6 +208,7 @@ interface ElementRow {
   styles?: string | null // Stored as JSON string in database
   src?: string | null // Image data as base64 data URI
   filename?: string | null // Original image filename
+  z_index: number
 }
 
 /**
@@ -218,10 +227,9 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     return null
   }
 
-  // Load all elements belonging to this slide
-  // Explicitly select all columns to ensure we get src and filename
+  // Load all elements belonging to this slide, ordered by z_index
   const elementStmt = db.prepare(
-    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename FROM elements WHERE slide_id = ?'
+    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
   )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
@@ -251,7 +259,8 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       : undefined,
     // Image-specific fields
     src: el.src || undefined,
-    filename: el.filename || undefined
+    filename: el.filename || undefined,
+    zIndex: el.z_index ?? 0
   }))
 
   return { id: slideRow.id, elements }
@@ -331,16 +340,11 @@ export function saveSlide(db: Database, slide: Slide): void {
 
     // Prepare the element insert statement (reused for all elements for efficiency)
     const elementInsert = db.prepare(
-      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
 
     // Insert all elements for this slide
     s.elements.forEach((el) => {
-      // Debug: Log image elements being saved
-      if (el.type === 'image') {
-        console.log(`Saving image element ${el.id}, src length: ${el.src?.length || 0}`)
-      }
-
       // Serialize styles with error handling
       let stylesJson: string | null = null
       if (el.styles) {
@@ -368,7 +372,8 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.fontFamily,
         stylesJson,
         el.src || null,
-        el.filename || null
+        el.filename || null,
+        el.zIndex ?? 0
       )
     })
 
@@ -445,7 +450,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
       // Prepare the element insert statement (reused for all elements for efficiency)
       const elementInsert = db.prepare(
-        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
 
       // Insert all elements for this slide
@@ -476,7 +481,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.fontFamily,
           stylesJson,
           el.src || null,
-          el.filename || null
+          el.filename || null,
+          el.zIndex ?? 0
         )
       })
     }

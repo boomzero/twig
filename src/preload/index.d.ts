@@ -69,6 +69,7 @@ export interface DebugState {
       styles?: Record<string, any>
       src?: string
       filename?: string
+      zIndex?: number
     }>
   } | null
 }
