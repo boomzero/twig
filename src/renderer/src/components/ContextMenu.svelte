@@ -12,6 +12,8 @@
   - onMoveUp: Callback to move element one layer up
   - onMoveDown: Callback to move element one layer down
   - onSendToBack: Callback to send element to back
+  - isAtFront: True if the selected element is already at the front
+  - isAtBack: True if the selected element is already at the back
 -->
 
 <script lang="ts">
@@ -22,7 +24,9 @@
     onBringToFront,
     onMoveUp,
     onMoveDown,
-    onSendToBack
+    onSendToBack,
+    isAtFront = false,
+    isAtBack = false
   }: {
     x: number
     y: number
@@ -31,6 +35,8 @@
     onMoveUp?: () => void
     onMoveDown?: () => void
     onSendToBack?: () => void
+    isAtFront?: boolean
+    isAtBack?: boolean
   } = $props()
 </script>
 
@@ -41,25 +47,29 @@
   {#if onBringToFront || onMoveUp || onMoveDown || onSendToBack}
     <button
       onclick={onBringToFront}
-      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+      disabled={isAtFront}
+      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
       Bring to Front
     </button>
     <button
       onclick={onMoveUp}
-      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+      disabled={isAtFront}
+      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
       Move Up
     </button>
     <button
       onclick={onMoveDown}
-      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+      disabled={isAtBack}
+      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
       Move Down
     </button>
     <button
       onclick={onSendToBack}
-      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+      disabled={isAtBack}
+      class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
       Send to Back
     </button>

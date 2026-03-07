@@ -2,18 +2,38 @@
   Stack Panel (Layers Panel) Component
 
   Displays all elements on the current slide in layer order (front at top).
-  Reordering moves the element in the array, then normalizes all zIndex values
-  to sequential integers so DB ordering is always clean.
+  Drag-to-reorder splices the display-order array and normalizes zIndex values.
+  Named operations (bring/move/send) are delegated to App.svelte via props so
+  the logic lives in one place alongside the context menu operations.
 
   Props:
-  - onLayerChange: Callback fired after any reorder (triggers save + re-render)
+  - onLayerChange:  Fired after drag-to-reorder (triggers save + re-render)
+  - onSelect:       Fired when a row is clicked (selects object on canvas)
+  - onBringToFront: Bring element to front
+  - onMoveUp:       Move element one layer up
+  - onMoveDown:     Move element one layer down
+  - onSendToBack:   Send element to back
 -->
 
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
   import type { DeckElement } from '../lib/state.svelte'
 
-  const { onLayerChange, onSelect }: { onLayerChange?: () => void; onSelect?: (id: string) => void } = $props()
+  const {
+    onLayerChange,
+    onSelect,
+    onBringToFront,
+    onMoveUp,
+    onMoveDown,
+    onSendToBack
+  }: {
+    onLayerChange?: () => void
+    onSelect?: (id: string) => void
+    onBringToFront?: (id: string) => void
+    onMoveUp?: (id: string) => void
+    onMoveDown?: (id: string) => void
+    onSendToBack?: (id: string) => void
+  } = $props()
 
   // Elements sorted front-to-back (highest zIndex first) for display
   const sortedElements = $derived(
@@ -45,58 +65,57 @@
   }
 
   /**
-   * Reorder: move element at fromIndex to toIndex in the sorted display array,
-   * then normalize all zIndex values to sequential integers.
-   * The sorted array is front-to-back (index 0 = front/highest zIndex).
+   * Drag-to-reorder: splice the display-order array then normalize zIndex values.
+   * sortedElements is front-to-back (index 0 = front = highest zIndex).
    */
   function reorderElements(fromDisplayIndex: number, toDisplayIndex: number): void {
     if (!appState.currentSlide) return
     if (fromDisplayIndex === toDisplayIndex) return
 
-    // Work on a sorted copy (front-to-back order)
     const ordered = [...sortedElements]
     const [moved] = ordered.splice(fromDisplayIndex, 1)
     ordered.splice(toDisplayIndex, 0, moved)
 
-    // Normalize: index 0 (front) gets highest zIndex
     const total = ordered.length
     ordered.forEach((el, i) => {
-      // Find the element in the actual state array and update its zIndex
       const stateEl = appState.currentSlide!.elements.find((e) => e.id === el.id)
-      if (stateEl) {
-        stateEl.zIndex = total - 1 - i
-      }
+      if (stateEl) stateEl.zIndex = total - 1 - i
     })
 
     onLayerChange?.()
   }
 
-  function bringToFront(id: string): void {
-    const idx = sortedElements.findIndex((e) => e.id === id)
-    if (idx <= 0) return
-    reorderElements(idx, 0)
-  }
-
-  function sendToBack(id: string): void {
-    const idx = sortedElements.findIndex((e) => e.id === id)
-    if (idx < 0 || idx >= sortedElements.length - 1) return
-    reorderElements(idx, sortedElements.length - 1)
-  }
-
-  function moveUp(id: string): void {
-    const idx = sortedElements.findIndex((e) => e.id === id)
-    if (idx <= 0) return
-    reorderElements(idx, idx - 1)
-  }
-
-  function moveDown(id: string): void {
-    const idx = sortedElements.findIndex((e) => e.id === id)
-    if (idx < 0 || idx >= sortedElements.length - 1) return
-    reorderElements(idx, idx + 1)
-  }
-
   // Drag-and-drop state
   let dragSourceId = $state<string | null>(null)
+  let dragOverId = $state<string | null>(null)
+
+  function onDragStart(id: string): void {
+    dragSourceId = id
+  }
+
+  function onDragOver(e: DragEvent, id: string): void {
+    e.preventDefault()
+    dragOverId = id
+  }
+
+  function onDragLeave(): void {
+    dragOverId = null
+  }
+
+  function onDrop(targetId: string): void {
+    dragOverId = null
+    if (!dragSourceId || dragSourceId === targetId) return
+    const fromIdx = sortedElements.findIndex((e) => e.id === dragSourceId)
+    const toIdx = sortedElements.findIndex((e) => e.id === targetId)
+    if (fromIdx < 0 || toIdx < 0) return
+    reorderElements(fromIdx, toIdx)
+    dragSourceId = null
+  }
+
+  function onDragEnd(): void {
+    dragSourceId = null
+    dragOverId = null
+  }
 
   // Tooltip state (fixed-position, rendered outside draggable rows)
   let tooltip = $state<{ text: string; x: number; y: number; visible: boolean }>({
@@ -113,23 +132,6 @@
 
   function hideTooltip(): void {
     tooltip = { ...tooltip, visible: false }
-  }
-
-  function onDragStart(id: string): void {
-    dragSourceId = id
-  }
-
-  function onDrop(targetId: string): void {
-    if (!dragSourceId || dragSourceId === targetId) return
-    const fromIdx = sortedElements.findIndex((e) => e.id === dragSourceId)
-    const toIdx = sortedElements.findIndex((e) => e.id === targetId)
-    if (fromIdx < 0 || toIdx < 0) return
-    reorderElements(fromIdx, toIdx)
-    dragSourceId = null
-  }
-
-  function onDragEnd(): void {
-    dragSourceId = null
   }
 </script>
 
@@ -151,16 +153,25 @@
     {#if sortedElements.length === 0}
       <p class="px-3 py-4 text-xs text-gray-400 text-center">No elements on this slide.</p>
     {:else}
-      {#each sortedElements as el (el.id)}
+      {#each sortedElements as el, i (el.id)}
+        {@const isFirst = i === 0}
+        {@const isLast = i === sortedElements.length - 1}
+        {@const isDragSource = dragSourceId === el.id}
+        {@const isDragTarget = dragOverId === el.id && dragSourceId !== el.id}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+          class="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
           class:bg-indigo-50={appState.selectedObjectId === el.id}
           class:border-indigo-300={appState.selectedObjectId === el.id}
+          class:opacity-40={isDragSource}
+          class:ring-2={isDragTarget}
+          class:ring-indigo-400={isDragTarget}
+          class:ring-inset={isDragTarget}
           onclick={() => selectElement(el.id)}
           draggable={true}
           ondragstart={() => onDragStart(el.id)}
-          ondragover={(e) => e.preventDefault()}
+          ondragover={(e) => onDragOver(e, el.id)}
+          ondragleave={onDragLeave}
           ondrop={() => onDrop(el.id)}
           ondragend={onDragEnd}
           role="option"
@@ -181,14 +192,15 @@
             {getLabel(el)}
           </span>
 
-          <!-- Reorder buttons (stop propagation so clicks don't also select) -->
+          <!-- Reorder buttons -->
           <div class="flex gap-0.5 flex-shrink-0">
-            <!-- Bring to Front: arrow + top bar -->
+            <!-- Bring to Front -->
             <button
-              onclick={(e) => { e.stopPropagation(); bringToFront(el.id) }}
+              onclick={(e) => { e.stopPropagation(); onBringToFront?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Bring to Front')}
               onmouseleave={hideTooltip}
-              class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded"
+              disabled={isFirst}
+              class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label="Bring to Front"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
@@ -196,36 +208,39 @@
                 <path d="M6 3.5 L9.5 8 L6.75 8 L6.75 11 L5.25 11 L5.25 8 L2.5 8 Z"/>
               </svg>
             </button>
-            <!-- Move Up: simple arrow up -->
+            <!-- Move Up -->
             <button
-              onclick={(e) => { e.stopPropagation(); moveUp(el.id) }}
+              onclick={(e) => { e.stopPropagation(); onMoveUp?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Move Up')}
               onmouseleave={hideTooltip}
-              class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded"
+              disabled={isFirst}
+              class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label="Move Up"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
                 <path d="M6 1.5 L9.5 6.5 L6.75 6.5 L6.75 10.5 L5.25 10.5 L5.25 6.5 L2.5 6.5 Z"/>
               </svg>
             </button>
-            <!-- Move Down: simple arrow down -->
+            <!-- Move Down -->
             <button
-              onclick={(e) => { e.stopPropagation(); moveDown(el.id) }}
+              onclick={(e) => { e.stopPropagation(); onMoveDown?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Move Down')}
               onmouseleave={hideTooltip}
-              class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded"
+              disabled={isLast}
+              class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label="Move Down"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
                 <path d="M6 10.5 L2.5 5.5 L5.25 5.5 L5.25 1.5 L6.75 1.5 L6.75 5.5 L9.5 5.5 Z"/>
               </svg>
             </button>
-            <!-- Send to Back: arrow + bottom bar -->
+            <!-- Send to Back -->
             <button
-              onclick={(e) => { e.stopPropagation(); sendToBack(el.id) }}
+              onclick={(e) => { e.stopPropagation(); onSendToBack?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Send to Back')}
               onmouseleave={hideTooltip}
-              class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded"
+              disabled={isLast}
+              class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label="Send to Back"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">

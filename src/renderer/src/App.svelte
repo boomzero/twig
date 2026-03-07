@@ -110,6 +110,23 @@
   let contextMenuVisible = $state(false)
   let contextMenuPosition = $state({ x: 0, y: 0 })
 
+  // Boundary flags for disabling layer buttons when already at front/back
+  const selectedElementZIndex = $derived(
+    appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)?.zIndex ?? -Infinity
+  )
+  const canvasMaxZ = $derived(
+    appState.currentSlide?.elements.length
+      ? Math.max(...appState.currentSlide.elements.map((e) => e.zIndex))
+      : -Infinity
+  )
+  const canvasMinZ = $derived(
+    appState.currentSlide?.elements.length
+      ? Math.min(...appState.currentSlide.elements.map((e) => e.zIndex))
+      : -Infinity
+  )
+  const selectedIsAtFront = $derived(selectedElementZIndex >= canvasMaxZ)
+  const selectedIsAtBack = $derived(selectedElementZIndex <= canvasMinZ)
+
   /**
    * Auto-save debounce delay in milliseconds.
    * 300ms is fast enough to feel instant while batching rapid changes
@@ -2302,6 +2319,8 @@
         onMoveUp={appState.selectedObjectId ? () => { layerMoveUp(appState.selectedObjectId!); hideContextMenu() } : undefined}
         onMoveDown={appState.selectedObjectId ? () => { layerMoveDown(appState.selectedObjectId!); hideContextMenu() } : undefined}
         onSendToBack={appState.selectedObjectId ? () => { layerSendToBack(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        isAtFront={selectedIsAtFront}
+        isAtBack={selectedIsAtBack}
       />
     {/if}
     <div class="flex items-center p-2 bg-gray-100 border-b border-gray-300 shadow-sm">
@@ -2588,6 +2607,10 @@
                 fabCanvas.requestRenderAll()
               }
             }}
+            onBringToFront={layerBringToFront}
+            onMoveUp={layerMoveUp}
+            onMoveDown={layerMoveDown}
+            onSendToBack={layerSendToBack}
           />
         </div>
       {/if}
