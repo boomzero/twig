@@ -151,16 +151,18 @@ export function initializeDatabase(db: Database): void {
   // Migrations: each column addition has its own try/catch so a failure in one
   // does not prevent the others from running on subsequent launches.
   let columnNames: string[] = []
+  let schemaReadOk = false
   try {
     const tableInfo = db.prepare('PRAGMA table_info(elements)').all() as { name: string }[]
     columnNames = tableInfo.map((col) => col.name)
+    schemaReadOk = true
     console.log('Database columns:', columnNames.join(', '))
   } catch (error) {
     console.error('Failed to read database schema for migration:', error)
   }
 
-  if (columnNames.length === 0) {
-    console.warn('Skipping all migrations — could not read schema (table may be missing or database locked).')
+  if (!schemaReadOk) {
+    console.warn('Skipping all migrations — could not read schema (database may be locked or corrupted).')
   } else {
     if (!columnNames.includes('src')) {
       try {
@@ -337,6 +339,35 @@ function validateAndRepairSlideOrder(db: Database): void {
 }
 
 /**
+ * Prepares the element UPSERT statement shared by saveSlide and saveAllSlides.
+ *
+ * On conflict all mutable fields are updated EXCEPT src. Image src is a base64
+ * data URI (potentially megabytes) that never changes after first import —
+ * skipping it on updates avoids re-writing large blobs on every autosave.
+ */
+function prepareElementUpsert(db: Database) {
+  return db.prepare(`
+    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      slide_id = excluded.slide_id,
+      type = excluded.type,
+      x = excluded.x,
+      y = excluded.y,
+      width = excluded.width,
+      height = excluded.height,
+      angle = excluded.angle,
+      fill = excluded.fill,
+      text = excluded.text,
+      fontSize = excluded.fontSize,
+      fontFamily = excluded.fontFamily,
+      styles = excluded.styles,
+      filename = excluded.filename,
+      z_index = excluded.z_index
+  `)
+}
+
+/**
  * Saves a slide and all its elements to the database.
  *
  * This function handles both inserting new slides and updating existing ones:
@@ -366,29 +397,7 @@ export function saveSlide(db: Database, slide: Slide): void {
       db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(s.id, newOrder)
     }
 
-    // UPSERT each element. On conflict (element already exists), update all mutable
-    // fields EXCEPT src. Image src is a base64 data URI (potentially megabytes) that
-    // never changes after the image is first imported — skipping it on updates avoids
-    // re-writing large blobs on every autosave triggered by position/size/layer changes.
-    const elementUpsert = db.prepare(`
-      INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        slide_id = excluded.slide_id,
-        type = excluded.type,
-        x = excluded.x,
-        y = excluded.y,
-        width = excluded.width,
-        height = excluded.height,
-        angle = excluded.angle,
-        fill = excluded.fill,
-        text = excluded.text,
-        fontSize = excluded.fontSize,
-        fontFamily = excluded.fontFamily,
-        styles = excluded.styles,
-        filename = excluded.filename,
-        z_index = excluded.z_index
-    `)
+    const elementUpsert = prepareElementUpsert(db)
 
     s.elements.forEach((el) => {
       let stylesJson: string | null = null
@@ -417,7 +426,7 @@ export function saveSlide(db: Database, slide: Slide): void {
         stylesJson,
         el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
         el.filename ?? null,
-        el.zIndex ?? 0
+        el.zIndex
       )
     })
 
@@ -484,28 +493,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
   const transaction = db.transaction((slidesToSave: Slide[]) => {
     let hasNewSlides = false
 
-    // Prepared once and reused across all slides — same UPSERT pattern as saveSlide:
-    // on conflict update all mutable fields except src, so image blobs are never
-    // re-written when only position/size/layer changed.
-    const elementUpsert = db.prepare(`
-      INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        slide_id = excluded.slide_id,
-        type = excluded.type,
-        x = excluded.x,
-        y = excluded.y,
-        width = excluded.width,
-        height = excluded.height,
-        angle = excluded.angle,
-        fill = excluded.fill,
-        text = excluded.text,
-        fontSize = excluded.fontSize,
-        fontFamily = excluded.fontFamily,
-        styles = excluded.styles,
-        filename = excluded.filename,
-        z_index = excluded.z_index
-    `)
+    // Prepared once and reused across all slides via the shared helper.
+    const elementUpsert = prepareElementUpsert(db)
 
     for (let index = 0; index < slidesToSave.length; index++) {
       const slide = slidesToSave[index]
@@ -547,7 +536,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           stylesJson,
           el.src ?? null,
           el.filename ?? null,
-          el.zIndex ?? 0
+          el.zIndex
         )
       })
 

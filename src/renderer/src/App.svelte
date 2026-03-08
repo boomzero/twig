@@ -482,7 +482,7 @@
           if (!fabCanvas) {
             fabCanvas = new Canvas(canvasEl)
           }
-          renderCanvasFromState()
+          renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
         }
       })
       return
@@ -524,7 +524,7 @@
     }
 
     // Step 3: Re-render all objects from state
-    renderCanvasFromState()
+    renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
 
     // Step 4: Restore previous selection if it existed
     if (selectionStateToRestore && fabCanvas) {
@@ -1923,7 +1923,7 @@
    */
   function nextZIndex(): number {
     if (!appState.currentSlide || appState.currentSlide.elements.length === 0) return 0
-    return appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), 0) + 1
+    return appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity) + 1
   }
 
   function addText(): void {
@@ -2119,21 +2119,23 @@
    */
   function renderCanvasAndRestoreSelection(): void {
     const savedId = appState.selectedObjectId
-    renderCanvasFromState().then(() => {
-      if (!savedId || !fabCanvas) return
-      const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
-      if (obj) {
-        fabCanvas.setActiveObject(obj)
-        fabCanvas.requestRenderAll()
-      }
-    })
+    renderCanvasFromState()
+      .then(() => {
+        if (!savedId || !fabCanvas) return
+        const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
+        if (obj) {
+          fabCanvas.setActiveObject(obj)
+          fabCanvas.requestRenderAll()
+        }
+      })
+      .catch((err) => console.error('Canvas render failed:', err))
   }
 
   function layerBringToFront(id: string): void {
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
-    const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), 0)
+    const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
     el.zIndex = max + 1
     normalizeZIndexes()
     renderCanvasAndRestoreSelection()
@@ -2144,7 +2146,7 @@
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
-    const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), 0)
+    const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
     el.zIndex = min - 1
     normalizeZIndexes()
     renderCanvasAndRestoreSelection()

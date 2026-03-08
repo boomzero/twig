@@ -150,8 +150,7 @@
   </div>
 {/if}
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="flex flex-col h-full" onmouseleave={hideTooltip}>
+<div class="flex flex-col h-full" onmouseleave={hideTooltip} role="presentation">
   <div class="px-3 py-2 border-b border-gray-200">
     <h3 class="text-sm font-semibold text-gray-700">Layers</h3>
   </div>
@@ -165,7 +164,6 @@
         {@const isLast = i === sortedElements.length - 1}
         {@const isDragSource = dragSourceId === el.id}
         {@const isDragTarget = dragOverId === el.id && dragSourceId !== el.id}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
           class:bg-indigo-50={appState.selectedObjectId === el.id}
@@ -175,6 +173,7 @@
           class:ring-indigo-400={isDragTarget}
           class:ring-inset={isDragTarget}
           onclick={() => selectElement(el.id)}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectElement(el.id) } }}
           draggable={true}
           ondragstart={(e) => onDragStart(e, el.id)}
           ondragover={(e) => onDragOver(e, el.id)}
@@ -182,6 +181,7 @@
           ondrop={() => onDrop(el.id)}
           ondragend={onDragEnd}
           role="option"
+          tabindex="0"
           aria-selected={appState.selectedObjectId === el.id}
         >
           <!-- Type icon -->
