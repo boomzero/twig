@@ -52,6 +52,12 @@
     >
       Bring to Front
     </button>
+    <!--
+      "Move Up" is disabled under the same condition as "Bring to Front" (isAtFront) because
+      when the selected element is already at the top, both operations are no-ops. With only
+      two elements these actions are identical; with more they differ. No separate
+      isSecondFromFront guard is needed.
+    -->
     <button
       onclick={onMoveUp}
       disabled={isAtFront}

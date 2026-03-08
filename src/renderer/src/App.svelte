@@ -118,12 +118,12 @@
   )
   const canvasMaxZ = $derived(
     appState.currentSlide?.elements.length
-      ? Math.max(...appState.currentSlide.elements.map((e) => e.zIndex))
+      ? appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
       : null
   )
   const canvasMinZ = $derived(
     appState.currentSlide?.elements.length
-      ? Math.min(...appState.currentSlide.elements.map((e) => e.zIndex))
+      ? appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
       : null
   )
   const selectedIsAtFront = $derived(
@@ -653,9 +653,9 @@
    *
    * Called whenever the current slide changes (via $effect).
    */
-  function renderCanvasFromState(): void {
+  function renderCanvasFromState(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide) {
-      return
+      return Promise.resolve()
     }
 
     // Stamp this render so async callbacks can detect staleness
@@ -759,22 +759,6 @@
       imageLoads.push(load)
     })
 
-    // Once all images have settled, correct any ordering errors that occurred when
-    // two images resolved simultaneously and computed the same insertAt index.
-    // Uses the public moveTo() API (remove + splice at target index) in ascending
-    // z-order so each placement is stable without triggering selection events.
-    // The generation guard ensures this is a no-op if the slide changed while loading.
-    if (imageLoads.length > 1) {
-      Promise.allSettled(imageLoads).then(() => {
-        if (!fabCanvas || renderGeneration !== generation) return
-        const sorted = (fabCanvas.getObjects() as DeckFabricObject[])
-          .slice()
-          .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
-        sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
-        fabCanvas.renderAll()
-      })
-    }
-
     fabCanvas.renderAll()
 
     // Re-attach event listeners
@@ -784,6 +768,24 @@
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
     fabCanvas.on('contextmenu', handleContextMenu)
+
+    if (imageLoads.length === 0) return Promise.resolve()
+
+    // Once all images have settled, correct any ordering errors that occurred when
+    // two images resolved simultaneously and computed the same insertAt index.
+    // Uses the public moveTo() API (remove + splice at target index) in ascending
+    // z-order so each placement is stable without triggering selection events.
+    // The generation guard ensures this is a no-op if the slide changed while loading.
+    return Promise.allSettled(imageLoads).then(() => {
+      if (!fabCanvas || renderGeneration !== generation) return
+      if (imageLoads.length > 1) {
+        const sorted = (fabCanvas.getObjects() as DeckFabricObject[])
+          .slice()
+          .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
+        sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
+      }
+      fabCanvas.renderAll()
+    })
   }
 
   /**
@@ -1921,7 +1923,7 @@
    */
   function nextZIndex(): number {
     if (!appState.currentSlide || appState.currentSlide.elements.length === 0) return 0
-    return Math.max(...appState.currentSlide.elements.map((e) => e.zIndex)) + 1
+    return appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), 0) + 1
   }
 
   function addText(): void {
@@ -2112,25 +2114,26 @@
   /**
    * Re-renders the canvas then restores the previously active object.
    * Used by layer reorder operations so selection is preserved after the canvas is rebuilt.
-   * Note: async image elements will not be re-selected (inherent async limitation).
+   * Waits for async image loads to settle before restoring, so image elements are
+   * re-selected correctly even when they land on the canvas asynchronously.
    */
   function renderCanvasAndRestoreSelection(): void {
     const savedId = appState.selectedObjectId
-    renderCanvasFromState()
-    if (savedId && fabCanvas) {
+    renderCanvasFromState().then(() => {
+      if (!savedId || !fabCanvas) return
       const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
       if (obj) {
         fabCanvas.setActiveObject(obj)
         fabCanvas.requestRenderAll()
       }
-    }
+    })
   }
 
   function layerBringToFront(id: string): void {
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
-    const max = Math.max(...appState.currentSlide.elements.map((e) => e.zIndex))
+    const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), 0)
     el.zIndex = max + 1
     normalizeZIndexes()
     renderCanvasAndRestoreSelection()
@@ -2141,7 +2144,7 @@
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
-    const min = Math.min(...appState.currentSlide.elements.map((e) => e.zIndex))
+    const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), 0)
     el.zIndex = min - 1
     normalizeZIndexes()
     renderCanvasAndRestoreSelection()

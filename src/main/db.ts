@@ -159,7 +159,9 @@ export function initializeDatabase(db: Database): void {
     console.error('Failed to read database schema for migration:', error)
   }
 
-  if (columnNames.length > 0) {
+  if (columnNames.length === 0) {
+    console.warn('Skipping all migrations — could not read schema (table may be missing or database locked).')
+  } else {
     if (!columnNames.includes('src')) {
       try {
         console.log('Adding src column to elements table')

@@ -89,7 +89,8 @@
   let dragSourceId = $state<string | null>(null)
   let dragOverId = $state<string | null>(null)
 
-  function onDragStart(id: string): void {
+  function onDragStart(e: DragEvent, id: string): void {
+    e.dataTransfer?.setData('text/plain', id)
     dragSourceId = id
   }
 
@@ -149,7 +150,8 @@
   </div>
 {/if}
 
-<div class="flex flex-col h-full">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="flex flex-col h-full" onmouseleave={hideTooltip}>
   <div class="px-3 py-2 border-b border-gray-200">
     <h3 class="text-sm font-semibold text-gray-700">Layers</h3>
   </div>
@@ -174,7 +176,7 @@
           class:ring-inset={isDragTarget}
           onclick={() => selectElement(el.id)}
           draggable={true}
-          ondragstart={() => onDragStart(el.id)}
+          ondragstart={(e) => onDragStart(e, el.id)}
           ondragover={(e) => onDragOver(e, el.id)}
           ondragleave={(e) => onDragLeave(e)}
           ondrop={() => onDrop(el.id)}
