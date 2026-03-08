@@ -6,24 +6,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte'
-
-  interface DeckElement {
-    type: 'rect' | 'text' | 'image'
-    id: string
-    x: number
-    y: number
-    width: number
-    height: number
-    angle: number
-    fill?: string
-    text?: string
-    fontSize?: number
-    fontFamily?: string
-    styles?: Record<string, any>
-    src?: string
-    filename?: string
-    zIndex?: number
-  }
+  import type { DeckElement } from './lib/state.svelte'
 
   interface AppState {
     currentFilePath: string | null

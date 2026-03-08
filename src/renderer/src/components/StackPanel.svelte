@@ -60,6 +60,13 @@
   }
 
   function selectElement(id: string): void {
+    // Set state directly first for immediate panel highlight feedback.
+    // onSelect also calls fabCanvas.setActiveObject(), which fires handleSelection
+    // and sets selectedObjectId again — harmless since Svelte 5 signals skip
+    // re-notification when the value is unchanged.
+    // The direct assignment is also needed when the element is an image that hasn't
+    // finished loading yet (absent from fabCanvas.getObjects()), so setActiveObject
+    // would silently fail but the panel highlight still updates correctly.
     appState.selectedObjectId = id
     onSelect?.(id)
   }

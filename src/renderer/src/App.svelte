@@ -681,7 +681,10 @@
     // Clear the canvas and re-create all objects from state
     fabCanvas.clear()
 
-    // Sort elements by zIndex (ascending = back-to-front)
+    // Sort elements by zIndex (ascending = back-to-front).
+    // getSlide() already returns elements ORDER BY z_index ASC, so in normal
+    // flow this is a no-op. The defensive sort guards against in-memory
+    // reorder mutations (e.g. compactZIndexes) that occur between load and render.
     const sortedElements = [...currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
     // Build a lookup of element id → zIndex for use by async image insertions
@@ -2102,10 +2105,10 @@
   // ============================================================================
 
   /**
-   * Normalize all element zIndex values to sequential integers 0..n-1
-   * after any reorder operation. Keeps DB values clean.
+   * Compact all element zIndex values to sequential integers 0..n-1 after any
+   * reorder operation. Mutates elements in-place on appState. Keeps DB values clean.
    */
-  function normalizeZIndexes(): void {
+  function compactZIndexes(): void {
     if (!appState.currentSlide) return
     const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
     sorted.forEach((el, i) => { el.zIndex = i })
@@ -2137,7 +2140,7 @@
     if (!el) return
     const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
     el.zIndex = max + 1
-    normalizeZIndexes()
+    compactZIndexes()
     renderCanvasAndRestoreSelection()
     scheduleSave()
   }
@@ -2148,7 +2151,7 @@
     if (!el) return
     const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
     el.zIndex = min - 1
-    normalizeZIndexes()
+    compactZIndexes()
     renderCanvasAndRestoreSelection()
     scheduleSave()
   }
@@ -2162,7 +2165,7 @@
       .sort((a, b) => a.zIndex - b.zIndex)[0]
     if (!above) return
     ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
-    normalizeZIndexes()
+    compactZIndexes()
     renderCanvasAndRestoreSelection()
     scheduleSave()
   }
@@ -2176,7 +2179,7 @@
       .sort((a, b) => b.zIndex - a.zIndex)[0]
     if (!below) return
     ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
-    normalizeZIndexes()
+    compactZIndexes()
     renderCanvasAndRestoreSelection()
     scheduleSave()
   }

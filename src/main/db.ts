@@ -339,6 +339,28 @@ function validateAndRepairSlideOrder(db: Database): void {
 }
 
 /**
+ * Deletes elements for a slide that are no longer in the provided keepIds set.
+ *
+ * Uses SELECT + JS filter + chunked DELETE BY id rather than
+ * `DELETE ... NOT IN (?, ?, ...)` to avoid hitting SQLite's
+ * SQLITE_LIMIT_VARIABLE_NUMBER (default 999).
+ */
+function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string>): void {
+  const existing = db.prepare('SELECT id FROM elements WHERE slide_id = ?').all(slideId) as {
+    id: string
+  }[]
+  const stale = existing.filter((r) => !keepIds.has(r.id)).map((r) => r.id)
+  if (stale.length === 0) return
+  // Delete in chunks of 500 to stay within SQLITE_LIMIT_VARIABLE_NUMBER
+  const CHUNK = 500
+  for (let i = 0; i < stale.length; i += CHUNK) {
+    const chunk = stale.slice(i, i + CHUNK)
+    const placeholders = chunk.map(() => '?').join(', ')
+    db.prepare(`DELETE FROM elements WHERE id IN (${placeholders})`).run(...chunk)
+  }
+}
+
+/**
  * Prepares the element UPSERT statement shared by saveSlide and saveAllSlides.
  *
  * On conflict all mutable fields are updated EXCEPT src. Image src is a base64
@@ -431,14 +453,7 @@ export function saveSlide(db: Database, slide: Slide): void {
     })
 
     // Remove elements that are no longer on this slide
-    if (s.elements.length > 0) {
-      const placeholders = s.elements.map(() => '?').join(', ')
-      db.prepare(
-        `DELETE FROM elements WHERE slide_id = ? AND id NOT IN (${placeholders})`
-      ).run(s.id, ...s.elements.map((el) => el.id))
-    } else {
-      db.prepare('DELETE FROM elements WHERE slide_id = ?').run(s.id)
-    }
+    deleteOrphanElements(db, s.id, new Set(s.elements.map((el) => el.id)))
 
     if (isNewSlide) {
       validateAndRepairSlideOrder(db)
@@ -541,14 +556,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
       })
 
       // Remove elements no longer on this slide
-      if (slide.elements.length > 0) {
-        const placeholders = slide.elements.map(() => '?').join(', ')
-        db.prepare(
-          `DELETE FROM elements WHERE slide_id = ? AND id NOT IN (${placeholders})`
-        ).run(slide.id, ...slide.elements.map((el) => el.id))
-      } else {
-        db.prepare('DELETE FROM elements WHERE slide_id = ?').run(slide.id)
-      }
+      deleteOrphanElements(db, slide.id, new Set(slide.elements.map((el) => el.id)))
     }
 
     if (hasNewSlides) {
