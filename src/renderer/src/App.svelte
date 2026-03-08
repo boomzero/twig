@@ -740,8 +740,8 @@
     ) => {
       if (!fabCanvas || renderGeneration !== generation) return
       const img = new FabricImage(htmlImg)
-      const scaleX = element.width / (htmlImg.naturalWidth || 1)
-      const scaleY = element.height / (htmlImg.naturalHeight || 1)
+      const scaleX = element.width / (img.width || 1)
+      const scaleY = element.height / (img.height || 1)
       img.set({
         left: element.x,
         top: element.y,
