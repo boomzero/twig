@@ -8,7 +8,7 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor } from 'electron'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -19,6 +19,16 @@ import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
 import fontkit from 'fontkit'
+
+// Suppress EIO errors on stdout/stderr that occur when the computer sleeps.
+// Node.js emits 'error' events asynchronously on these streams when the
+// underlying pipe is broken; without a listener, they crash the process.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EIO') throw err
+})
+process.stderr.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EIO') throw err
+})
 
 // ============================================================================
 // Input Validation
@@ -380,6 +390,29 @@ function closeDbConnection(filePath: string, checkpointMode: 'none' | 'passive' 
   }
 }
 
+/**
+ * Executes a database operation.
+ * The powerMonitor 'suspend' handler closes all connections before sleep, so
+ * SQLITE_READONLY_DBMOVED should never occur. If it somehow does (e.g. forced
+ * hibernate), we evict the stale connection and surface the error clearly so
+ * the renderer can recover gracefully.
+ *
+ * @param filePath - Absolute path to the .tb file
+ * @param fn - Database operation to run
+ */
+function withDbConnection<T>(filePath: string, fn: (db: Database.Database) => T): T {
+  try {
+    return fn(getDbConnection(filePath))
+  } catch (error) {
+    if ((error as { code?: string }).code === 'SQLITE_READONLY_DBMOVED') {
+      // Stale connection — evict it so the next call gets a fresh one.
+      closeDbConnection(filePath, 'none')
+      safeLog(`Evicted stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`, 'warn')
+    }
+    throw error
+  }
+}
+
 // ============================================================================
 // Font Detection Utility
 // ============================================================================
@@ -705,6 +738,15 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Close all cached database connections before the system sleeps so that
+  // connections are never stale after wake (SQLITE_READONLY_DBMOVED).
+  powerMonitor.on('suspend', () => {
+    safeLog('System suspending — closing all database connections')
+    for (const [filePath] of connectionCache) {
+      closeDbConnection(filePath, 'passive')
+    }
+  })
+
   // ============================================================================
   // IPC Handlers
   // ============================================================================
@@ -805,8 +847,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:get-slide-ids', (_event, filePath: string): string[] => {
     try {
       validateFilePath(filePath)
-      const db = getDbConnection(filePath)
-      return dbService.getSlideIds(db)
+      return withDbConnection(filePath, (db) => dbService.getSlideIds(db))
     } catch (error) {
       console.error('Error in db:get-slide-ids:', error)
       throw error
@@ -820,8 +861,7 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       validateSlideId(slideId)
-      const db = getDbConnection(filePath)
-      return dbService.getSlide(db, slideId)
+      return withDbConnection(filePath, (db) => dbService.getSlide(db, slideId))
     } catch (error) {
       console.error('Error in db:get-slide:', error)
       throw error
@@ -834,8 +874,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:create-slide', (_event, filePath: string): Slide => {
     try {
       validateFilePath(filePath)
-      const db = getDbConnection(filePath)
-      return dbService.createSlide(db)
+      return withDbConnection(filePath, (db) => dbService.createSlide(db))
     } catch (error) {
       console.error('Error in db:create-slide:', error)
       throw error
@@ -849,8 +888,7 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       validateSlideId(slide.id)
-      const db = getDbConnection(filePath)
-      dbService.saveSlide(db, slide)
+      withDbConnection(filePath, (db) => dbService.saveSlide(db, slide))
     } catch (error) {
       console.error('Error in db:save-slide:', error)
       throw error
@@ -1265,7 +1303,6 @@ app.whenReady().then(() => {
           .substring(0, 16)
 
         // Store in database
-        const db = getDbConnection(filePath)
         const font: FontData = {
           id,
           fontFamily,
@@ -1273,7 +1310,7 @@ app.whenReady().then(() => {
           format,
           variant
         }
-        dbService.addFont(db, font)
+        withDbConnection(filePath, (db) => dbService.addFont(db, font))
       } catch (error) {
         console.error('Error in fonts:embed-font:', error)
         throw error
@@ -1287,8 +1324,7 @@ app.whenReady().then(() => {
   ipcMain.handle('fonts:get-embedded-fonts', (_event, filePath: string): FontData[] => {
     try {
       validateFilePath(filePath)
-      const db = getDbConnection(filePath)
-      return dbService.getFonts(db)
+      return withDbConnection(filePath, (db) => dbService.getFonts(db))
     } catch (error) {
       console.error('Error in fonts:get-embedded-fonts:', error)
       throw error
@@ -1303,8 +1339,7 @@ app.whenReady().then(() => {
     (_event, filePath: string, fontFamily: string, variant: string = 'normal-normal'): FontData | null => {
       try {
         validateFilePath(filePath)
-        const db = getDbConnection(filePath)
-        return dbService.getFontData(db, fontFamily, variant)
+        return withDbConnection(filePath, (db) => dbService.getFontData(db, fontFamily, variant))
       } catch (error) {
         console.error('Error in fonts:get-font-data:', error)
         throw error
