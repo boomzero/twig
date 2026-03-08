@@ -44,7 +44,7 @@
   class="absolute bg-white border border-gray-300 rounded-md shadow-lg py-1 z-50"
   style="top: {y}px; left: {x}px;"
 >
-  {#if onBringToFront || onMoveUp || onMoveDown || onSendToBack}
+  {#if (onBringToFront || onMoveUp || onMoveDown || onSendToBack) && !(isAtFront && isAtBack)}
     <button
       onclick={onBringToFront}
       disabled={isAtFront}

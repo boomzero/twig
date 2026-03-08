@@ -2115,16 +2115,45 @@
   }
 
   /**
+   * Reorders existing canvas objects to match the current zIndex values in state
+   * without clearing or reloading the canvas. Used by all layer reorder operations
+   * (buttons and drag) to avoid triggering async image reloads and flicker.
+   *
+   * All objects are already on the canvas when this runs, so selection restore is
+   * synchronous — no Promise needed and no generation guard required.
+   */
+  function applyZOrderToCanvas(): void {
+    if (!fabCanvas || !appState.currentSlide) return
+    const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
+    const objs = fabCanvas.getObjects() as DeckFabricObject[]
+    sorted.forEach((el, targetIndex) => {
+      const obj = objs.find((o) => o.id === el.id)
+      if (obj) fabCanvas.moveTo(obj, targetIndex)
+    })
+    const savedId = appState.selectedObjectId
+    if (savedId) {
+      const obj = (fabCanvas.getObjects() as DeckFabricObject[]).find((o) => o.id === savedId)
+      if (obj) fabCanvas.setActiveObject(obj)
+    }
+    fabCanvas.requestRenderAll()
+  }
+
+  /**
    * Re-renders the canvas then restores the previously active object.
-   * Used by layer reorder operations so selection is preserved after the canvas is rebuilt.
+   * Used only for slide navigation and initial load, not for layer reorders
+   * (which use the lighter applyZOrderToCanvas instead).
    * Waits for async image loads to settle before restoring, so image elements are
    * re-selected correctly even when they land on the canvas asynchronously.
    */
   function renderCanvasAndRestoreSelection(): void {
     const savedId = appState.selectedObjectId
+    // Capture the generation that renderCanvasFromState() is about to stamp.
+    // Checked in .then() to bail out if a newer render started before ours settled.
+    const expectedGeneration = renderGeneration + 1
     renderCanvasFromState()
       .then(() => {
         if (!savedId || !fabCanvas) return
+        if (renderGeneration !== expectedGeneration) return
         const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
         if (obj) {
           fabCanvas.setActiveObject(obj)
@@ -2141,7 +2170,7 @@
     const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
     el.zIndex = max + 1
     compactZIndexes()
-    renderCanvasAndRestoreSelection()
+    applyZOrderToCanvas()
     scheduleSave()
   }
 
@@ -2152,7 +2181,7 @@
     const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
     el.zIndex = min - 1
     compactZIndexes()
-    renderCanvasAndRestoreSelection()
+    applyZOrderToCanvas()
     scheduleSave()
   }
 
@@ -2166,7 +2195,7 @@
     if (!above) return
     ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
     compactZIndexes()
-    renderCanvasAndRestoreSelection()
+    applyZOrderToCanvas()
     scheduleSave()
   }
 
@@ -2180,7 +2209,7 @@
     if (!below) return
     ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
     compactZIndexes()
-    renderCanvasAndRestoreSelection()
+    applyZOrderToCanvas()
     scheduleSave()
   }
 
@@ -2646,11 +2675,11 @@
             onLayerChange is only called by the drag-to-reorder path in StackPanel.
             The button paths (onBringToFront etc.) call layerBringToFront/layerMoveUp/
             layerMoveDown/layerSendToBack directly, which already invoke
-            renderCanvasAndRestoreSelection + scheduleSave internally, so they do NOT
-            call onLayerChange to avoid double-rendering.
+            applyZOrderToCanvas + scheduleSave internally, so they do NOT call
+            onLayerChange to avoid a double canvas update.
           -->
           <StackPanel
-            onLayerChange={() => { renderCanvasAndRestoreSelection(); scheduleSave() }}
+            onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
             onSelect={(id) => {
               if (!fabCanvas) return
               const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === id)

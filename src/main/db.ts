@@ -403,6 +403,10 @@ function prepareElementUpsert(db: Database) {
  * @param slide - The slide object to save (with all its elements)
  */
 export function saveSlide(db: Database, slide: Slide): void {
+  // Prepare outside the transaction so better-sqlite3 doesn't re-parse the SQL
+  // on every autosave invocation (saveAllSlides already does this correctly).
+  const elementUpsert = prepareElementUpsert(db)
+
   const transaction = db.transaction((s: Slide) => {
     // Ensure the slide record exists
     const slideInfo = db.prepare('SELECT slide_order FROM slides WHERE id = ?').get(s.id) as
@@ -418,8 +422,6 @@ export function saveSlide(db: Database, slide: Slide): void {
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
       db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(s.id, newOrder)
     }
-
-    const elementUpsert = prepareElementUpsert(db)
 
     s.elements.forEach((el) => {
       let stylesJson: string | null = null
