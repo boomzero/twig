@@ -547,8 +547,8 @@ function getSystemFonts(): SystemFont[] {
  */
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 670,
+    width: 1440,
+    height: 900,
     show: false, // Don't show until ready-to-show event (prevents visual flash)
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),

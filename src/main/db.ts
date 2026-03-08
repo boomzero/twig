@@ -52,6 +52,9 @@ export interface DeckElement {
 
   /** Original image filename (only for image elements) */
   filename?: string
+
+  /** Z-index for layer ordering (higher = in front) */
+  zIndex: number
 }
 
 /**
@@ -128,6 +131,7 @@ export function initializeDatabase(db: Database): void {
       styles TEXT,
       src TEXT,
       filename TEXT,
+      z_index INTEGER DEFAULT 0,
       FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
     )
   `)
@@ -144,23 +148,61 @@ export function initializeDatabase(db: Database): void {
     )
   `)
 
-  // Migration: Add src and filename columns for image support if they don't exist
-  // This handles existing databases that were created before image support was added
+  // Migrations: each column addition has its own try/catch so a failure in one
+  // does not prevent the others from running on subsequent launches.
+  let columnNames: string[] = []
+  let schemaReadOk = false
   try {
-    const tableInfo = db.prepare("PRAGMA table_info(elements)").all() as { name: string }[]
-    const columnNames = tableInfo.map(col => col.name)
+    const tableInfo = db.prepare('PRAGMA table_info(elements)').all() as { name: string }[]
+    columnNames = tableInfo.map((col) => col.name)
+    schemaReadOk = true
     console.log('Database columns:', columnNames.join(', '))
-
-    if (!columnNames.includes('src')) {
-      console.log('Adding src column to elements table')
-      db.exec('ALTER TABLE elements ADD COLUMN src TEXT')
-    }
-    if (!columnNames.includes('filename')) {
-      console.log('Adding filename column to elements table')
-      db.exec('ALTER TABLE elements ADD COLUMN filename TEXT')
-    }
   } catch (error) {
-    console.error('Failed to migrate database schema:', error)
+    console.error('Failed to read database schema for migration:', error)
+  }
+
+  if (!schemaReadOk) {
+    console.warn('Skipping all migrations — could not read schema (database may be locked or corrupted).')
+  } else {
+    if (!columnNames.includes('src')) {
+      try {
+        console.log('Adding src column to elements table')
+        db.exec('ALTER TABLE elements ADD COLUMN src TEXT')
+      } catch (error) {
+        console.error('Migration failed: src column', error)
+      }
+    }
+
+    if (!columnNames.includes('filename')) {
+      try {
+        console.log('Adding filename column to elements table')
+        db.exec('ALTER TABLE elements ADD COLUMN filename TEXT')
+      } catch (error) {
+        console.error('Migration failed: filename column', error)
+      }
+    }
+
+    if (!columnNames.includes('z_index')) {
+      try {
+        console.log('Adding z_index column to elements table')
+        // Wrap DDL + backfill in a single transaction so that if the UPDATE fails
+        // the column is rolled back too and the migration re-runs on next launch.
+        // SQLite allows ALTER TABLE inside transactions; better-sqlite3 supports it.
+        db.transaction(() => {
+          db.exec('ALTER TABLE elements ADD COLUMN z_index INTEGER DEFAULT 0')
+          // Backfill: assign sequential per-slide z-indexes ordered by rowid (insertion order)
+          db.exec(`
+            UPDATE elements SET z_index = (
+              SELECT COUNT(*) - 1
+              FROM elements e2
+              WHERE e2.slide_id = elements.slide_id AND e2.rowid <= elements.rowid
+            )
+          `)
+        })()
+      } catch (error) {
+        console.error('Migration failed: z_index column', error)
+      }
+    }
   }
 }
 
@@ -200,6 +242,7 @@ interface ElementRow {
   styles?: string | null // Stored as JSON string in database
   src?: string | null // Image data as base64 data URI
   filename?: string | null // Original image filename
+  z_index: number
 }
 
 /**
@@ -218,10 +261,9 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     return null
   }
 
-  // Load all elements belonging to this slide
-  // Explicitly select all columns to ensure we get src and filename
+  // Load all elements belonging to this slide, ordered by z_index
   const elementStmt = db.prepare(
-    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename FROM elements WHERE slide_id = ?'
+    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
   )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
@@ -251,7 +293,8 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       : undefined,
     // Image-specific fields
     src: el.src || undefined,
-    filename: el.filename || undefined
+    filename: el.filename || undefined,
+    zIndex: el.z_index ?? 0
   }))
 
   return { id: slideRow.id, elements }
@@ -296,6 +339,57 @@ function validateAndRepairSlideOrder(db: Database): void {
 }
 
 /**
+ * Deletes elements for a slide that are no longer in the provided keepIds set.
+ *
+ * Uses SELECT + JS filter + chunked DELETE BY id rather than
+ * `DELETE ... NOT IN (?, ?, ...)` to avoid hitting SQLite's
+ * SQLITE_LIMIT_VARIABLE_NUMBER (default 999).
+ */
+function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string>): void {
+  const existing = db.prepare('SELECT id FROM elements WHERE slide_id = ?').all(slideId) as {
+    id: string
+  }[]
+  const stale = existing.filter((r) => !keepIds.has(r.id)).map((r) => r.id)
+  if (stale.length === 0) return
+  // Delete in chunks of 500 to stay within SQLITE_LIMIT_VARIABLE_NUMBER
+  const CHUNK = 500
+  for (let i = 0; i < stale.length; i += CHUNK) {
+    const chunk = stale.slice(i, i + CHUNK)
+    const placeholders = chunk.map(() => '?').join(', ')
+    db.prepare(`DELETE FROM elements WHERE id IN (${placeholders})`).run(...chunk)
+  }
+}
+
+/**
+ * Prepares the element UPSERT statement shared by saveSlide and saveAllSlides.
+ *
+ * On conflict all mutable fields are updated EXCEPT src. Image src is a base64
+ * data URI (potentially megabytes) that never changes after first import —
+ * skipping it on updates avoids re-writing large blobs on every autosave.
+ */
+function prepareElementUpsert(db: Database) {
+  return db.prepare(`
+    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      slide_id = excluded.slide_id,
+      type = excluded.type,
+      x = excluded.x,
+      y = excluded.y,
+      width = excluded.width,
+      height = excluded.height,
+      angle = excluded.angle,
+      fill = excluded.fill,
+      text = excluded.text,
+      fontSize = excluded.fontSize,
+      fontFamily = excluded.fontFamily,
+      styles = excluded.styles,
+      filename = excluded.filename,
+      z_index = excluded.z_index
+  `)
+}
+
+/**
  * Saves a slide and all its elements to the database.
  *
  * This function handles both inserting new slides and updating existing ones:
@@ -309,18 +403,18 @@ function validateAndRepairSlideOrder(db: Database): void {
  * @param slide - The slide object to save (with all its elements)
  */
 export function saveSlide(db: Database, slide: Slide): void {
+  // Prepare outside the transaction so better-sqlite3 doesn't re-parse the SQL
+  // on every autosave invocation (saveAllSlides already does this correctly).
+  const elementUpsert = prepareElementUpsert(db)
+
   const transaction = db.transaction((s: Slide) => {
-    // Check if this slide already exists in the database
+    // Ensure the slide record exists
     const slideInfo = db.prepare('SELECT slide_order FROM slides WHERE id = ?').get(s.id) as
       | { slide_order: number }
       | undefined
 
     let isNewSlide = false
-    if (slideInfo) {
-      // Slide exists - delete all its old elements (we'll re-insert them below)
-      db.prepare('DELETE FROM elements WHERE slide_id = ?').run(s.id)
-    } else {
-      // New slide - create the slide entry with the next available order
+    if (!slideInfo) {
       isNewSlide = true
       const maxOrder = db.prepare('SELECT MAX(slide_order) as max FROM slides').get() as {
         max: number | null
@@ -329,31 +423,18 @@ export function saveSlide(db: Database, slide: Slide): void {
       db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(s.id, newOrder)
     }
 
-    // Prepare the element insert statement (reused for all elements for efficiency)
-    const elementInsert = db.prepare(
-      'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    )
-
-    // Insert all elements for this slide
     s.elements.forEach((el) => {
-      // Debug: Log image elements being saved
-      if (el.type === 'image') {
-        console.log(`Saving image element ${el.id}, src length: ${el.src?.length || 0}`)
-      }
-
-      // Serialize styles with error handling
       let stylesJson: string | null = null
       if (el.styles) {
         try {
           stylesJson = JSON.stringify(el.styles)
         } catch (error) {
           console.error(`Failed to serialize styles for element ${el.id}:`, error)
-          // Continue without styles rather than failing the entire save
           stylesJson = null
         }
       }
 
-      elementInsert.run(
+      elementUpsert.run(
         el.id,
         s.id,
         el.type,
@@ -362,23 +443,25 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.width,
         el.height,
         el.angle,
-        el.fill,
-        el.text,
-        el.fontSize,
-        el.fontFamily,
+        el.fill ?? null,
+        el.text ?? null,
+        el.fontSize ?? null,
+        el.fontFamily ?? null,
         stylesJson,
-        el.src || null,
-        el.filename || null
+        el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
+        el.filename ?? null,
+        el.zIndex
       )
     })
 
-    // If this was a new slide, validate and repair slide order to ensure no gaps
+    // Remove elements that are no longer on this slide
+    deleteOrphanElements(db, s.id, new Set(s.elements.map((el) => el.id)))
+
     if (isNewSlide) {
       validateAndRepairSlideOrder(db)
     }
   })
 
-  // Execute the transaction
   transaction(slide)
 }
 
@@ -426,31 +509,24 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
   const transaction = db.transaction((slidesToSave: Slide[]) => {
     let hasNewSlides = false
+
+    // Prepared once and reused across all slides via the shared helper.
+    const elementUpsert = prepareElementUpsert(db)
+
     for (let index = 0; index < slidesToSave.length; index++) {
       const slide = slidesToSave[index]
-      // Check if this slide already exists in the database
       const slideInfo = db.prepare('SELECT slide_order FROM slides WHERE id = ?').get(slide.id) as
         | { slide_order: number }
         | undefined
 
       if (slideInfo) {
-        // Slide exists - update its order and delete all its old elements
         db.prepare('UPDATE slides SET slide_order = ? WHERE id = ?').run(index, slide.id)
-        db.prepare('DELETE FROM elements WHERE slide_id = ?').run(slide.id)
       } else {
-        // New slide - create the slide entry with the correct order
         hasNewSlides = true
         db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(slide.id, index)
       }
 
-      // Prepare the element insert statement (reused for all elements for efficiency)
-      const elementInsert = db.prepare(
-        'INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      )
-
-      // Insert all elements for this slide
       slide.elements.forEach((el) => {
-        // Serialize styles with error handling
         let stylesJson: string | null = null
         if (el.styles) {
           try {
@@ -461,7 +537,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           }
         }
 
-        elementInsert.run(
+        elementUpsert.run(
           el.id,
           slide.id,
           el.type,
@@ -470,18 +546,21 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.width,
           el.height,
           el.angle,
-          el.fill,
-          el.text,
-          el.fontSize,
-          el.fontFamily,
+          el.fill ?? null,
+          el.text ?? null,
+          el.fontSize ?? null,
+          el.fontFamily ?? null,
           stylesJson,
-          el.src || null,
-          el.filename || null
+          el.src ?? null,
+          el.filename ?? null,
+          el.zIndex
         )
       })
+
+      // Remove elements no longer on this slide
+      deleteOrphanElements(db, slide.id, new Set(slide.elements.map((el) => el.id)))
     }
 
-    // If any new slides were created, validate and repair slide order to ensure no gaps
     if (hasNewSlides) {
       validateAndRepairSlideOrder(db)
     }

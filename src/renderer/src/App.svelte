@@ -38,6 +38,7 @@
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import PresentationView from './components/PresentationView.svelte'
+  import StackPanel from './components/StackPanel.svelte'
   import { PressedKeys } from 'runed'
 
   // ============================================================================
@@ -54,6 +55,30 @@
   let activeTextObject: IText | null = null
   let lastTextSelectionRange: { start: number; end: number } | null = null
   let suppressSelectionTracking = false
+
+  // Layers panel visibility and width
+  let showStackPanel = $state(false)
+  let stackPanelWidth = $state(240)
+
+  function startStackPanelResize(e: MouseEvent): void {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = stackPanelWidth
+
+    function onMove(ev: MouseEvent): void {
+      // Drag handle is on the LEFT edge — dragging left increases width
+      const delta = startX - ev.clientX
+      stackPanelWidth = Math.max(120, Math.min(600, startWidth + delta))
+    }
+
+    function onUp(): void {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   // Rich text editor state
   let showRichTextControls = $state(false)
@@ -84,6 +109,35 @@
   // Context menu state
   let contextMenuVisible = $state(false)
   let contextMenuPosition = $state({ x: 0, y: 0 })
+
+  // Boundary flags for disabling layer buttons when already at front/back.
+  // When there are no elements, selectedIsAtFront/Back both default to false
+  // (no element is selected, so neither boundary applies).
+  const selectedElementZIndex = $derived(
+    appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)?.zIndex ?? null
+  )
+  const canvasMaxZ = $derived(
+    appState.currentSlide?.elements.length
+      ? appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
+      : null
+  )
+  const canvasMinZ = $derived(
+    appState.currentSlide?.elements.length
+      ? appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
+      : null
+  )
+  const selectedIsAtFront = $derived(
+    selectedElementZIndex !== null && canvasMaxZ !== null && selectedElementZIndex >= canvasMaxZ
+  )
+  const selectedIsAtBack = $derived(
+    selectedElementZIndex !== null && canvasMinZ !== null && selectedElementZIndex <= canvasMinZ
+  )
+
+  // Generation counter incremented on each renderCanvasFromState() call.
+  // Async image load callbacks capture their generation and bail out if a newer
+  // render has started (e.g. the user navigated to another slide), preventing
+  // stale images from landing on the wrong canvas and causing duplicates.
+  let renderGeneration = 0
 
   /**
    * Auto-save debounce delay in milliseconds.
@@ -428,7 +482,7 @@
           if (!fabCanvas) {
             fabCanvas = new Canvas(canvasEl)
           }
-          renderCanvasFromState()
+          renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
         }
       })
       return
@@ -470,7 +524,7 @@
     }
 
     // Step 3: Re-render all objects from state
-    renderCanvasFromState()
+    renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
 
     // Step 4: Restore previous selection if it existed
     if (selectionStateToRestore && fabCanvas) {
@@ -599,10 +653,13 @@
    *
    * Called whenever the current slide changes (via $effect).
    */
-  function renderCanvasFromState(): void {
+  function renderCanvasFromState(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide) {
-      return
+      return Promise.resolve()
     }
+
+    // Stamp this render so async callbacks can detect staleness
+    const generation = ++renderGeneration
 
     const currentSlide = appState.currentSlide
 
@@ -619,27 +676,25 @@
     fabCanvas.off('selection:created', handleSelection)
     fabCanvas.off('selection:updated', handleSelection)
     fabCanvas.off('selection:cleared', handleSelectionCleared)
+    fabCanvas.off('contextmenu', handleContextMenu)
 
     // Clear the canvas and re-create all objects from state
     fabCanvas.clear()
 
-    // Process elements - images need async loading, so handle separately
-    const imageElements: DeckElement[] = []
-    const nonImageElements: DeckElement[] = []
+    // Sort elements by zIndex (ascending = back-to-front).
+    // getSlide() already returns elements ORDER BY z_index ASC, so in normal
+    // flow this is a no-op. The defensive sort guards against in-memory
+    // reorder mutations (e.g. compactZIndexes) that occur between load and render.
+    const sortedElements = [...currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
-    currentSlide.elements.forEach((element) => {
-      if (element.type === 'image') {
-        imageElements.push(element)
-      } else {
-        nonImageElements.push(element)
-      }
-    })
+    // Build a lookup of element id → zIndex for use by async image insertions
+    const zIndexById = new Map(sortedElements.map((el) => [el.id, el.zIndex]))
 
-    // Add non-image elements synchronously
-    nonImageElements.forEach((element) => {
+    // Add non-image elements synchronously in z-order
+    sortedElements.forEach((element) => {
+      if (element.type === 'image') return
+
       let fabObj: FabricObject | undefined
-
-      // Create fabric.js object based on element type
       if (element.type === 'rect') {
         fabObj = new Rect({
           left: element.x,
@@ -651,9 +706,7 @@
           id: element.id
         })
       } else if (element.type === 'text') {
-        // Clean up any unwanted "transparent" values from styles before creating the object
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
-
         fabObj = new IText(element.text || 'Hello', {
           left: element.x,
           top: element.y,
@@ -665,39 +718,48 @@
           styles: cleanedStyles
         })
       }
-
-      if (fabObj) {
-        fabCanvas.add(fabObj)
-      }
+      if (fabObj) fabCanvas.add(fabObj)
     })
 
-    // Add image elements asynchronously
-    imageElements.forEach((element) => {
-      if (element.src) {
-        FabricImage.fromURL(element.src, {
-          crossOrigin: 'anonymous'
+    // Add image elements asynchronously, inserting at the correct z-position.
+    // When each image resolves, we count how many currently-present canvas objects
+    // have a lower zIndex (via ID lookup) to find the right insertAt index.
+    // insertAt gives correct intermediate rendering as each image arrives.
+    // A Promise.allSettled correction pass below fixes any ordering errors that
+    // occur when two images resolve in the same microtask and see identical state.
+    const imageLoads: Promise<void>[] = []
+
+    sortedElements.forEach((element) => {
+      if (element.type !== 'image' || !element.src) return
+      const imageZIndex = element.zIndex
+
+      const load = FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
+        .then((img) => {
+          if (!fabCanvas || renderGeneration !== generation) return
+          const scaleX = element.width / (img.width || 1)
+          const scaleY = element.height / (img.height || 1)
+          img.set({
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            scaleX,
+            scaleY,
+            id: element.id
+          })
+
+          // Count objects already on the canvas whose zIndex is lower than ours
+          const insertIndex = (fabCanvas.getObjects() as DeckFabricObject[]).filter(
+            (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
+          ).length
+
+          fabCanvas.insertAt(insertIndex, img)
+          fabCanvas.renderAll()
         })
-          .then((img) => {
-            // Calculate scale to match the stored width/height
-            const scaleX = element.width / (img.width || 1)
-            const scaleY = element.height / (img.height || 1)
+        .catch((error) => {
+          console.error('Failed to load image:', error)
+        })
 
-            img.set({
-              left: element.x,
-              top: element.y,
-              angle: element.angle,
-              scaleX: scaleX,
-              scaleY: scaleY,
-              id: element.id
-            })
-
-            fabCanvas.add(img)
-            fabCanvas.renderAll()
-          })
-          .catch((error) => {
-            console.error('Failed to load image:', error)
-          })
-      }
+      imageLoads.push(load)
     })
 
     fabCanvas.renderAll()
@@ -708,6 +770,25 @@
     fabCanvas.on('selection:created', handleSelection)
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
+    fabCanvas.on('contextmenu', handleContextMenu)
+
+    if (imageLoads.length === 0) return Promise.resolve()
+
+    // Once all images have settled, correct any ordering errors that occurred when
+    // two images resolved simultaneously and computed the same insertAt index.
+    // Uses the public moveTo() API (remove + splice at target index) in ascending
+    // z-order so each placement is stable without triggering selection events.
+    // The generation guard ensures this is a no-op if the slide changed while loading.
+    return Promise.allSettled(imageLoads).then(() => {
+      if (!fabCanvas || renderGeneration !== generation) return
+      if (imageLoads.length > 1) {
+        const sorted = (fabCanvas.getObjects() as DeckFabricObject[])
+          .slice()
+          .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
+        sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
+      }
+      fabCanvas.renderAll()
+    })
   }
 
   /**
@@ -1843,6 +1924,11 @@
   /**
    * Adds a new text element to the current slide at a default position.
    */
+  function nextZIndex(): number {
+    if (!appState.currentSlide || appState.currentSlide.elements.length === 0) return 0
+    return appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity) + 1
+  }
+
   function addText(): void {
     if (!appState.currentSlide) return
     const newText: DeckElement = {
@@ -1856,7 +1942,8 @@
       text: 'Double-click to edit',
       fontSize: 40,
       fontFamily: 'Arial',
-      fill: '#333333'
+      fill: '#333333',
+      zIndex: nextZIndex()
     }
     appState.currentSlide.elements.push(newText)
     scheduleSave()
@@ -1875,7 +1962,8 @@
       width: 150,
       height: 100,
       angle: 0,
-      fill: '#FF6F61'
+      fill: '#FF6F61',
+      zIndex: nextZIndex()
     }
     appState.currentSlide.elements.push(newRect)
     scheduleSave()
@@ -1930,7 +2018,8 @@
         height: height,
         angle: 0,
         src: imageData.src,
-        filename: imageData.filename
+        filename: imageData.filename,
+        zIndex: nextZIndex()
       }
 
       appState.currentSlide.elements.push(newImage)
@@ -2012,6 +2101,119 @@
   }
 
   // ============================================================================
+  // Layer Reorder Helpers (used by StackPanel and ContextMenu)
+  // ============================================================================
+
+  /**
+   * Compact all element zIndex values to sequential integers 0..n-1 after any
+   * reorder operation. Mutates elements in-place on appState. Keeps DB values clean.
+   */
+  function compactZIndexes(): void {
+    if (!appState.currentSlide) return
+    const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
+    sorted.forEach((el, i) => { el.zIndex = i })
+  }
+
+  /**
+   * Reorders existing canvas objects to match the current zIndex values in state
+   * without clearing or reloading the canvas. Used by all layer reorder operations
+   * (buttons and drag) to avoid triggering async image reloads and flicker.
+   *
+   * All objects are already on the canvas when this runs, so selection restore is
+   * synchronous — no Promise needed and no generation guard required.
+   */
+  function applyZOrderToCanvas(): void {
+    if (!fabCanvas || !appState.currentSlide) return
+    const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
+    const objs = fabCanvas.getObjects() as DeckFabricObject[]
+    sorted.forEach((el, targetIndex) => {
+      const obj = objs.find((o) => o.id === el.id)
+      if (obj) fabCanvas.moveTo(obj, targetIndex)
+    })
+    const savedId = appState.selectedObjectId
+    if (savedId) {
+      const obj = (fabCanvas.getObjects() as DeckFabricObject[]).find((o) => o.id === savedId)
+      if (obj) fabCanvas.setActiveObject(obj)
+    }
+    fabCanvas.requestRenderAll()
+  }
+
+  /**
+   * Re-renders the canvas then restores the previously active object.
+   * Used only for slide navigation and initial load, not for layer reorders
+   * (which use the lighter applyZOrderToCanvas instead).
+   * Waits for async image loads to settle before restoring, so image elements are
+   * re-selected correctly even when they land on the canvas asynchronously.
+   */
+  function renderCanvasAndRestoreSelection(): void {
+    const savedId = appState.selectedObjectId
+    // Capture the generation that renderCanvasFromState() is about to stamp.
+    // Checked in .then() to bail out if a newer render started before ours settled.
+    const expectedGeneration = renderGeneration + 1
+    renderCanvasFromState()
+      .then(() => {
+        if (!savedId || !fabCanvas) return
+        if (renderGeneration !== expectedGeneration) return
+        const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
+        if (obj) {
+          fabCanvas.setActiveObject(obj)
+          fabCanvas.requestRenderAll()
+        }
+      })
+      .catch((err) => console.error('Canvas render failed:', err))
+  }
+
+  function layerBringToFront(id: string): void {
+    if (!appState.currentSlide) return
+    const el = appState.currentSlide.elements.find((e) => e.id === id)
+    if (!el) return
+    const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
+    el.zIndex = max + 1
+    compactZIndexes()
+    applyZOrderToCanvas()
+    scheduleSave()
+  }
+
+  function layerSendToBack(id: string): void {
+    if (!appState.currentSlide) return
+    const el = appState.currentSlide.elements.find((e) => e.id === id)
+    if (!el) return
+    const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
+    el.zIndex = min - 1
+    compactZIndexes()
+    applyZOrderToCanvas()
+    scheduleSave()
+  }
+
+  function layerMoveUp(id: string): void {
+    if (!appState.currentSlide) return
+    const el = appState.currentSlide.elements.find((e) => e.id === id)
+    if (!el) return
+    const above = appState.currentSlide.elements
+      .filter((e) => e.zIndex > el.zIndex)
+      .sort((a, b) => a.zIndex - b.zIndex)[0]
+    if (!above) return
+    ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
+    compactZIndexes()
+    applyZOrderToCanvas()
+    scheduleSave()
+  }
+
+  function layerMoveDown(id: string): void {
+    if (!appState.currentSlide) return
+    const el = appState.currentSlide.elements.find((e) => e.id === id)
+    if (!el) return
+    const below = appState.currentSlide.elements
+      .filter((e) => e.zIndex < el.zIndex)
+      .sort((a, b) => b.zIndex - a.zIndex)[0]
+    if (!below) return
+    ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
+    compactZIndexes()
+    applyZOrderToCanvas()
+    scheduleSave()
+  }
+
+  // ============================================================================
   // Keyboard and Mouse Event Handlers
   // ============================================================================
 
@@ -2061,19 +2263,18 @@
    * Handles right-click events on the canvas.
    * Shows a context menu if an object is clicked, hides it otherwise.
    */
-  function handleContextMenu(event: MouseEvent): void {
-    event.preventDefault()
+  function handleContextMenu(opt: { e: MouseEvent; target?: FabricObject }): void {
+    opt.e.preventDefault()
     if (!fabCanvas) return
 
-    const target = fabCanvas.findTarget(event)
-    if (target) {
+    if (opt.target) {
       // Object was clicked - select it and show context menu
-      if (!fabCanvas.getActiveObjects().includes(target)) {
+      if (!fabCanvas.getActiveObjects().includes(opt.target)) {
         fabCanvas.discardActiveObject()
-        fabCanvas.setActiveObject(target)
+        fabCanvas.setActiveObject(opt.target)
         fabCanvas.requestRenderAll()
       }
-      contextMenuPosition = { x: event.clientX, y: event.clientY }
+      contextMenuPosition = { x: opt.e.clientX, y: opt.e.clientY }
       contextMenuVisible = true
     } else {
       // Empty space was clicked - clear selection and hide menu
@@ -2182,17 +2383,19 @@
 {:else if appState.currentSlide}
   <div
     class="flex flex-col h-screen font-sans"
-    oncontextmenu={handleContextMenu}
     role="application"
   >
     {#if contextMenuVisible}
       <ContextMenu
         x={contextMenuPosition.x}
         y={contextMenuPosition.y}
-        onDelete={() => {
-          deleteSelectedObject()
-          hideContextMenu()
-        }}
+        onDelete={() => { deleteSelectedObject(); hideContextMenu() }}
+        onBringToFront={appState.selectedObjectId ? () => { layerBringToFront(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onMoveUp={appState.selectedObjectId ? () => { layerMoveUp(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onMoveDown={appState.selectedObjectId ? () => { layerMoveDown(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onSendToBack={appState.selectedObjectId ? () => { layerSendToBack(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        isAtFront={selectedIsAtFront}
+        isAtBack={selectedIsAtBack}
       />
     {/if}
     <div class="flex items-center p-2 bg-gray-100 border-b border-gray-300 shadow-sm">
@@ -2308,6 +2511,19 @@
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
       >
         Add Image
+      </button>
+      <button
+        onclick={() => (showStackPanel = !showStackPanel)}
+        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class:bg-indigo-100={showStackPanel}
+        class:border-indigo-400={showStackPanel}
+        class:text-indigo-700={showStackPanel}
+        class:bg-white={!showStackPanel}
+        class:border-gray-300={!showStackPanel}
+        class:text-gray-700={!showStackPanel}
+        title="Toggle Layers panel"
+      >
+        Layers
       </button>
       {#if showRichTextControls}
         <div class="h-6 w-px bg-gray-300 mx-2"></div>
@@ -2443,6 +2659,43 @@
           </div>
         </div>
       </div>
+      {#if showStackPanel}
+        <div
+          class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
+          style="width: {stackPanelWidth}px;"
+        >
+          <!-- Resize handle on the left edge -->
+          <div
+            class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
+            onmousedown={startStackPanelResize}
+            role="separator"
+            aria-label="Resize layers panel"
+          ></div>
+          <!--
+            onLayerChange is only called by the drag-to-reorder path in StackPanel.
+            The button paths (onBringToFront etc.) call layerBringToFront/layerMoveUp/
+            layerMoveDown/layerSendToBack directly, which already invoke
+            applyZOrderToCanvas + scheduleSave internally, so they do NOT call
+            onLayerChange to avoid a double canvas update.
+          -->
+          <StackPanel
+            onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
+            onSelect={(id) => {
+              if (!fabCanvas) return
+              const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === id)
+              if (obj) {
+                fabCanvas.discardActiveObject()
+                fabCanvas.setActiveObject(obj)
+                fabCanvas.requestRenderAll()
+              }
+            }}
+            onBringToFront={layerBringToFront}
+            onMoveUp={layerMoveUp}
+            onMoveDown={layerMoveDown}
+            onSendToBack={layerSendToBack}
+          />
+        </div>
+      {/if}
       <PropertiesPanel onPropertyChange={scheduleSave} />
     </div>
   </div>
