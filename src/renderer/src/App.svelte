@@ -139,6 +139,10 @@
   // stale images from landing on the wrong canvas and causing duplicates.
   let renderGeneration = 0
 
+  // Cache of decoded image elements keyed by src (base64 data URI).
+  // Allows synchronous FabricImage construction on re-renders, preventing flicker.
+  const imageElementCache = new Map<string, HTMLImageElement>()
+
   /**
    * Auto-save debounce delay in milliseconds.
    * 300ms is fast enough to feel instant while batching rapid changes
@@ -729,37 +733,72 @@
     // occur when two images resolve in the same microtask and see identical state.
     const imageLoads: Promise<void>[] = []
 
+    const applyImageElement = (
+      htmlImg: HTMLImageElement,
+      element: DeckElement,
+      imageZIndex: number
+    ) => {
+      if (!fabCanvas || renderGeneration !== generation) return
+      const img = new FabricImage(htmlImg)
+      const scaleX = element.width / (img.width || 1)
+      const scaleY = element.height / (img.height || 1)
+      img.set({
+        left: element.x,
+        top: element.y,
+        angle: element.angle,
+        scaleX,
+        scaleY,
+        id: element.id
+      })
+      const insertIndex = (fabCanvas.getObjects() as DeckFabricObject[]).filter(
+        (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
+      ).length
+      fabCanvas.insertAt(insertIndex, img)
+    }
+
     sortedElements.forEach((element) => {
       if (element.type !== 'image' || !element.src) return
       const imageZIndex = element.zIndex
+      const cached = imageElementCache.get(element.src)
 
-      const load = FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
-        .then((img) => {
-          if (!fabCanvas || renderGeneration !== generation) return
-          const scaleX = element.width / (img.width || 1)
-          const scaleY = element.height / (img.height || 1)
-          img.set({
-            left: element.x,
-            top: element.y,
-            angle: element.angle,
-            scaleX,
-            scaleY,
-            id: element.id
+      if (cached) {
+        // Synchronous path — cached element, no flicker
+        applyImageElement(cached, element, imageZIndex)
+      } else {
+        // Async path — first load only
+        const load = FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
+          .then((img) => {
+            // Cache the underlying HTMLImageElement for future renders
+            const el = img.getElement()
+            if (el instanceof HTMLImageElement) {
+              imageElementCache.set(element.src!, el)
+            }
+            if (!fabCanvas || renderGeneration !== generation) return
+            const scaleX = element.width / (img.width || 1)
+            const scaleY = element.height / (img.height || 1)
+            img.set({
+              left: element.x,
+              top: element.y,
+              angle: element.angle,
+              scaleX,
+              scaleY,
+              id: element.id
+            })
+
+            // Count objects already on the canvas whose zIndex is lower than ours
+            const insertIndex = (fabCanvas.getObjects() as DeckFabricObject[]).filter(
+              (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
+            ).length
+
+            fabCanvas.insertAt(insertIndex, img)
+            fabCanvas.renderAll()
+          })
+          .catch((error) => {
+            console.error('Failed to load image:', error)
           })
 
-          // Count objects already on the canvas whose zIndex is lower than ours
-          const insertIndex = (fabCanvas.getObjects() as DeckFabricObject[]).filter(
-            (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
-          ).length
-
-          fabCanvas.insertAt(insertIndex, img)
-          fabCanvas.renderAll()
-        })
-        .catch((error) => {
-          console.error('Failed to load image:', error)
-        })
-
-      imageLoads.push(load)
+        imageLoads.push(load)
+      }
     })
 
     fabCanvas.renderAll()
@@ -1245,6 +1284,7 @@
         // Clear current slide to prevent any accidental saves to new database
         appState.currentSlide = null
         appState.currentSlideIndex = -1
+        imageElementCache.clear()
 
         // Close any existing database connection
         if (appState.currentFilePath) {
@@ -1331,6 +1371,7 @@
         // Flush any pending saves before switching presentations
         await flushPendingSave()
 
+        imageElementCache.clear()
         await loadPresentation(filePath)
         setSaveStatus('saved')
       } catch (error) {
