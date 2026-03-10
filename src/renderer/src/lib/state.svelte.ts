@@ -130,7 +130,10 @@ export const appState = $state({
   selectedObjectId: null as string | null,
 
   /** Whether the presentation is in presenting mode (fullscreen slideshow) */
-  isPresentingMode: false
+  isPresentingMode: false,
+
+  /** Map of slideId → thumbnail data URI (JPEG, loaded from DB on startup) */
+  thumbnails: {} as Record<string, string>
 })
 
 /**
@@ -156,6 +159,7 @@ export function resetState(): void {
   appState.currentFilePath = null
   appState.isTempFile = false
   appState.selectedObjectId = null
+  appState.thumbnails = {}
 }
 
 /**
@@ -181,6 +185,7 @@ export async function loadPresentation(filePath: string): Promise<void> {
   appState.isTempFile = await window.api.db.isTempFile(filePath)
   appState.slideIds = ids
   appState.selectedObjectId = null
+  appState.thumbnails = await window.api.db.getThumbnails(filePath)
 
   // Load the first slide, or create one if the file is empty
   if (ids.length > 0) {

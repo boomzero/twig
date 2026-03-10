@@ -685,6 +685,12 @@ function createWindow(): void {
 let debugWindow: BrowserWindow | null = null
 
 /**
+ * Reference to the presentation window (if open).
+ * Only one presentation window can be open at a time.
+ */
+let presentationWindow: BrowserWindow | null = null
+
+/**
  * Creates and opens the debug window.
  * If a debug window is already open, focuses it instead of creating a new one.
  */
@@ -722,6 +728,49 @@ function createDebugWindow(): void {
     debugWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/debug.html`)
   } else {
     debugWindow.loadFile(join(__dirname, '../renderer/debug.html'))
+  }
+}
+
+/**
+ * Creates and opens the presentation window in fullscreen.
+ * If already open, focuses it instead.
+ */
+function createPresentationWindow(): void {
+  if (presentationWindow && !presentationWindow.isDestroyed()) {
+    presentationWindow.focus()
+    return
+  }
+
+  presentationWindow = new BrowserWindow({
+    kiosk: true,
+    frame: false,
+    title: 'twig Presentation',
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  presentationWindow.on('ready-to-show', () => {
+    presentationWindow?.show()
+  })
+
+  presentationWindow.on('closed', () => {
+    // Notify main window that presentation was closed
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('presentation:window-closed')
+    presentationWindow = null
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    presentationWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/presentation.html`)
+  } else {
+    presentationWindow.loadFile(join(__dirname, '../renderer/presentation.html'))
   }
 }
 
@@ -891,6 +940,33 @@ app.whenReady().then(() => {
       withDbConnection(filePath, (db) => dbService.saveSlide(db, slide))
     } catch (error) {
       console.error('Error in db:save-slide:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Saves a thumbnail for a specific slide.
+   */
+  ipcMain.handle('db:save-thumbnail', (_event, filePath: string, slideId: string, thumbnail: string): void => {
+    try {
+      validateFilePath(filePath)
+      validateSlideId(slideId)
+      withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail))
+    } catch (error) {
+      console.error('Error in db:save-thumbnail:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Retrieves all stored thumbnails for a presentation.
+   */
+  ipcMain.handle('db:get-thumbnails', (_event, filePath: string): Record<string, string> => {
+    try {
+      validateFilePath(filePath)
+      return withDbConnection(filePath, (db) => dbService.getThumbnails(db))
+    } catch (error) {
+      console.error('Error in db:get-thumbnails:', error)
       throw error
     }
   })
@@ -1402,6 +1478,50 @@ app.whenReady().then(() => {
       // Ask main window to send its state
       mainWindow.webContents.send('debug:request-state-from-main')
     }
+  })
+
+  // --------------------------------------------------------------------------
+  // Presentation Window Handlers
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle('presentation:open-window', () => {
+    createPresentationWindow()
+  })
+
+  ipcMain.handle('presentation:close-window', () => {
+    if (presentationWindow && !presentationWindow.isDestroyed()) {
+      presentationWindow.close()
+    }
+  })
+
+  /** Forward slide state from main window to presentation window. */
+  ipcMain.on('presentation:state-update', (_event, state) => {
+    if (presentationWindow && !presentationWindow.isDestroyed()) {
+      presentationWindow.webContents.send('presentation:state-changed', state)
+    }
+  })
+
+  /** Forward navigation requests from presentation window to main window. */
+  ipcMain.on('presentation:navigate', (_event, direction: string) => {
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('presentation:navigate-request', direction)
+  })
+
+  /** Forward exit request from presentation window to main window. */
+  ipcMain.on('presentation:exit', () => {
+    if (presentationWindow && !presentationWindow.isDestroyed()) {
+      presentationWindow.close()
+    }
+  })
+
+  /** Presentation window signals it's ready — forward to main window so it sends initial state. */
+  ipcMain.on('presentation:ready', () => {
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('presentation:window-ready')
   })
 })
 

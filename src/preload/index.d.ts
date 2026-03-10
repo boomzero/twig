@@ -95,6 +95,8 @@ declare global {
         saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
         copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
         deleteTemp: (filePath: string) => Promise<void>
+        saveThumbnail: (filePath: string, slideId: string, thumbnail: string) => Promise<void>
+        getThumbnails: (filePath: string) => Promise<Record<string, string>>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>
@@ -107,6 +109,18 @@ declare global {
         getEmbeddedFonts: (filePath: string) => Promise<FontData[]>
         getFontData: (filePath: string, fontFamily: string, variant?: string) => Promise<FontData | null>
         loadFontFile: (fontPath: string) => Promise<Buffer>
+      }
+      presentation: {
+        openWindow: () => Promise<void>
+        closeWindow: () => Promise<void>
+        sendStateUpdate: (state: { slide: Slide | null; slideIndex: number; slideCount: number }) => void
+        onNavigateRequest: (callback: (direction: 'next' | 'prev') => void) => () => void
+        onWindowClosed: (callback: () => void) => () => void
+        navigate: (direction: 'next' | 'prev') => void
+        exit: () => void
+        onStateChanged: (callback: (state: { slide: Slide | null; slideIndex: number; slideCount: number }) => void) => () => void
+        signalReady: () => void
+        onWindowReady: (callback: () => void) => () => void
       }
       debug: {
         openWindow: () => Promise<void>

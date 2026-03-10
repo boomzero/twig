@@ -204,6 +204,22 @@ export function initializeDatabase(db: Database): void {
       }
     }
   }
+
+  // Migration: add thumbnail column to slides table
+  try {
+    const slideTableInfo = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
+    const slideColumnNames = slideTableInfo.map((col) => col.name)
+    if (!slideColumnNames.includes('thumbnail')) {
+      try {
+        console.log('Adding thumbnail column to slides table')
+        db.exec('ALTER TABLE slides ADD COLUMN thumbnail TEXT')
+      } catch (error) {
+        console.error('Migration failed: thumbnail column', error)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to read slides schema for thumbnail migration:', error)
+  }
 }
 
 // ============================================================================
@@ -616,6 +632,39 @@ export function getFontData(
       }
     | undefined
   return row || null
+}
+
+// ============================================================================
+// Thumbnail Functions
+// ============================================================================
+
+/**
+ * Saves a thumbnail for a slide.
+ *
+ * @param db - The SQLite database connection
+ * @param slideId - The slide ID to update
+ * @param thumbnail - The thumbnail as a JPEG data URI
+ */
+export function saveThumbnail(db: Database, slideId: string, thumbnail: string): void {
+  db.prepare('UPDATE slides SET thumbnail = ? WHERE id = ?').run(thumbnail, slideId)
+}
+
+/**
+ * Retrieves all stored thumbnails for a presentation.
+ *
+ * @param db - The SQLite database connection
+ * @returns Map of slideId → thumbnail data URI
+ */
+export function getThumbnails(db: Database): Record<string, string> {
+  const rows = db.prepare('SELECT id, thumbnail FROM slides').all() as {
+    id: string
+    thumbnail: string | null
+  }[]
+  const result: Record<string, string> = {}
+  for (const row of rows) {
+    if (row.thumbnail) result[row.id] = row.thumbnail
+  }
+  return result
 }
 
 /**
