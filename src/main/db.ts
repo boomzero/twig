@@ -203,22 +203,24 @@ export function initializeDatabase(db: Database): void {
         console.error('Migration failed: z_index column', error)
       }
     }
-  }
 
-  // Migration: add thumbnail column to slides table
-  try {
-    const slideTableInfo = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
-    const slideColumnNames = slideTableInfo.map((col) => col.name)
-    if (!slideColumnNames.includes('thumbnail')) {
-      try {
-        console.log('Adding thumbnail column to slides table')
-        db.exec('ALTER TABLE slides ADD COLUMN thumbnail TEXT')
-      } catch (error) {
-        console.error('Migration failed: thumbnail column', error)
+    // Migration: add thumbnail column to slides table.
+    // Kept inside the schemaReadOk guard so a locked/corrupted DB prevents
+    // all migrations consistently rather than allowing this one to run alone.
+    try {
+      const slideTableInfo = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
+      const slideColumnNames = slideTableInfo.map((col) => col.name)
+      if (!slideColumnNames.includes('thumbnail')) {
+        try {
+          console.log('Adding thumbnail column to slides table')
+          db.exec('ALTER TABLE slides ADD COLUMN thumbnail TEXT')
+        } catch (error) {
+          console.error('Migration failed: thumbnail column', error)
+        }
       }
+    } catch (error) {
+      console.error('Failed to read slides schema for thumbnail migration:', error)
     }
-  } catch (error) {
-    console.error('Failed to read slides schema for thumbnail migration:', error)
   }
 }
 

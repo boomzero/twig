@@ -113,12 +113,12 @@ declare global {
       presentation: {
         openWindow: () => Promise<void>
         closeWindow: () => Promise<void>
-        sendStateUpdate: (state: { slide: Slide | null; slideIndex: number; slideCount: number }) => void
+        sendStateUpdate: (state: { slide: Slide | null; slideIndex: number; slideCount: number; filePath: string | null }) => void
         onNavigateRequest: (callback: (direction: 'next' | 'prev') => void) => () => void
         onWindowClosed: (callback: () => void) => () => void
         navigate: (direction: 'next' | 'prev') => void
         exit: () => void
-        onStateChanged: (callback: (state: { slide: Slide | null; slideIndex: number; slideCount: number }) => void) => () => void
+        onStateChanged: (callback: (state: { slide: Slide | null; slideIndex: number; slideCount: number; filePath: string | null }) => void) => () => void
         signalReady: () => void
         onWindowReady: (callback: () => void) => () => void
       }

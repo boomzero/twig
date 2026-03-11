@@ -25,6 +25,7 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
+  import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
     type FabricObject,
@@ -296,6 +297,9 @@
     fabCanvas.backgroundColor = 'white'
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
     fabCanvas.backgroundColor = prevBg
+    // Re-render to ensure the canvas shows the correct background colour and
+    // doesn't display a white flash if any other handler triggers a renderAll.
+    fabCanvas.renderAll()
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
@@ -380,8 +384,12 @@
       appState.isPresentingMode = false
     })
 
-    // Send initial state when presentation window signals it's ready
+    // Send initial state when presentation window signals it's ready.
+    // isPresentingMode is set here (not in enterPresentationMode) so that
+    // the $effect below doesn't fire a premature sendPresentationState before
+    // the presentation window has registered its onStateChanged listener.
     unsubscribePresentationReady = window.api?.presentation?.onWindowReady(() => {
+      appState.isPresentingMode = true
       sendPresentationState()
     })
 
@@ -1660,58 +1668,6 @@
     fabCanvas.requestRenderAll()
   }
 
-  type FontBytes = Buffer | ArrayBuffer | Uint8Array | { data: number[] } | { data: Uint8Array }
-
-  function fontDataToBase64(fontData: FontBytes): string {
-    const bytes = normalizeFontBytes(fontData)
-    if (!bytes) {
-      throw new Error('Unsupported font data type')
-    }
-
-    try {
-      if (typeof Buffer !== 'undefined') {
-        return Buffer.from(bytes).toString('base64')
-      }
-    } catch {
-      // Fall back to manual base64 conversion.
-    }
-
-    const chunkSize = 0x8000
-    let binary = ''
-
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-    }
-
-    return btoa(binary)
-  }
-
-  function normalizeFontBytes(fontData: FontBytes): Uint8Array | null {
-    if (fontData instanceof Uint8Array) {
-      return fontData
-    }
-
-    if (fontData instanceof ArrayBuffer) {
-      return new Uint8Array(fontData)
-    }
-
-    if (typeof Buffer !== 'undefined' && fontData instanceof Buffer) {
-      return new Uint8Array(fontData)
-    }
-
-    if (fontData && typeof fontData === 'object' && 'data' in fontData) {
-      const data = fontData.data
-      if (data instanceof Uint8Array) {
-        return data
-      }
-      if (Array.isArray(data)) {
-        return new Uint8Array(data)
-      }
-    }
-
-    return null
-  }
-
   async function ensureFontReady(fontFamily: string, weight: string, style: string): Promise<void> {
     if (!document?.fonts?.load) return
 
@@ -2401,7 +2357,8 @@
     window.api?.presentation?.sendStateUpdate({
       slide: JSON.parse(JSON.stringify(appState.currentSlide)),
       slideIndex: appState.currentSlideIndex,
-      slideCount: appState.slideIds.length
+      slideCount: appState.slideIds.length,
+      filePath: appState.currentFilePath
     })
   }
 
@@ -2414,11 +2371,13 @@
 
   /**
    * Opens the presentation window and begins presenting.
+   * isPresentingMode is set to true by the onWindowReady callback once the
+   * presentation window has registered its state listener, avoiding a
+   * wasted IPC round-trip before the window is ready.
    */
   async function enterPresentationMode(): Promise<void> {
     await window.api?.presentation?.openWindow()
-    appState.isPresentingMode = true
-    // State is sent reactively via onWindowReady when the presentation window signals it's ready
+    // isPresentingMode is set to true inside onWindowReady (see onMount)
   }
 
   /**
