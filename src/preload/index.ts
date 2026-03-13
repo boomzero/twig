@@ -127,8 +127,8 @@ const api = {
 
   // Presentation window operations
   presentation: {
-    /** Open the fullscreen presentation window */
-    openWindow: () => ipcRenderer.invoke('presentation:open-window'),
+    /** Open the fullscreen presentation window (fire-and-forget, no await) */
+    openWindow: () => ipcRenderer.send('presentation:open-window'),
 
     /** Close the presentation window */
     closeWindow: () => ipcRenderer.invoke('presentation:close-window'),

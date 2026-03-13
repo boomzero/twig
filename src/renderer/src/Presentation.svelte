@@ -8,15 +8,16 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { Canvas, IText, Rect, FabricImage, cache, type FabricObject } from 'fabric'
+  import { Canvas, IText, Rect, FabricImage, type FabricObject } from 'fabric'
   import type { DeckElement, Slide } from './lib/types'
-  import { fontDataToBase64 } from './lib/fontUtils'
+  import { normalizeFontBytes } from './lib/fontUtils'
 
   export interface PresentationState {
-    slide: Slide | null
+    /** ID of the slide to display — presentation window fetches the full slide from DB */
+    slideId: string | null
     slideIndex: number
     slideCount: number
-    /** File path of the current presentation, needed to load embedded fonts. */
+    /** File path of the current presentation, needed for DB access and font loading. */
     filePath: string | null
   }
 
@@ -34,17 +35,25 @@
   let canvasEl: HTMLCanvasElement
   let presentationCanvas: Canvas | undefined
   let currentState = $state<PresentationState>({
-    slide: null,
+    slideId: null,
     slideIndex: 0,
     slideCount: 0,
     filePath: null
   })
+  // The full slide data fetched from the DB for the current slideId
+  let loadedSlide = $state<Slide | null>(null)
   let lastRenderedSlideId: string | null = null
-  // Monotonically-increasing counter used to detect stale async image loads.
+  // Guards stale async DB slide fetches (incremented on each new fetch).
+  let fetchGeneration = 0
+  // Guards stale async image loads within renderSlide (incremented on each render).
   let renderGeneration = 0
   // Tracks which fonts have been injected in this window so we don't repeat work.
   let loadedFontKeys = new Set<string>()
   let fontsLoadedForPath: string | null = null
+  // Shared promise for the in-progress font load. Concurrent slide navigations
+  // to the same file all await this same promise, so none of them render before
+  // fonts are ready even if they arrive while loading is still in flight.
+  let fontLoadingPromise: Promise<void> = Promise.resolve()
 
   // ============================================================================
   // Lifecycle
@@ -60,9 +69,27 @@
     scaleCanvas()
     renderSlide()
 
-    // Listen for slide state updates from the main window
-    const unsubState = window.api.presentation.onStateChanged((newState: PresentationState) => {
+    // Listen for slide state updates from the main window.
+    // Fonts and slide data are fetched in parallel; loadedSlide is only set once
+    // BOTH are ready, so the render effect always has fonts available on first draw.
+    const unsubState = window.api.presentation.onStateChanged(async (newState: PresentationState) => {
       currentState = newState
+      const { slideId, filePath } = newState
+
+      if (!slideId || !filePath) {
+        loadedSlide = null
+        return
+      }
+
+      const generation = ++fetchGeneration
+      if (filePath !== fontsLoadedForPath) {
+        fontLoadingPromise = loadEmbeddedFonts(filePath)
+      }
+      const [slide] = await Promise.all([
+        window.api.db.getSlide(filePath, slideId),
+        fontLoadingPromise
+      ])
+      if (fetchGeneration === generation) loadedSlide = slide
     })
 
     // Signal main window that we're ready to receive state
@@ -101,32 +128,26 @@
   // Rendering
   // ============================================================================
 
+  // Render whenever loadedSlide is updated (set only after fonts are ready).
   $effect(() => {
-    const slide = currentState.slide
+    const slide = loadedSlide
     if (slide && presentationCanvas && slide.id !== lastRenderedSlideId) {
       renderSlide()
     }
   })
 
-  // Load embedded fonts whenever the presentation file path changes.
-  $effect(() => {
-    const filePath = currentState.filePath
-    if (filePath && filePath !== fontsLoadedForPath) {
-      loadEmbeddedFonts(filePath)
-    }
-  })
-
   function renderSlide(): void {
-    if (!presentationCanvas || !currentState.slide) return
+    const slide = loadedSlide
+    if (!presentationCanvas || !slide) return
 
     // Stamp the current generation so async image callbacks from a previous
     // render can detect that the slide has since changed and bail out.
     const generation = ++renderGeneration
 
     presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
-    lastRenderedSlideId = currentState.slide.id
+    lastRenderedSlideId = slide.id
 
-    const sorted = [...currentState.slide.elements].sort((a, b) => a.zIndex - b.zIndex)
+    const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
     sorted.forEach((element: DeckElement) => {
       if (element.type === 'image') return
@@ -154,7 +175,8 @@
           styles: element.styles || {},
           selectable: false,
           evented: false,
-          editable: false
+          editable: false,
+          objectCaching: false
         })
       }
 
@@ -192,60 +214,39 @@
   // ============================================================================
 
   /**
-   * Loads embedded fonts from the presentation file and injects them via
-   * CSS @font-face so fabric.js renders text with the correct typefaces.
-   * After loading, the current slide is re-rendered so any text that was
-   * drawn with a fallback font now uses the correct one.
+   * Loads all embedded fonts for a presentation file into the document's
+   * FontFaceSet so fabric.js canvas rendering uses the correct typefaces.
    */
   async function loadEmbeddedFonts(filePath: string): Promise<void> {
     fontsLoadedForPath = filePath
     try {
       const embeddedFonts = await window.api.fonts.getEmbeddedFonts(filePath)
-      for (const font of embeddedFonts) {
-        await injectFont(font.fontFamily, font.fontData, font.format, font.variant)
-      }
-      if (embeddedFonts.length > 0) {
-        if (document?.fonts?.ready) await document.fonts.ready
-        // Re-render so text objects use the newly loaded typefaces.
-        renderSlide()
-      }
+      await Promise.all(embeddedFonts.map((font) =>
+        injectFont(font.fontFamily, font.fontData, font.variant)
+      ))
     } catch (err) {
       console.error('Failed to load embedded fonts in presentation window:', err)
     }
   }
 
-  /**
-   * Injects a single font as a CSS @font-face rule.
-   * Idempotent — calling it twice for the same family+variant is a no-op.
-   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function injectFont(fontFamily: string, fontData: any, format: string, variant: string = 'normal-normal'): Promise<void> {
+  async function injectFont(fontFamily: string, fontData: any, variant: string = 'normal-normal'): Promise<void> {
     const key = `${fontFamily}-${variant}`
     if (loadedFontKeys.has(key)) return
 
     try {
-      const base64 = fontDataToBase64(fontData)
-      const normalizedFormat = format === 'ttc' ? 'ttf' : format
-      let fontFormat = normalizedFormat
-      if (normalizedFormat === 'ttf') fontFormat = 'truetype'
-      else if (normalizedFormat === 'otf') fontFormat = 'opentype'
+      const bytes = normalizeFontBytes(fontData)
+      if (!bytes) throw new Error('Unsupported font data type')
 
       const [weight, style] = variant.split('-')
-      const styleEl = document.createElement('style')
-      styleEl.textContent = `
-        @font-face {
-          font-family: '${fontFamily}';
-          src: url(data:font/${normalizedFormat};base64,${base64}) format('${fontFormat}');
-          font-weight: ${weight};
-          font-style: ${style};
-        }
-      `
-      document.head.appendChild(styleEl)
+      const normalizedStyle = style === 'italic' ? 'italic' : 'normal'
+
+      const fontFace = new FontFace(fontFamily, bytes, { weight, style: normalizedStyle })
+      await fontFace.load()
+      document.fonts.add(fontFace)
       loadedFontKeys.add(key)
-      // Clear fabric.js font metric cache so text objects re-measure with the new font.
-      cache.clearFontCache(fontFamily)
     } catch (err) {
-      console.error(`Failed to inject font ${fontFamily}:`, err)
+      console.error(`Failed to load font ${fontFamily} (${variant}):`, err)
     }
   }
 

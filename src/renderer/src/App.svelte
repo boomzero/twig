@@ -388,7 +388,8 @@
     // isPresentingMode is set here (not in enterPresentationMode) so that
     // the $effect below doesn't fire a premature sendPresentationState before
     // the presentation window has registered its onStateChanged listener.
-    unsubscribePresentationReady = window.api?.presentation?.onWindowReady(() => {
+    unsubscribePresentationReady = window.api?.presentation?.onWindowReady(async () => {
+      await flushPendingSave()
       appState.isPresentingMode = true
       sendPresentationState()
     })
@@ -2355,7 +2356,7 @@
   function sendPresentationState(): void {
     if (!appState.isPresentingMode || !appState.currentSlide) return
     window.api?.presentation?.sendStateUpdate({
-      slide: JSON.parse(JSON.stringify(appState.currentSlide)),
+      slideId: appState.currentSlide.id,
       slideIndex: appState.currentSlideIndex,
       slideCount: appState.slideIds.length,
       filePath: appState.currentFilePath
@@ -2375,8 +2376,8 @@
    * presentation window has registered its state listener, avoiding a
    * wasted IPC round-trip before the window is ready.
    */
-  async function enterPresentationMode(): Promise<void> {
-    await window.api?.presentation?.openWindow()
+  function enterPresentationMode(): void {
+    window.api?.presentation?.openWindow()
     // isPresentingMode is set to true inside onWindowReady (see onMount)
   }
 
@@ -2391,10 +2392,10 @@
   /**
    * Keyboard shortcut handler for F5 (Start Presentation)
    */
-  keys.onKeys(['F5'], async (event) => {
+  keys.onKeys(['F5'], (event) => {
     event.preventDefault()
     if (!appState.isPresentingMode) {
-      await enterPresentationMode()
+      enterPresentationMode()
     }
   })
 

@@ -25,13 +25,12 @@
   let { onExit }: Props = $props()
 
   // Component state
-  let containerEl: HTMLDivElement
   let canvasEl: HTMLCanvasElement
   let presentationCanvas: Canvas | undefined
 
   // Canvas dimensions
-  const SLIDE_WIDTH = 800
-  const SLIDE_HEIGHT = 600
+  const SLIDE_WIDTH = 960
+  const SLIDE_HEIGHT = 540
 
   // Animation state (placeholder for future animation support)
   let isTransitioning = $state(false)
@@ -39,6 +38,9 @@
 
   // Track current slide to detect changes
   let lastRenderedSlideId: string | null = null
+
+  // CSS scale factor to fit the slide in the window
+  let scale = $state(1)
 
   // ============================================================================
   // Lifecycle
@@ -84,23 +86,11 @@
   // ============================================================================
 
   /**
-   * Scales the canvas container to fit the screen while maintaining aspect ratio
+   * Computes the CSS scale needed to fit the slide in the window.
+   * Fabric renders at native 960×540; CSS transform scales the visual output.
    */
   function scaleCanvas(): void {
-    if (!containerEl) return
-
-    const maxWidth = window.innerWidth * 0.9
-    const maxHeight = window.innerHeight * 0.9
-
-    const scaleX = maxWidth / SLIDE_WIDTH
-    const scaleY = maxHeight / SLIDE_HEIGHT
-    const scale = Math.min(scaleX, scaleY)
-
-    const scaledWidth = SLIDE_WIDTH * scale
-    const scaledHeight = SLIDE_HEIGHT * scale
-
-    containerEl.style.width = `${scaledWidth}px`
-    containerEl.style.height = `${scaledHeight}px`
+    scale = Math.min(window.innerWidth / SLIDE_WIDTH, window.innerHeight / SLIDE_HEIGHT)
   }
 
   // ============================================================================
@@ -268,7 +258,7 @@
 </script>
 
 <div class="presentation-container">
-  <div class="presentation-slide" bind:this={containerEl}>
+  <div class="presentation-slide" style="transform: scale({scale}); width: {SLIDE_WIDTH}px; height: {SLIDE_HEIGHT}px;">
     <canvas bind:this={canvasEl} width={SLIDE_WIDTH} height={SLIDE_HEIGHT}></canvas>
   </div>
 
@@ -298,16 +288,13 @@
   }
 
   .presentation-slide {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background-color: #ffffff;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    transform-origin: center;
   }
 
   .presentation-slide canvas {
-    width: 100% !important;
-    height: 100% !important;
+    display: block;
   }
 
   .slide-counter {

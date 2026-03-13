@@ -209,7 +209,13 @@ function getDbConnection(filePath: string): Database.Database {
     }
   }
 
-  // Create new connection, initialize schema, and cache it
+  // Create new connection, initialize schema, and cache it.
+  // If the path is under TEMP_DIR, recreate the directory in case it was
+  // deleted externally (e.g. after the system woke from sleep).
+  if (filePath.startsWith(TEMP_DIR)) {
+    ensureTempDir()
+  }
+
   let db: Database.Database
   try {
     db = new Database(filePath)
@@ -405,9 +411,11 @@ function withDbConnection<T>(filePath: string, fn: (db: Database.Database) => T)
     return fn(getDbConnection(filePath))
   } catch (error) {
     if ((error as { code?: string }).code === 'SQLITE_READONLY_DBMOVED') {
-      // Stale connection — evict it so the next call gets a fresh one.
+      // Stale connection (file was moved/renamed while the connection was open).
+      // Evict it and retry once with a fresh connection.
       closeDbConnection(filePath, 'none')
-      safeLog(`Evicted stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`, 'warn')
+      safeLog(`Retrying after stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`, 'warn')
+      return fn(getDbConnection(filePath))
     }
     throw error
   }
@@ -742,7 +750,7 @@ function createPresentationWindow(): void {
   }
 
   presentationWindow = new BrowserWindow({
-    kiosk: true,
+    fullscreen: true,
     frame: false,
     title: 'twig Presentation',
     show: false,
@@ -779,6 +787,9 @@ function createPresentationWindow(): void {
 // ============================================================================
 
 app.whenReady().then(() => {
+  // Ensure the temp directory exists and clean up stale temp files from previous sessions.
+  ensureTempDir()
+
   // Set app user model ID for Windows
   electronApp.setAppUserModelId('com.electron')
 
@@ -1484,7 +1495,8 @@ app.whenReady().then(() => {
   // Presentation Window Handlers
   // --------------------------------------------------------------------------
 
-  ipcMain.handle('presentation:open-window', () => {
+  // Fire-and-forget: renderer does not await this, so we use ipcMain.on
+  ipcMain.on('presentation:open-window', () => {
     createPresentationWindow()
   })
 

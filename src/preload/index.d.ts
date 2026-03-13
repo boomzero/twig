@@ -111,14 +111,14 @@ declare global {
         loadFontFile: (fontPath: string) => Promise<Buffer>
       }
       presentation: {
-        openWindow: () => Promise<void>
+        openWindow: () => void
         closeWindow: () => Promise<void>
-        sendStateUpdate: (state: { slide: Slide | null; slideIndex: number; slideCount: number; filePath: string | null }) => void
+        sendStateUpdate: (state: { slideId: string | null; slideIndex: number; slideCount: number; filePath: string | null }) => void
         onNavigateRequest: (callback: (direction: 'next' | 'prev') => void) => () => void
         onWindowClosed: (callback: () => void) => () => void
         navigate: (direction: 'next' | 'prev') => void
         exit: () => void
-        onStateChanged: (callback: (state: { slide: Slide | null; slideIndex: number; slideCount: number; filePath: string | null }) => void) => () => void
+        onStateChanged: (callback: (state: { slideId: string | null; slideIndex: number; slideCount: number; filePath: string | null }) => void) => () => void
         signalReady: () => void
         onWindowReady: (callback: () => void) => () => void
       }
