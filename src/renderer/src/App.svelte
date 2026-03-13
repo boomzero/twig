@@ -29,7 +29,7 @@
   import {
     Canvas,
     type FabricObject,
-    IText,
+    Textbox,
     Rect,
     FabricImage,
     ActiveSelection,
@@ -52,7 +52,7 @@
   let fabCanvas: Canvas | undefined
 
   // Currently active text object (for rich text editing)
-  let activeTextObject: IText | null = null
+  let activeTextObject: Textbox | null = null
   let lastTextSelectionRange: { start: number; end: number } | null = null
   let suppressSelectionTracking = false
 
@@ -562,7 +562,7 @@
         }
 
         // For text objects, also save cursor/selection position
-        if (activeObject instanceof IText) {
+        if (activeObject instanceof Textbox) {
           selectionRangeToRestore = {
             start: activeObject.selectionStart!,
             end: activeObject.selectionEnd!
@@ -603,11 +603,11 @@
         fabCanvas.renderAll()
 
         // Restore text cursor/selection position if this is a text object
-        if (selectionRangeToRestore && selection instanceof IText) {
+        if (selectionRangeToRestore && selection instanceof Textbox) {
           const range = { ...selectionRangeToRestore }
           selectionRangeToRestore = null
           setTimeout(() => {
-            if (selection && selection instanceof IText) {
+            if (selection && selection instanceof Textbox) {
               selection.setSelectionStart(range.start)
               selection.setSelectionEnd(range.end)
               fabCanvas?.requestRenderAll()
@@ -765,15 +765,17 @@
         })
       } else if (element.type === 'text') {
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
-        fabObj = new IText(element.text || 'Hello', {
+        fabObj = new Textbox(element.text || 'Hello', {
           left: element.x,
           top: element.y,
+          width: element.width,
           angle: element.angle,
           id: element.id,
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
-          styles: cleanedStyles
+          styles: cleanedStyles,
+          lockScalingY: true
         })
       }
       if (fabObj) fabCanvas.add(fabObj)
@@ -939,7 +941,7 @@
     elementInState.height = obj.height * transform.scaleY
 
     // For text objects, also update text content and styling
-    if (elementInState.type === 'text' && obj instanceof IText) {
+    if (elementInState.type === 'text' && obj instanceof Textbox) {
       elementInState.text = obj.text
       elementInState.fontSize = obj.fontSize
       elementInState.fontFamily = obj.fontFamily
@@ -975,7 +977,7 @@
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
 
     const selection = event.selected?.[0]
-    if (selection instanceof IText) {
+    if (selection instanceof Textbox) {
       // Text object selected - enable rich text controls
       activeTextObject = selection
       showRichTextControls = true
@@ -1029,7 +1031,7 @@
 
   function handleTextChanged(event: { target?: DeckFabricObject }): void {
     const target = event.target
-    if (!(target instanceof IText)) return
+    if (!(target instanceof Textbox)) return
     scheduleThumbnailCapture()
   }
 
@@ -1661,7 +1663,7 @@
   function refreshTextRendering(): void {
     if (!fabCanvas) return
     fabCanvas.getObjects().forEach((obj) => {
-      if (obj instanceof IText) {
+      if (obj instanceof Textbox) {
         obj.dirty = true
         obj.initDimensions()
       }
