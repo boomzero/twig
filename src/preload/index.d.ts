@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { Slide } from '../renderer/src/lib/state.svelte'
+import type { Slide } from '../renderer/src/lib/types'
 
 /**
  * Represents a system font with its family name and file path
