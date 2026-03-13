@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { Slide } from '../renderer/src/lib/state.svelte'
+import type { Slide } from '../renderer/src/lib/types'
 
 /**
  * Represents a system font with its family name and file path
@@ -95,6 +95,8 @@ declare global {
         saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
         copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
         deleteTemp: (filePath: string) => Promise<void>
+        saveThumbnail: (filePath: string, slideId: string, thumbnail: string) => Promise<void>
+        getThumbnails: (filePath: string) => Promise<Record<string, string>>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>
@@ -107,6 +109,18 @@ declare global {
         getEmbeddedFonts: (filePath: string) => Promise<FontData[]>
         getFontData: (filePath: string, fontFamily: string, variant?: string) => Promise<FontData | null>
         loadFontFile: (fontPath: string) => Promise<Buffer>
+      }
+      presentation: {
+        openWindow: () => void
+        closeWindow: () => Promise<void>
+        sendStateUpdate: (state: { slideId: string | null; slideIndex: number; slideCount: number; filePath: string | null }) => void
+        onNavigateRequest: (callback: (direction: 'next' | 'prev') => void) => () => void
+        onWindowClosed: (callback: () => void) => () => void
+        navigate: (direction: 'next' | 'prev') => void
+        exit: () => void
+        onStateChanged: (callback: (state: { slideId: string | null; slideIndex: number; slideCount: number; filePath: string | null }) => void) => () => void
+        signalReady: () => void
+        onWindowReady: (callback: () => void) => () => void
       }
       debug: {
         openWindow: () => Promise<void>

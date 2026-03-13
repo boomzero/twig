@@ -8,7 +8,7 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor } from 'electron'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -19,6 +19,16 @@ import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
 import fontkit from 'fontkit'
+
+// Suppress EIO errors on stdout/stderr that occur when the computer sleeps.
+// Node.js emits 'error' events asynchronously on these streams when the
+// underlying pipe is broken; without a listener, they crash the process.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EIO') throw err
+})
+process.stderr.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EIO') throw err
+})
 
 // ============================================================================
 // Input Validation
@@ -199,7 +209,13 @@ function getDbConnection(filePath: string): Database.Database {
     }
   }
 
-  // Create new connection, initialize schema, and cache it
+  // Create new connection, initialize schema, and cache it.
+  // If the path is under TEMP_DIR, recreate the directory in case it was
+  // deleted externally (e.g. after the system woke from sleep).
+  if (filePath.startsWith(TEMP_DIR)) {
+    ensureTempDir()
+  }
+
   let db: Database.Database
   try {
     db = new Database(filePath)
@@ -377,6 +393,31 @@ function closeDbConnection(filePath: string, checkpointMode: 'none' | 'passive' 
     if (index !== -1) {
       accessOrder.splice(index, 1)
     }
+  }
+}
+
+/**
+ * Executes a database operation.
+ * The powerMonitor 'suspend' handler closes all connections before sleep, so
+ * SQLITE_READONLY_DBMOVED should never occur. If it somehow does (e.g. forced
+ * hibernate), we evict the stale connection and surface the error clearly so
+ * the renderer can recover gracefully.
+ *
+ * @param filePath - Absolute path to the .tb file
+ * @param fn - Database operation to run
+ */
+function withDbConnection<T>(filePath: string, fn: (db: Database.Database) => T): T {
+  try {
+    return fn(getDbConnection(filePath))
+  } catch (error) {
+    if ((error as { code?: string }).code === 'SQLITE_READONLY_DBMOVED') {
+      // Stale connection (file was moved/renamed while the connection was open).
+      // Evict it and retry once with a fresh connection.
+      closeDbConnection(filePath, 'none')
+      safeLog(`Retrying after stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`, 'warn')
+      return fn(getDbConnection(filePath))
+    }
+    throw error
   }
 }
 
@@ -652,6 +693,12 @@ function createWindow(): void {
 let debugWindow: BrowserWindow | null = null
 
 /**
+ * Reference to the presentation window (if open).
+ * Only one presentation window can be open at a time.
+ */
+let presentationWindow: BrowserWindow | null = null
+
+/**
  * Creates and opens the debug window.
  * If a debug window is already open, focuses it instead of creating a new one.
  */
@@ -692,17 +739,72 @@ function createDebugWindow(): void {
   }
 }
 
+/**
+ * Creates and opens the presentation window in fullscreen.
+ * If already open, focuses it instead.
+ */
+function createPresentationWindow(): void {
+  if (presentationWindow && !presentationWindow.isDestroyed()) {
+    presentationWindow.focus()
+    return
+  }
+
+  presentationWindow = new BrowserWindow({
+    fullscreen: true,
+    frame: false,
+    title: 'twig Presentation',
+    show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  presentationWindow.on('ready-to-show', () => {
+    presentationWindow?.show()
+  })
+
+  presentationWindow.on('closed', () => {
+    // Notify main window that presentation was closed
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('presentation:window-closed')
+    presentationWindow = null
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    presentationWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/presentation.html`)
+  } else {
+    presentationWindow.loadFile(join(__dirname, '../renderer/presentation.html'))
+  }
+}
+
 // ============================================================================
 // Application Lifecycle
 // ============================================================================
 
 app.whenReady().then(() => {
+  // Ensure the temp directory exists and clean up stale temp files from previous sessions.
+  ensureTempDir()
+
   // Set app user model ID for Windows
   electronApp.setAppUserModelId('com.electron')
 
   // Enable dev tools shortcuts optimization
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // Close all cached database connections before the system sleeps so that
+  // connections are never stale after wake (SQLITE_READONLY_DBMOVED).
+  powerMonitor.on('suspend', () => {
+    safeLog('System suspending — closing all database connections')
+    for (const [filePath] of connectionCache) {
+      closeDbConnection(filePath, 'passive')
+    }
   })
 
   // ============================================================================
@@ -805,8 +907,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:get-slide-ids', (_event, filePath: string): string[] => {
     try {
       validateFilePath(filePath)
-      const db = getDbConnection(filePath)
-      return dbService.getSlideIds(db)
+      return withDbConnection(filePath, (db) => dbService.getSlideIds(db))
     } catch (error) {
       console.error('Error in db:get-slide-ids:', error)
       throw error
@@ -820,8 +921,7 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       validateSlideId(slideId)
-      const db = getDbConnection(filePath)
-      return dbService.getSlide(db, slideId)
+      return withDbConnection(filePath, (db) => dbService.getSlide(db, slideId))
     } catch (error) {
       console.error('Error in db:get-slide:', error)
       throw error
@@ -834,8 +934,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:create-slide', (_event, filePath: string): Slide => {
     try {
       validateFilePath(filePath)
-      const db = getDbConnection(filePath)
-      return dbService.createSlide(db)
+      return withDbConnection(filePath, (db) => dbService.createSlide(db))
     } catch (error) {
       console.error('Error in db:create-slide:', error)
       throw error
@@ -849,10 +948,36 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       validateSlideId(slide.id)
-      const db = getDbConnection(filePath)
-      dbService.saveSlide(db, slide)
+      withDbConnection(filePath, (db) => dbService.saveSlide(db, slide))
     } catch (error) {
       console.error('Error in db:save-slide:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Saves a thumbnail for a specific slide.
+   */
+  ipcMain.handle('db:save-thumbnail', (_event, filePath: string, slideId: string, thumbnail: string): void => {
+    try {
+      validateFilePath(filePath)
+      validateSlideId(slideId)
+      withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail))
+    } catch (error) {
+      console.error('Error in db:save-thumbnail:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Retrieves all stored thumbnails for a presentation.
+   */
+  ipcMain.handle('db:get-thumbnails', (_event, filePath: string): Record<string, string> => {
+    try {
+      validateFilePath(filePath)
+      return withDbConnection(filePath, (db) => dbService.getThumbnails(db))
+    } catch (error) {
+      console.error('Error in db:get-thumbnails:', error)
       throw error
     }
   })
@@ -1265,7 +1390,6 @@ app.whenReady().then(() => {
           .substring(0, 16)
 
         // Store in database
-        const db = getDbConnection(filePath)
         const font: FontData = {
           id,
           fontFamily,
@@ -1273,7 +1397,7 @@ app.whenReady().then(() => {
           format,
           variant
         }
-        dbService.addFont(db, font)
+        withDbConnection(filePath, (db) => dbService.addFont(db, font))
       } catch (error) {
         console.error('Error in fonts:embed-font:', error)
         throw error
@@ -1287,8 +1411,7 @@ app.whenReady().then(() => {
   ipcMain.handle('fonts:get-embedded-fonts', (_event, filePath: string): FontData[] => {
     try {
       validateFilePath(filePath)
-      const db = getDbConnection(filePath)
-      return dbService.getFonts(db)
+      return withDbConnection(filePath, (db) => dbService.getFonts(db))
     } catch (error) {
       console.error('Error in fonts:get-embedded-fonts:', error)
       throw error
@@ -1303,8 +1426,7 @@ app.whenReady().then(() => {
     (_event, filePath: string, fontFamily: string, variant: string = 'normal-normal'): FontData | null => {
       try {
         validateFilePath(filePath)
-        const db = getDbConnection(filePath)
-        return dbService.getFontData(db, fontFamily, variant)
+        return withDbConnection(filePath, (db) => dbService.getFontData(db, fontFamily, variant))
       } catch (error) {
         console.error('Error in fonts:get-font-data:', error)
         throw error
@@ -1367,6 +1489,51 @@ app.whenReady().then(() => {
       // Ask main window to send its state
       mainWindow.webContents.send('debug:request-state-from-main')
     }
+  })
+
+  // --------------------------------------------------------------------------
+  // Presentation Window Handlers
+  // --------------------------------------------------------------------------
+
+  // Fire-and-forget: renderer does not await this, so we use ipcMain.on
+  ipcMain.on('presentation:open-window', () => {
+    createPresentationWindow()
+  })
+
+  ipcMain.handle('presentation:close-window', () => {
+    if (presentationWindow && !presentationWindow.isDestroyed()) {
+      presentationWindow.close()
+    }
+  })
+
+  /** Forward slide state from main window to presentation window. */
+  ipcMain.on('presentation:state-update', (_event, state) => {
+    if (presentationWindow && !presentationWindow.isDestroyed()) {
+      presentationWindow.webContents.send('presentation:state-changed', state)
+    }
+  })
+
+  /** Forward navigation requests from presentation window to main window. */
+  ipcMain.on('presentation:navigate', (_event, direction: string) => {
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('presentation:navigate-request', direction)
+  })
+
+  /** Forward exit request from presentation window to main window. */
+  ipcMain.on('presentation:exit', () => {
+    if (presentationWindow && !presentationWindow.isDestroyed()) {
+      presentationWindow.close()
+    }
+  })
+
+  /** Presentation window signals it's ready — forward to main window so it sends initial state. */
+  ipcMain.on('presentation:ready', () => {
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('presentation:window-ready')
   })
 })
 

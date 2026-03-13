@@ -25,6 +25,7 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
+  import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
     type FabricObject,
@@ -37,7 +38,6 @@
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
-  import PresentationView from './components/PresentationView.svelte'
   import StackPanel from './components/StackPanel.svelte'
   import { PressedKeys } from 'runed'
 
@@ -160,6 +160,9 @@
 
   // Debounced auto-save
   let saveTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+  // Debounced thumbnail capture (500ms, separate from auto-save debounce)
+  let thumbnailTimeoutId: ReturnType<typeof setTimeout> | null = null
 
   // Auto-save status indicator
   // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
@@ -288,6 +291,27 @@
     }, AUTO_SAVE_DEBOUNCE_MS)
   }
 
+  async function captureAndStoreThumbnail(): Promise<void> {
+    if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
+    const prevBg = fabCanvas.backgroundColor
+    fabCanvas.backgroundColor = 'white'
+    const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
+    fabCanvas.backgroundColor = prevBg
+    // Re-render to ensure the canvas shows the correct background colour and
+    // doesn't display a white flash if any other handler triggers a renderAll.
+    fabCanvas.renderAll()
+    appState.thumbnails[appState.currentSlide.id] = dataUrl
+    window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
+  }
+
+  function scheduleThumbnailCapture(): void {
+    if (thumbnailTimeoutId) clearTimeout(thumbnailTimeoutId)
+    thumbnailTimeoutId = setTimeout(() => {
+      thumbnailTimeoutId = null
+      captureAndStoreThumbnail().catch(console.error)
+    }, 500)
+  }
+
   /**
    * Flushes any pending auto-save immediately.
    * Called before critical operations like navigation, closing, or presenting.
@@ -323,6 +347,9 @@
    */
   let unsubscribeBeforeClose: (() => void) | undefined
   let unsubscribeStateRequest: (() => void) | undefined
+  let unsubscribePresentationNavigate: (() => void) | undefined
+  let unsubscribePresentationClosed: (() => void) | undefined
+  let unsubscribePresentationReady: (() => void) | undefined
 
   onMount(async () => {
     await loadSystemFonts()
@@ -342,6 +369,31 @@
       sendStateToDebugWindow()
     })
 
+    // Forward navigation requests from the presentation window
+    unsubscribePresentationNavigate = window.api?.presentation?.onNavigateRequest(async (direction) => {
+      const idx = appState.currentSlideIndex
+      if (direction === 'next' && idx < appState.slideIds.length - 1) {
+        await loadSlide(appState.slideIds[idx + 1])
+      } else if (direction === 'prev' && idx > 0) {
+        await loadSlide(appState.slideIds[idx - 1])
+      }
+    })
+
+    // Handle presentation window being closed externally
+    unsubscribePresentationClosed = window.api?.presentation?.onWindowClosed(() => {
+      appState.isPresentingMode = false
+    })
+
+    // Send initial state when presentation window signals it's ready.
+    // isPresentingMode is set here (not in enterPresentationMode) so that
+    // the $effect below doesn't fire a premature sendPresentationState before
+    // the presentation window has registered its onStateChanged listener.
+    unsubscribePresentationReady = window.api?.presentation?.onWindowReady(async () => {
+      await flushPendingSave()
+      appState.isPresentingMode = true
+      sendPresentationState()
+    })
+
     // Listen for window close event - flush pending saves before closing
     unsubscribeBeforeClose = window.api?.lifecycle?.onBeforeClose(async () => {
       await flushPendingSave()
@@ -359,6 +411,10 @@
       clearTimeout(saveTimeoutId)
       saveTimeoutId = null
     }
+    if (thumbnailTimeoutId) {
+      clearTimeout(thumbnailTimeoutId)
+      thumbnailTimeoutId = null
+    }
     if (savedResetTimeoutId) {
       clearTimeout(savedResetTimeoutId)
       savedResetTimeoutId = null
@@ -371,6 +427,9 @@
     // Unsubscribe from IPC event listeners
     unsubscribeBeforeClose?.()
     unsubscribeStateRequest?.()
+    unsubscribePresentationNavigate?.()
+    unsubscribePresentationClosed?.()
+    unsubscribePresentationReady?.()
 
     // Unregister flush save callback
     unregisterFlushSave()
@@ -462,11 +521,6 @@
    * user selections across state updates.
    */
   $effect(() => {
-    // Skip canvas operations during presentation mode - the edit canvas is not rendered
-    if (appState.isPresentingMode) {
-      return
-    }
-
     if (!appState.currentSlide) {
       // Dispose the canvas instance when there's no slide
       // This ensures a fresh canvas is created when a new slide loads
@@ -482,7 +536,7 @@
     // Use requestAnimationFrame to defer to the next frame when DOM is ready
     if (!canvasEl) {
       requestAnimationFrame(() => {
-        if (canvasEl && appState.currentSlide && !appState.isPresentingMode) {
+        if (canvasEl && appState.currentSlide) {
           if (!fabCanvas) {
             fabCanvas = new Canvas(canvasEl)
           }
@@ -811,7 +865,10 @@
     fabCanvas.on('selection:cleared', handleSelectionCleared)
     fabCanvas.on('contextmenu', handleContextMenu)
 
-    if (imageLoads.length === 0) return Promise.resolve()
+    if (imageLoads.length === 0) {
+      captureAndStoreThumbnail().catch(console.error)
+      return Promise.resolve()
+    }
 
     // Once all images have settled, correct any ordering errors that occurred when
     // two images resolved simultaneously and computed the same insertAt index.
@@ -827,6 +884,7 @@
         sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
       }
       fabCanvas.renderAll()
+      captureAndStoreThumbnail().catch(console.error)
     })
   }
 
@@ -852,6 +910,7 @@
     // Trigger auto-save directly — the $effect doesn't subscribe to deep element
     // property changes, so we must call scheduleSave() explicitly here.
     scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   /**
@@ -971,7 +1030,7 @@
   function handleTextChanged(event: { target?: DeckFabricObject }): void {
     const target = event.target
     if (!(target instanceof IText)) return
-    // Text changed - no special handling needed
+    scheduleThumbnailCapture()
   }
 
   // ============================================================================
@@ -1414,6 +1473,12 @@
         throw new Error('No current file path')
       }
 
+      // Cancel any pending debounced thumbnail so it doesn't fire mid-move with the old path
+      if (thumbnailTimeoutId) {
+        clearTimeout(thumbnailTimeoutId)
+        thumbnailTimeoutId = null
+      }
+
       // Save current slide to database first to flush all edits
       await performSave(true)
 
@@ -1602,58 +1667,6 @@
       }
     })
     fabCanvas.requestRenderAll()
-  }
-
-  type FontBytes = Buffer | ArrayBuffer | Uint8Array | { data: number[] } | { data: Uint8Array }
-
-  function fontDataToBase64(fontData: FontBytes): string {
-    const bytes = normalizeFontBytes(fontData)
-    if (!bytes) {
-      throw new Error('Unsupported font data type')
-    }
-
-    try {
-      if (typeof Buffer !== 'undefined') {
-        return Buffer.from(bytes).toString('base64')
-      }
-    } catch {
-      // Fall back to manual base64 conversion.
-    }
-
-    const chunkSize = 0x8000
-    let binary = ''
-
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-    }
-
-    return btoa(binary)
-  }
-
-  function normalizeFontBytes(fontData: FontBytes): Uint8Array | null {
-    if (fontData instanceof Uint8Array) {
-      return fontData
-    }
-
-    if (fontData instanceof ArrayBuffer) {
-      return new Uint8Array(fontData)
-    }
-
-    if (typeof Buffer !== 'undefined' && fontData instanceof Buffer) {
-      return new Uint8Array(fontData)
-    }
-
-    if (fontData && typeof fontData === 'object' && 'data' in fontData) {
-      const data = fontData.data
-      if (data instanceof Uint8Array) {
-        return data
-      }
-      if (Array.isArray(data)) {
-        return new Uint8Array(data)
-      }
-    }
-
-    return null
   }
 
   async function ensureFontReady(fontFamily: string, weight: string, style: string): Promise<void> {
@@ -2053,8 +2066,8 @@
       const newImage: DeckElement = {
         type: 'image',
         id: `image_${uuid_v4()}`,
-        x: 400, // Center of default 800px canvas
-        y: 300, // Center of default 600px canvas
+        x: 480, // Center of 960px canvas
+        y: 270, // Center of 540px canvas
         width: width,
         height: height,
         angle: 0,
@@ -2337,74 +2350,52 @@
   // Presentation Mode
   // ============================================================================
 
-  // Store the slide state before entering presentation mode
-  let slideStateBeforePresentation: { slideId: string; elements: DeckElement[] } | null = null
+  /**
+   * Sends the current slide state to the presentation window.
+   */
+  function sendPresentationState(): void {
+    if (!appState.isPresentingMode || !appState.currentSlide) return
+    window.api?.presentation?.sendStateUpdate({
+      slideId: appState.currentSlide.id,
+      slideIndex: appState.currentSlideIndex,
+      slideCount: appState.slideIds.length,
+      filePath: appState.currentFilePath
+    })
+  }
+
+  // Keep presentation window in sync whenever the current slide changes
+  $effect(() => {
+    if (appState.isPresentingMode && appState.currentSlide) {
+      sendPresentationState()
+    }
+  })
 
   /**
-   * Enters presentation mode (fullscreen slideshow).
-   * Preserves the current slide state.
+   * Opens the presentation window and begins presenting.
+   * isPresentingMode is set to true by the onWindowReady callback once the
+   * presentation window has registered its state listener, avoiding a
+   * wasted IPC round-trip before the window is ready.
    */
-  async function enterPresentationMode(): Promise<void> {
-    // Save a snapshot of current slide state
-    if (appState.currentSlide) {
-      slideStateBeforePresentation = {
-        slideId: appState.currentSlide.id,
-        elements: JSON.parse(JSON.stringify(appState.currentSlide.elements))
-      }
-    }
-
-    // Flush any pending auto-save before presenting
-    try {
-      await flushPendingSave()
-    } catch (error) {
-      console.error('Failed to save before presenting:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      const proceed = confirm(
-        `Failed to save recent changes: ${errorMessage}\n\n` +
-        'Your presentation may show stale data. Continue to presentation mode anyway?'
-      )
-      if (!proceed) {
-        return // Abort entering presentation mode
-      }
-    }
-
-    // Dispose the edit canvas before entering presentation mode
-    // This ensures a fresh canvas is created when we exit
-    if (fabCanvas) {
-      fabCanvas.dispose()
-      fabCanvas = undefined
-    }
-
-    // Enter presentation mode
-    appState.isPresentingMode = true
+  function enterPresentationMode(): void {
+    window.api?.presentation?.openWindow()
+    // isPresentingMode is set to true inside onWindowReady (see onMount)
   }
 
   /**
-   * Exits presentation mode and returns to edit mode.
-   * Restores the slide state that was active before presenting.
+   * Closes the presentation window and exits presenting.
    */
   function exitPresentationMode(): void {
-    // Restore the slide state if we have a snapshot and we're on the same slide
-    if (slideStateBeforePresentation && appState.currentSlide) {
-      if (appState.currentSlide.id === slideStateBeforePresentation.slideId) {
-        appState.currentSlide.elements = slideStateBeforePresentation.elements
-      }
-    }
-
-    slideStateBeforePresentation = null
-
-    // Exit presentation mode - this will trigger the main $effect to create
-    // a new canvas and render the current slide
+    window.api?.presentation?.closeWindow()
     appState.isPresentingMode = false
   }
 
   /**
    * Keyboard shortcut handler for F5 (Start Presentation)
    */
-  keys.onKeys(['F5'], async (event) => {
+  keys.onKeys(['F5'], (event) => {
     event.preventDefault()
     if (!appState.isPresentingMode) {
-      await enterPresentationMode()
+      enterPresentationMode()
     }
   })
 
@@ -2418,10 +2409,7 @@
 
 <svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
 
-{#if appState.isPresentingMode}
-  <!-- Presentation Mode (Fullscreen) -->
-  <PresentationView onExit={exitPresentationMode} />
-{:else if appState.currentSlide}
+{#if appState.currentSlide}
   <div
     class="flex flex-col h-screen font-sans"
     role="application"
@@ -2521,11 +2509,11 @@
       {/if}
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
-        onclick={enterPresentationMode}
+        onclick={appState.isPresentingMode ? exitPresentationMode : enterPresentationMode}
         class="px-3 py-1 mr-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-md hover:bg-indigo-700"
-        title="Start presentation (F5)"
+        title={appState.isPresentingMode ? 'Stop presentation' : 'Start presentation (F5)'}
       >
-        Present
+        {appState.isPresentingMode ? 'Stop' : 'Present'}
       </button>
       <button
         onclick={openDebugWindow}
@@ -2674,29 +2662,33 @@
       {/if}
     </div>
     <div class="flex flex-1 overflow-hidden">
-      <div class="basis-48 p-2 overflow-y-auto bg-gray-50 border-r border-gray-300">
+      <div class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
         {#each appState.slideIds as slideId, index (slideId)}
           <button
-            class="p-2 mb-2 text-sm text-center bg-white border rounded-md shadow-md cursor-pointer hover:border-indigo-500 w-full"
-            class:border-indigo-500={slideId === appState.currentSlide.id}
-            class:bg-indigo-100={slideId === appState.currentSlide.id}
+            class="w-full px-2 py-2 rounded-lg cursor-pointer hover:bg-gray-200 flex flex-col items-center gap-1"
+            class:bg-gray-200={slideId === appState.currentSlide.id}
             onclick={async () => await handleSlideSelect(slideId)}
             disabled={loadingState.isLoadingSlide}
           >
-            Slide {index + 1}
+            {#if appState.thumbnails[slideId]}
+              <img src={appState.thumbnails[slideId]} alt="Slide {index + 1}" class="w-full block rounded-md shadow-md" />
+            {:else}
+              <div class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs" style="aspect-ratio: 16/9;"></div>
+            {/if}
+            <div class="w-full text-xs text-left text-gray-500">{index + 1}</div>
           </button>
         {/each}
         <button
           onclick={addNewSlide}
-          class="w-full p-2 mt-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          class="w-[calc(100%-1rem)] mt-1 p-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-200"
         >
-          New Slide
+          + New Slide
         </button>
       </div>
       <div class="flex-1 p-4 bg-gray-200">
         <div class="flex items-center justify-center h-full overflow-auto">
           <div class="bg-white shadow-lg">
-            <canvas bind:this={canvasEl} width="800" height="600"></canvas>
+            <canvas bind:this={canvasEl} width="960" height="540"></canvas>
           </div>
         </div>
       </div>

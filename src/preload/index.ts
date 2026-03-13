@@ -68,7 +68,15 @@ const api = {
     copyToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath),
 
     /** Delete a temporary database file */
-    deleteTemp: (filePath) => ipcRenderer.invoke('db:delete-temp', filePath)
+    deleteTemp: (filePath) => ipcRenderer.invoke('db:delete-temp', filePath),
+
+    /** Save a thumbnail for a specific slide */
+    saveThumbnail: (filePath: string, slideId: string, thumbnail: string) =>
+      ipcRenderer.invoke('db:save-thumbnail', filePath, slideId, thumbnail),
+
+    /** Retrieve all stored thumbnails for a presentation */
+    getThumbnails: (filePath: string) =>
+      ipcRenderer.invoke('db:get-thumbnails', filePath)
   },
 
   // Font operations
@@ -114,6 +122,55 @@ const api = {
       const handler = () => callback()
       ipcRenderer.on('debug:request-state-from-main', handler)
       return () => ipcRenderer.removeListener('debug:request-state-from-main', handler)
+    }
+  },
+
+  // Presentation window operations
+  presentation: {
+    /** Open the fullscreen presentation window (fire-and-forget, no await) */
+    openWindow: () => ipcRenderer.send('presentation:open-window'),
+
+    /** Close the presentation window */
+    closeWindow: () => ipcRenderer.invoke('presentation:close-window'),
+
+    /** Send current slide state to the presentation window (called from main window) */
+    sendStateUpdate: (state) => ipcRenderer.send('presentation:state-update', state),
+
+    /** Listen for navigation requests from the presentation window (received in main window) */
+    onNavigateRequest: (callback) => {
+      const handler = (_event, direction) => callback(direction)
+      ipcRenderer.on('presentation:navigate-request', handler)
+      return () => ipcRenderer.removeListener('presentation:navigate-request', handler)
+    },
+
+    /** Listen for the presentation window being closed (received in main window) */
+    onWindowClosed: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('presentation:window-closed', handler)
+      return () => ipcRenderer.removeListener('presentation:window-closed', handler)
+    },
+
+    /** Send navigation request to main window (called from presentation window) */
+    navigate: (direction) => ipcRenderer.send('presentation:navigate', direction),
+
+    /** Exit presentation (called from presentation window) */
+    exit: () => ipcRenderer.send('presentation:exit'),
+
+    /** Listen for slide state updates (received in presentation window) */
+    onStateChanged: (callback) => {
+      const handler = (_event, state) => callback(state)
+      ipcRenderer.on('presentation:state-changed', handler)
+      return () => ipcRenderer.removeListener('presentation:state-changed', handler)
+    },
+
+    /** Signal to main process that this presentation window is ready (called from presentation window) */
+    signalReady: () => ipcRenderer.send('presentation:ready'),
+
+    /** Listen for presentation window ready signal (received in main window) */
+    onWindowReady: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('presentation:window-ready', handler)
+      return () => ipcRenderer.removeListener('presentation:window-ready', handler)
     }
   },
 

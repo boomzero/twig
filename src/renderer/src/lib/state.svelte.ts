@@ -11,73 +11,15 @@
  */
 
 import { getFlushSave } from './saveCallbacks'
+import type { DeckElement, Slide } from './types'
+
+// Re-export so existing importers (App.svelte, Debug.svelte, etc.) don't need
+// to change their import paths.
+export type { DeckElement, Slide }
 
 // ============================================================================
 // Type Definitions
 // ============================================================================
-
-/**
- * Represents a single element (shape, text, or image) on a slide.
- * This is a renderer-side copy of the DeckElement type from the main process.
- */
-export interface DeckElement {
-  /** Type of element - rectangle shape, text, or image */
-  type: 'rect' | 'text' | 'image'
-
-  /** Unique identifier for this element */
-  id: string
-
-  /** X coordinate (center point) */
-  x: number
-
-  /** Y coordinate (center point) */
-  y: number
-
-  /** Width in pixels */
-  width: number
-
-  /** Height in pixels */
-  height: number
-
-  /** Rotation angle in degrees */
-  angle: number
-
-  /** Fill color (hex or rgba string) */
-  fill?: string
-
-  /** Text content (only for text elements) */
-  text?: string
-
-  /** Font size in pixels (only for text elements) */
-  fontSize?: number
-
-  /** Font family name (only for text elements) */
-  fontFamily?: string
-
-  /** Rich text styles from fabric.js (only for text elements) */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  styles?: Record<string, any>
-
-  /** Image data as base64 data URI (only for image elements) */
-  src?: string
-
-  /** Original image filename (only for image elements) */
-  filename?: string
-
-  /** Z-index for layer ordering (higher = in front) */
-  zIndex: number
-}
-
-/**
- * Represents a single slide containing multiple elements.
- */
-export interface Slide {
-  /** Unique identifier for this slide */
-  id: string
-
-  /** Array of elements (shapes, text, images) on this slide */
-  elements: DeckElement[]
-}
 
 /**
  * Tracks which objects are selected on the canvas and their text selection ranges.
@@ -130,7 +72,10 @@ export const appState = $state({
   selectedObjectId: null as string | null,
 
   /** Whether the presentation is in presenting mode (fullscreen slideshow) */
-  isPresentingMode: false
+  isPresentingMode: false,
+
+  /** Map of slideId → thumbnail data URI (JPEG, loaded from DB on startup) */
+  thumbnails: {} as Record<string, string>
 })
 
 /**
@@ -156,6 +101,7 @@ export function resetState(): void {
   appState.currentFilePath = null
   appState.isTempFile = false
   appState.selectedObjectId = null
+  appState.thumbnails = {}
 }
 
 /**
@@ -181,6 +127,7 @@ export async function loadPresentation(filePath: string): Promise<void> {
   appState.isTempFile = await window.api.db.isTempFile(filePath)
   appState.slideIds = ids
   appState.selectedObjectId = null
+  appState.thumbnails = await window.api.db.getThumbnails(filePath)
 
   // Load the first slide, or create one if the file is empty
   if (ids.length > 0) {
