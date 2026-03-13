@@ -225,6 +225,7 @@
         injectFont(font.fontFamily, font.fontData, font.variant)
       ))
     } catch (err) {
+      fontsLoadedForPath = null
       console.error('Failed to load embedded fonts in presentation window:', err)
     }
   }
