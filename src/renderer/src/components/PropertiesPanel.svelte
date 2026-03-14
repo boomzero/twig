@@ -17,15 +17,30 @@
 
   const {
     onPropertyChange,
+    onBeforePropertyChange,
     onSlideBackgroundChange,
     onSetAsDefault,
     onApplyToAll
   }: {
     onPropertyChange?: () => void
+    onBeforePropertyChange?: () => void
     onSlideBackgroundChange?: (bg: SlideBackground) => void
     onSetAsDefault?: (bg: SlideBackground | null) => void
     onApplyToAll?: (bg: SlideBackground | null) => void
   } = $props()
+
+  // One-shot focus guard: push history checkpoint once per input focus session,
+  // not on every keystroke. Reset on blur so the next focus starts fresh.
+  let snapshotPushed = false
+  function handleFocus(): void {
+    if (!snapshotPushed) {
+      onBeforePropertyChange?.()
+      snapshotPushed = true
+    }
+  }
+  function handleBlur(): void {
+    snapshotPushed = false
+  }
 
   // Reactively compute the currently selected object from app state
   const selectedObject = $derived(
@@ -82,6 +97,8 @@
           id="x"
           bind:value={selectedObject.x}
           oninput={onPropertyChange}
+          onfocus={handleFocus}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -92,6 +109,8 @@
           id="y"
           bind:value={selectedObject.y}
           oninput={onPropertyChange}
+          onfocus={handleFocus}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -102,6 +121,8 @@
           id="width"
           bind:value={selectedObject.width}
           oninput={onPropertyChange}
+          onfocus={handleFocus}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -112,6 +133,8 @@
           id="height"
           bind:value={selectedObject.height}
           oninput={onPropertyChange}
+          onfocus={handleFocus}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -122,6 +145,8 @@
           id="angle"
           bind:value={selectedObject.angle}
           oninput={onPropertyChange}
+          onfocus={handleFocus}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -133,6 +158,8 @@
           id="fill"
           bind:value={selectedObject.fill}
           oninput={onPropertyChange}
+          onfocus={handleFocus}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
       </div>
