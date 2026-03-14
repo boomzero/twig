@@ -29,14 +29,16 @@
     onApplyToAll?: (bg: SlideBackground | null) => void
   } = $props()
 
-  // One-shot focus guard: push history checkpoint once per input focus session,
-  // not on every keystroke. Reset on blur so the next focus starts fresh.
+  // One-shot checkpoint guard: push a history checkpoint on the first real value
+  // change per focus session, not on focus itself (which would clear redo even
+  // if the user never edits anything). Reset on blur so the next session is fresh.
   let snapshotPushed = false
-  function handleFocus(): void {
+  function handleInput(): void {
     if (!snapshotPushed) {
       onBeforePropertyChange?.()
       snapshotPushed = true
     }
+    onPropertyChange?.()
   }
   function handleBlur(): void {
     snapshotPushed = false
@@ -96,8 +98,7 @@
           type="number"
           id="x"
           bind:value={selectedObject.x}
-          oninput={onPropertyChange}
-          onfocus={handleFocus}
+          oninput={handleInput}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -108,8 +109,7 @@
           type="number"
           id="y"
           bind:value={selectedObject.y}
-          oninput={onPropertyChange}
-          onfocus={handleFocus}
+          oninput={handleInput}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -120,8 +120,7 @@
           type="number"
           id="width"
           bind:value={selectedObject.width}
-          oninput={onPropertyChange}
-          onfocus={handleFocus}
+          oninput={handleInput}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -132,8 +131,7 @@
           type="number"
           id="height"
           bind:value={selectedObject.height}
-          oninput={onPropertyChange}
-          onfocus={handleFocus}
+          oninput={handleInput}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -144,8 +142,7 @@
           type="number"
           id="angle"
           bind:value={selectedObject.angle}
-          oninput={onPropertyChange}
-          onfocus={handleFocus}
+          oninput={handleInput}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -157,8 +154,7 @@
           type="color"
           id="fill"
           bind:value={selectedObject.fill}
-          oninput={onPropertyChange}
-          onfocus={handleFocus}
+          oninput={handleInput}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />

@@ -2566,11 +2566,11 @@
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
-    pushCheckpoint()
     const above = appState.currentSlide.elements
       .filter((e) => e.zIndex > el.zIndex)
       .sort((a, b) => a.zIndex - b.zIndex)[0]
     if (!above) return
+    pushCheckpoint()
     ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
     compactZIndexes()
     applyZOrderToCanvas()
@@ -2581,11 +2581,11 @@
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
-    pushCheckpoint()
     const below = appState.currentSlide.elements
       .filter((e) => e.zIndex < el.zIndex)
       .sort((a, b) => b.zIndex - a.zIndex)[0]
     if (!below) return
+    pushCheckpoint()
     ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
     compactZIndexes()
     applyZOrderToCanvas()
