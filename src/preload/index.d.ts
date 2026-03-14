@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { Slide } from '../renderer/src/lib/types'
+import type { Slide, SlideBackground } from '../renderer/src/lib/types'
 
 /**
  * Represents a system font with its family name and file path
@@ -99,7 +99,7 @@ declare global {
         getThumbnails: (filePath: string) => Promise<Record<string, string>>
         getSetting: (filePath: string, key: string) => Promise<string | null>
         setSetting: (filePath: string, key: string, value: string | null) => Promise<void>
-        applyBackgroundToAll: (filePath: string, background: object | null) => Promise<void>
+        applyBackgroundToAll: (filePath: string, background: SlideBackground | null) => Promise<void>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>

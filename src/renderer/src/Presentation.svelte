@@ -136,7 +136,10 @@
     }
   })
 
-  async function applyPresentationBackground(bg: SlideBackground | undefined): Promise<void> {
+  async function applyPresentationBackground(
+    bg: SlideBackground | undefined,
+    generation: number
+  ): Promise<void> {
     if (!presentationCanvas) return
     const W = SLIDE_WIDTH, H = SLIDE_HEIGHT
     presentationCanvas.backgroundImage = undefined
@@ -158,14 +161,15 @@
     } else if (bg.type === 'image' && bg.src) {
       presentationCanvas.backgroundColor = '#ffffff'
       const img = await FabricImage.fromURL(bg.src, { crossOrigin: 'anonymous' })
+      if (renderGeneration !== generation || !presentationCanvas) return
       const fit = bg.fit ?? 'cover'
       if (fit === 'stretch') {
-        img.scaleX = W / img.width!
-        img.scaleY = H / img.height!
+        img.scaleX = W / (img.width || 1)
+        img.scaleY = H / (img.height || 1)
       } else {
         const scale = fit === 'contain'
-          ? Math.min(W / img.width!, H / img.height!)
-          : Math.max(W / img.width!, H / img.height!)
+          ? Math.min(W / (img.width || 1), H / (img.height || 1))
+          : Math.max(W / (img.width || 1), H / (img.height || 1))
         img.scaleX = scale
         img.scaleY = scale
       }
@@ -186,7 +190,7 @@
 
     presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
     lastRenderedSlideId = slide.id
-    applyPresentationBackground(slide.background).catch(console.error)
+    applyPresentationBackground(slide.background, generation).catch(console.error)
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
 

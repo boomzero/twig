@@ -26,9 +26,6 @@
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
   import type { SlideBackground } from './lib/types'
-
-  // Default background applied to newly created slides in this presentation
-  let defaultSlideBackground = $state<SlideBackground | undefined>(undefined)
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
@@ -65,6 +62,11 @@
   // Layers panel visibility and width
   let showStackPanel = $state(false)
   let stackPanelWidth = $state(240)
+  // Default background applied to newly created slides in this presentation
+  let defaultSlideBackground = $state<SlideBackground | undefined>(undefined)
+  // Incremented each time regenerateAllThumbnails() is called; lets a superseded
+  // run detect it has been overtaken and bail out early.
+  let thumbnailRegenerationGeneration = 0
 
   function startStackPanelResize(e: MouseEvent): void {
     e.preventDefault()
@@ -328,12 +330,12 @@
       const img = await FabricImage.fromURL(bg.src, { crossOrigin: 'anonymous' })
       const fit = bg.fit ?? 'cover'
       if (fit === 'stretch') {
-        img.scaleX = W / img.width!
-        img.scaleY = H / img.height!
+        img.scaleX = W / (img.width || 1)
+        img.scaleY = H / (img.height || 1)
       } else {
         const scale = fit === 'contain'
-          ? Math.min(W / img.width!, H / img.height!)
-          : Math.max(W / img.width!, H / img.height!)
+          ? Math.min(W / (img.width || 1), H / (img.height || 1))
+          : Math.max(W / (img.width || 1), H / (img.height || 1))
         img.scaleX = scale
         img.scaleY = scale
       }
@@ -367,13 +369,15 @@
   async function regenerateAllThumbnails(background: SlideBackground | undefined): Promise<void> {
     if (!appState.currentFilePath) return
     const filePath = appState.currentFilePath
+    const myGeneration = ++thumbnailRegenerationGeneration
 
     for (const slideId of appState.slideIds) {
+      if (thumbnailRegenerationGeneration !== myGeneration) return
       // The current slide is handled by scheduleThumbnailCapture (already rendered on fabCanvas)
       if (slideId === appState.currentSlide?.id) continue
 
       const slide = await window.api.db.getSlide(filePath, slideId)
-      if (!slide) continue
+      if (!slide || thumbnailRegenerationGeneration !== myGeneration) continue
 
       const tempEl = document.createElement('canvas')
       tempEl.style.cssText = 'position:absolute;left:-9999px;top:-9999px'
@@ -870,6 +874,7 @@
     // Clear the canvas and apply background (may await for image backgrounds)
     fabCanvas.clear()
     await applySlideBackground(currentSlide.background)
+    if (renderGeneration !== generation) return
 
     // Add non-image elements synchronously in z-order
     sortedElements.forEach((element) => {
