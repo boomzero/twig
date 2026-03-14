@@ -25,6 +25,7 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
+  import type { SlideBackground } from './lib/types'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
@@ -34,7 +35,8 @@
     FabricImage,
     ActiveSelection,
     util,
-    cache
+    cache,
+    Gradient
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
@@ -291,15 +293,52 @@
     }, AUTO_SAVE_DEBOUNCE_MS)
   }
 
+  async function applySlideBackground(bg: SlideBackground | undefined): Promise<void> {
+    if (!fabCanvas) return
+    const W = 960, H = 540
+
+    // Always clear backgroundImage first; re-set if needed
+    fabCanvas.backgroundImage = undefined
+
+    if (!bg || bg.type === 'solid') {
+      fabCanvas.backgroundColor = bg?.color ?? '#ffffff'
+    } else if (bg.type === 'gradient') {
+      const rad = (bg.angle * Math.PI) / 180
+      const grad = new Gradient({
+        type: 'linear',
+        coords: {
+          x1: W / 2 - Math.cos(rad) * (W / 2),
+          y1: H / 2 - Math.sin(rad) * (H / 2),
+          x2: W / 2 + Math.cos(rad) * (W / 2),
+          y2: H / 2 + Math.sin(rad) * (H / 2)
+        },
+        colorStops: bg.stops.map((s) => ({ offset: s.offset, color: s.color }))
+      })
+      fabCanvas.set({ backgroundColor: grad })
+    } else if (bg.type === 'image' && bg.src) {
+      fabCanvas.backgroundColor = '#ffffff'
+      const img = await FabricImage.fromURL(bg.src, { crossOrigin: 'anonymous' })
+      const fit = bg.fit ?? 'cover'
+      if (fit === 'stretch') {
+        img.scaleX = W / img.width!
+        img.scaleY = H / img.height!
+      } else {
+        const scale = fit === 'contain'
+          ? Math.min(W / img.width!, H / img.height!)
+          : Math.max(W / img.width!, H / img.height!)
+        img.scaleX = scale
+        img.scaleY = scale
+      }
+      img.left = W / 2
+      img.top = H / 2
+      fabCanvas.backgroundImage = img
+      fabCanvas.renderAll()
+    }
+  }
+
   async function captureAndStoreThumbnail(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
-    const prevBg = fabCanvas.backgroundColor
-    fabCanvas.backgroundColor = 'white'
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
-    fabCanvas.backgroundColor = prevBg
-    // Re-render to ensure the canvas shows the correct background colour and
-    // doesn't display a white flash if any other handler triggers a renderAll.
-    fabCanvas.renderAll()
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
@@ -711,7 +750,7 @@
    *
    * Called whenever the current slide changes (via $effect).
    */
-  function renderCanvasFromState(): Promise<void> {
+  async function renderCanvasFromState(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide) {
       return Promise.resolve()
     }
@@ -736,17 +775,18 @@
     fabCanvas.off('selection:cleared', handleSelectionCleared)
     fabCanvas.off('contextmenu', handleContextMenu)
 
-    // Clear the canvas and re-create all objects from state
-    fabCanvas.clear()
-
-    // Sort elements by zIndex (ascending = back-to-front).
-    // getSlide() already returns elements ORDER BY z_index ASC, so in normal
-    // flow this is a no-op. The defensive sort guards against in-memory
-    // reorder mutations (e.g. compactZIndexes) that occur between load and render.
+    // Read elements synchronously (before any await) so Svelte 5 tracks the
+    // array within the $effect's reactive context. Accessing elements after an
+    // await would put the read outside the tracking window, breaking the
+    // dependency so that push() mutations no longer trigger a re-render.
     const sortedElements = [...currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
     // Build a lookup of element id → zIndex for use by async image insertions
     const zIndexById = new Map(sortedElements.map((el) => [el.id, el.zIndex]))
+
+    // Clear the canvas and apply background (may await for image backgrounds)
+    fabCanvas.clear()
+    await applySlideBackground(currentSlide.background)
 
     // Add non-image elements synchronously in z-order
     sortedElements.forEach((element) => {
@@ -2731,7 +2771,17 @@
           />
         </div>
       {/if}
-      <PropertiesPanel onPropertyChange={scheduleSave} />
+      <PropertiesPanel
+        onPropertyChange={scheduleSave}
+        onSlideBackgroundChange={async (bg) => {
+          if (appState.currentSlide) {
+            appState.currentSlide.background = bg
+            await applySlideBackground(bg)
+            fabCanvas!.renderAll()
+            scheduleSave()
+          }
+        }}
+      />
     </div>
   </div>
 {:else}

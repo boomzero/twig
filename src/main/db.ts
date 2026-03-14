@@ -58,6 +58,14 @@ export interface DeckElement {
 }
 
 /**
+ * Describes the background of a slide — solid color, linear gradient, or image.
+ */
+export type SlideBackground =
+  | { type: 'solid'; color: string }
+  | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
+  | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
+
+/**
  * Represents a single slide containing multiple elements.
  */
 export interface Slide {
@@ -66,6 +74,9 @@ export interface Slide {
 
   /** Array of elements (shapes, text) on this slide */
   elements: DeckElement[]
+
+  /** Optional background — null/undefined means white */
+  background?: SlideBackground
 }
 
 /**
@@ -221,6 +232,21 @@ export function initializeDatabase(db: Database): void {
     } catch (error) {
       console.error('Failed to read slides schema for thumbnail migration:', error)
     }
+
+    // Migration: add background column to slides table.
+    try {
+      const slideTableInfo2 = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
+      if (!slideTableInfo2.map((c) => c.name).includes('background')) {
+        try {
+          console.log('Adding background column to slides table')
+          db.exec('ALTER TABLE slides ADD COLUMN background TEXT')
+        } catch (error) {
+          console.error('Migration failed: background column', error)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to read slides schema for background migration:', error)
+    }
   }
 }
 
@@ -273,7 +299,7 @@ interface ElementRow {
 export function getSlide(db: Database, slideId: string): Slide | null {
   // First, check if the slide exists
   const slideRow = db.prepare('SELECT * FROM slides WHERE id = ?').get(slideId) as
-    | { id: string }
+    | { id: string; background?: string | null }
     | undefined
   if (!slideRow) {
     return null
@@ -315,7 +341,16 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     zIndex: el.z_index ?? 0
   }))
 
-  return { id: slideRow.id, elements }
+  let background: SlideBackground | undefined
+  if (slideRow.background) {
+    try {
+      background = JSON.parse(slideRow.background)
+    } catch {
+      /* ignore malformed JSON */
+    }
+  }
+
+  return { id: slideRow.id, elements, background }
 }
 
 // ============================================================================
@@ -438,7 +473,16 @@ export function saveSlide(db: Database, slide: Slide): void {
         max: number | null
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
-      db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(s.id, newOrder)
+      db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
+        s.id, newOrder, s.background ? JSON.stringify(s.background) : null
+      )
+    }
+
+    // Always sync background (handles both new and existing slides)
+    if (slideInfo) {
+      db.prepare('UPDATE slides SET background = ? WHERE id = ?').run(
+        s.background ? JSON.stringify(s.background) : null, s.id
+      )
     }
 
     s.elements.forEach((el) => {
@@ -538,10 +582,14 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         | undefined
 
       if (slideInfo) {
-        db.prepare('UPDATE slides SET slide_order = ? WHERE id = ?').run(index, slide.id)
+        db.prepare('UPDATE slides SET slide_order = ?, background = ? WHERE id = ?').run(
+          index, slide.background ? JSON.stringify(slide.background) : null, slide.id
+        )
       } else {
         hasNewSlides = true
-        db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(slide.id, index)
+        db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
+          slide.id, index, slide.background ? JSON.stringify(slide.background) : null
+        )
       }
 
       slide.elements.forEach((el) => {
