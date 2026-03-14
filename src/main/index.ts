@@ -982,6 +982,36 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('db:get-setting', (_event, filePath: string, key: string): string | null => {
+    try {
+      validateFilePath(filePath)
+      return withDbConnection(filePath, (db) => dbService.getSetting(db, key))
+    } catch (error) {
+      console.error('Error in db:get-setting:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('db:set-setting', (_event, filePath: string, key: string, value: string | null): void => {
+    try {
+      validateFilePath(filePath)
+      withDbConnection(filePath, (db) => dbService.setSetting(db, key, value))
+    } catch (error) {
+      console.error('Error in db:set-setting:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('db:apply-background-to-all', (_event, filePath: string, background: dbService.SlideBackground | null): void => {
+    try {
+      validateFilePath(filePath)
+      withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background))
+    } catch (error) {
+      console.error('Error in db:apply-background-to-all:', error)
+      throw error
+    }
+  })
+
   /**
    * Saves all slides to a new file (Save As operation).
    * This creates a completely new database file with all slides.

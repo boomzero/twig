@@ -17,10 +17,14 @@
 
   const {
     onPropertyChange,
-    onSlideBackgroundChange
+    onSlideBackgroundChange,
+    onSetAsDefault,
+    onApplyToAll
   }: {
     onPropertyChange?: () => void
     onSlideBackgroundChange?: (bg: SlideBackground) => void
+    onSetAsDefault?: (bg: SlideBackground | null) => void
+    onApplyToAll?: (bg: SlideBackground | null) => void
   } = $props()
 
   // Reactively compute the currently selected object from app state
@@ -243,6 +247,17 @@
           {/if}
         </div>
       {/if}
+
+      <div class="border-t border-gray-200 pt-3 space-y-1.5">
+        <button
+          onclick={() => onSetAsDefault?.(currentBg ?? null)}
+          class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
+        >Set as default for new slides</button>
+        <button
+          onclick={() => onApplyToAll?.(currentBg ?? null)}
+          class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
+        >Apply to all slides</button>
+      </div>
     </div>
   {/if}
 </div>

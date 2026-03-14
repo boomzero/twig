@@ -76,7 +76,19 @@ const api = {
 
     /** Retrieve all stored thumbnails for a presentation */
     getThumbnails: (filePath: string) =>
-      ipcRenderer.invoke('db:get-thumbnails', filePath)
+      ipcRenderer.invoke('db:get-thumbnails', filePath),
+
+    /** Retrieve a per-presentation setting value */
+    getSetting: (filePath: string, key: string) =>
+      ipcRenderer.invoke('db:get-setting', filePath, key),
+
+    /** Persist a per-presentation setting value (null removes it) */
+    setSetting: (filePath: string, key: string, value: string | null) =>
+      ipcRenderer.invoke('db:set-setting', filePath, key, value),
+
+    /** Set the same background on every slide in the presentation */
+    applyBackgroundToAll: (filePath: string, background: object | null) =>
+      ipcRenderer.invoke('db:apply-background-to-all', filePath, background)
   },
 
   // Font operations

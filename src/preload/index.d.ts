@@ -97,6 +97,9 @@ declare global {
         deleteTemp: (filePath: string) => Promise<void>
         saveThumbnail: (filePath: string, slideId: string, thumbnail: string) => Promise<void>
         getThumbnails: (filePath: string) => Promise<Record<string, string>>
+        getSetting: (filePath: string, key: string) => Promise<string | null>
+        setSetting: (filePath: string, key: string, value: string | null) => Promise<void>
+        applyBackgroundToAll: (filePath: string, background: object | null) => Promise<void>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>

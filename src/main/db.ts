@@ -159,6 +159,14 @@ export function initializeDatabase(db: Database): void {
     )
   `)
 
+  // Create the settings table for per-presentation key/value configuration
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `)
+
   // Migrations: each column addition has its own try/catch so a failure in one
   // does not prevent the others from running on subsequent launches.
   let columnNames: string[] = []
@@ -741,4 +749,37 @@ export function addFont(db: Database, fontData: FontData): void {
     )
     stmt.run(fontData.id, fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
   }
+}
+
+// ============================================================================
+// Settings Functions
+// ============================================================================
+
+/**
+ * Retrieves a setting value by key.
+ */
+export function getSetting(db: Database, key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined
+  return row?.value ?? null
+}
+
+/**
+ * Saves a setting value. Passing null removes the key.
+ */
+export function setSetting(db: Database, key: string, value: string | null): void {
+  if (value === null) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(key)
+  } else {
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
+  }
+}
+
+/**
+ * Sets the same background on every slide in the presentation.
+ */
+export function applyBackgroundToAllSlides(db: Database, background: SlideBackground | null): void {
+  const value = background ? JSON.stringify(background) : null
+  db.prepare('UPDATE slides SET background = ?').run(value)
 }
