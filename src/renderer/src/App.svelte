@@ -1233,6 +1233,27 @@
     }
   }
 
+  /**
+   * Syncs property panel changes (x, y, width, height, angle, fill) from state
+   * back to the live Fabric object, then schedules a save.
+   *
+   * The $effect that drives renderCanvasFromState() only tracks the elements
+   * array reference, not deep property mutations — so we must push changes
+   * to the canvas object directly instead of relying on a full re-render.
+   */
+  function handlePropertyChange(): void {
+    const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
+    const obj = fabCanvas?.getObjects().find((o) => (o as DeckFabricObject).id === appState.selectedObjectId)
+    if (el && obj) {
+      obj.set({ left: el.x, top: el.y, width: el.width, angle: el.angle, fill: el.fill })
+      // For rects the height is stored directly; for Textbox height is content-driven.
+      if (el.type === 'rect') obj.set({ height: el.height })
+      obj.setCoords()
+      fabCanvas?.renderAll()
+    }
+    scheduleSave()
+  }
+
   // ============================================================================
   // Selection Handling
   // ============================================================================
@@ -3076,7 +3097,7 @@
         </div>
       {/if}
       <PropertiesPanel
-        onPropertyChange={scheduleSave}
+        onPropertyChange={handlePropertyChange}
         onBeforePropertyChange={pushCheckpoint}
         onSlideBackgroundChange={async (bg) => {
           if (appState.currentSlide) {
