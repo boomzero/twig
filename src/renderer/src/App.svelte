@@ -25,16 +25,19 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { DeckElement, SelectionState } from './lib/state.svelte'
+  import type { SlideBackground } from './lib/types'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
+    StaticCanvas,
     type FabricObject,
     Textbox,
     Rect,
     FabricImage,
     ActiveSelection,
     util,
-    cache
+    cache,
+    Gradient
   } from 'fabric'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
@@ -59,6 +62,11 @@
   // Layers panel visibility and width
   let showStackPanel = $state(false)
   let stackPanelWidth = $state(240)
+  // Default background applied to newly created slides in this presentation
+  let defaultSlideBackground = $state<SlideBackground | undefined>(undefined)
+  // Incremented each time regenerateAllThumbnails() is called; lets a superseded
+  // run detect it has been overtaken and bail out early.
+  let thumbnailRegenerationGeneration = 0
 
   function startStackPanelResize(e: MouseEvent): void {
     e.preventDefault()
@@ -291,15 +299,56 @@
     }, AUTO_SAVE_DEBOUNCE_MS)
   }
 
+  async function applySlideBackground(
+    bg: SlideBackground | undefined,
+    target?: StaticCanvas | Canvas
+  ): Promise<void> {
+    const c = target ?? fabCanvas
+    if (!c) return
+    const W = 960, H = 540
+
+    // Always clear backgroundImage first; re-set if needed
+    c.backgroundImage = undefined
+
+    if (!bg || bg.type === 'solid') {
+      c.backgroundColor = bg?.color ?? '#ffffff'
+    } else if (bg.type === 'gradient') {
+      const rad = (bg.angle * Math.PI) / 180
+      const grad = new Gradient({
+        type: 'linear',
+        coords: {
+          x1: W / 2 - Math.cos(rad) * (W / 2),
+          y1: H / 2 - Math.sin(rad) * (H / 2),
+          x2: W / 2 + Math.cos(rad) * (W / 2),
+          y2: H / 2 + Math.sin(rad) * (H / 2)
+        },
+        colorStops: bg.stops.map((s) => ({ offset: s.offset, color: s.color }))
+      })
+      c.set({ backgroundColor: grad })
+    } else if (bg.type === 'image' && bg.src) {
+      c.backgroundColor = '#ffffff'
+      const img = await FabricImage.fromURL(bg.src, { crossOrigin: 'anonymous' })
+      const fit = bg.fit ?? 'cover'
+      if (fit === 'stretch') {
+        img.scaleX = W / (img.width || 1)
+        img.scaleY = H / (img.height || 1)
+      } else {
+        const scale = fit === 'contain'
+          ? Math.min(W / (img.width || 1), H / (img.height || 1))
+          : Math.max(W / (img.width || 1), H / (img.height || 1))
+        img.scaleX = scale
+        img.scaleY = scale
+      }
+      img.left = W / 2
+      img.top = H / 2
+      c.backgroundImage = img
+      c.renderAll()
+    }
+  }
+
   async function captureAndStoreThumbnail(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
-    const prevBg = fabCanvas.backgroundColor
-    fabCanvas.backgroundColor = 'white'
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
-    fabCanvas.backgroundColor = prevBg
-    // Re-render to ensure the canvas shows the correct background colour and
-    // doesn't display a white flash if any other handler triggers a renderAll.
-    fabCanvas.renderAll()
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
@@ -310,6 +359,69 @@
       thumbnailTimeoutId = null
       captureAndStoreThumbnail().catch(console.error)
     }, 500)
+  }
+
+  /**
+   * Regenerates thumbnails for every slide in the presentation using a new background.
+   * Renders each slide on a hidden offscreen StaticCanvas, captures the result,
+   * and updates both the in-memory thumbnail map and the database.
+   */
+  async function regenerateAllThumbnails(background: SlideBackground | undefined): Promise<void> {
+    if (!appState.currentFilePath) return
+    const filePath = appState.currentFilePath
+    const myGeneration = ++thumbnailRegenerationGeneration
+
+    for (const slideId of appState.slideIds) {
+      if (thumbnailRegenerationGeneration !== myGeneration) return
+      // The current slide is handled by scheduleThumbnailCapture (already rendered on fabCanvas)
+      if (slideId === appState.currentSlide?.id) continue
+
+      const slide = await window.api.db.getSlide(filePath, slideId)
+      if (!slide || thumbnailRegenerationGeneration !== myGeneration) continue
+
+      const tempEl = document.createElement('canvas')
+      tempEl.style.cssText = 'position:absolute;left:-9999px;top:-9999px'
+      document.body.appendChild(tempEl)
+      const tempCanvas = new StaticCanvas(tempEl, { width: 960, height: 540 })
+
+      try {
+        await applySlideBackground(background, tempCanvas)
+
+        // Add non-image elements in z-order (images skipped for performance)
+        const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
+        for (const el of sorted) {
+          if (el.type === 'rect') {
+            tempCanvas.add(new Rect({
+              left: el.x, top: el.y, width: el.width, height: el.height,
+              angle: el.angle, fill: el.fill
+            }))
+          } else if (el.type === 'text') {
+            tempCanvas.add(new Textbox(el.text || '', {
+              left: el.x, top: el.y, width: el.width, angle: el.angle,
+              fill: el.fill, fontFamily: el.fontFamily, fontSize: el.fontSize
+            }))
+          } else if (el.type === 'image' && el.src) {
+            try {
+              const img = await FabricImage.fromURL(el.src, { crossOrigin: 'anonymous' })
+              const scaleX = el.width / (img.width || 1)
+              const scaleY = el.height / (img.height || 1)
+              img.set({ left: el.x, top: el.y, angle: el.angle, scaleX, scaleY })
+              tempCanvas.add(img)
+            } catch {
+              // Skip images that fail to load
+            }
+          }
+        }
+
+        tempCanvas.renderAll()
+        const dataUrl = tempCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
+        appState.thumbnails[slideId] = dataUrl
+        window.api.db.saveThumbnail(filePath, slideId, dataUrl).catch(console.error)
+      } finally {
+        tempCanvas.dispose()
+        document.body.removeChild(tempEl)
+      }
+    }
   }
 
   /**
@@ -505,6 +617,20 @@
   $effect(() => {
     if (appState.currentFilePath) {
       loadEmbeddedFonts()
+    }
+  })
+
+  /**
+   * Reactive effect that loads the default slide background for the current file.
+   */
+  $effect(() => {
+    const filePath = appState.currentFilePath
+    if (filePath) {
+      window.api.db.getSetting(filePath, 'default_background').then((value) => {
+        defaultSlideBackground = value ? JSON.parse(value) : undefined
+      }).catch(console.error)
+    } else {
+      defaultSlideBackground = undefined
     }
   })
 
@@ -711,7 +837,7 @@
    *
    * Called whenever the current slide changes (via $effect).
    */
-  function renderCanvasFromState(): Promise<void> {
+  async function renderCanvasFromState(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide) {
       return Promise.resolve()
     }
@@ -736,17 +862,19 @@
     fabCanvas.off('selection:cleared', handleSelectionCleared)
     fabCanvas.off('contextmenu', handleContextMenu)
 
-    // Clear the canvas and re-create all objects from state
-    fabCanvas.clear()
-
-    // Sort elements by zIndex (ascending = back-to-front).
-    // getSlide() already returns elements ORDER BY z_index ASC, so in normal
-    // flow this is a no-op. The defensive sort guards against in-memory
-    // reorder mutations (e.g. compactZIndexes) that occur between load and render.
+    // Read elements synchronously (before any await) so Svelte 5 tracks the
+    // array within the $effect's reactive context. Accessing elements after an
+    // await would put the read outside the tracking window, breaking the
+    // dependency so that push() mutations no longer trigger a re-render.
     const sortedElements = [...currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
     // Build a lookup of element id → zIndex for use by async image insertions
     const zIndexById = new Map(sortedElements.map((el) => [el.id, el.zIndex]))
+
+    // Clear the canvas and apply background (may await for image backgrounds)
+    fabCanvas.clear()
+    await applySlideBackground(currentSlide.background)
+    if (renderGeneration !== generation) return
 
     // Add non-image elements synchronously in z-order
     sortedElements.forEach((element) => {
@@ -2103,6 +2231,14 @@
       const newSlide = await window.api.db.createSlide(appState.currentFilePath)
       newSlideId = newSlide.id
 
+      // Apply default background if one is set.
+      // Use $state.snapshot() to strip the Svelte 5 reactive Proxy before
+      // sending over IPC — structured clone cannot handle Proxy objects.
+      if (defaultSlideBackground) {
+        newSlide.background = $state.snapshot(defaultSlideBackground) as SlideBackground
+        await window.api.db.saveSlide(appState.currentFilePath, newSlide)
+      }
+
       // Update slideIds
       appState.slideIds = [...appState.slideIds, newSlide.id]
 
@@ -2731,7 +2867,47 @@
           />
         </div>
       {/if}
-      <PropertiesPanel onPropertyChange={scheduleSave} />
+      <PropertiesPanel
+        onPropertyChange={scheduleSave}
+        onSlideBackgroundChange={async (bg) => {
+          if (appState.currentSlide) {
+            const plain: SlideBackground = JSON.parse(JSON.stringify(bg))
+            appState.currentSlide.background = plain
+            await applySlideBackground(plain)
+            fabCanvas!.renderAll()
+            scheduleSave()
+          }
+        }}
+        onSetAsDefault={async (bg) => {
+          if (!appState.currentFilePath) return
+          // JSON round-trip strips any Svelte 5 reactive Proxy before IPC/storage
+          const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
+          defaultSlideBackground = plain ?? undefined
+          await window.api.db.setSetting(
+            appState.currentFilePath,
+            'default_background',
+            plain ? JSON.stringify(plain) : null
+          )
+        }}
+        onApplyToAll={async (bg) => {
+          if (!appState.currentFilePath || !appState.currentSlide) return
+          const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
+          try {
+            await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)
+          } catch (err) {
+            console.error('applyBackgroundToAll failed:', err)
+            return
+          }
+          if (!appState.currentSlide) return
+          appState.currentSlide.background = plain ?? undefined
+          await applySlideBackground(plain ?? undefined)
+          fabCanvas?.renderAll()
+          scheduleThumbnailCapture()
+          scheduleSave()
+          // Regenerate thumbnails for all other slides in the background
+          regenerateAllThumbnails(plain ?? undefined).catch(console.error)
+        }}
+      />
     </div>
   </div>
 {:else}

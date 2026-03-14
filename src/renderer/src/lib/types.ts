@@ -58,6 +58,14 @@ export interface DeckElement {
 }
 
 /**
+ * Describes the background of a slide — solid color, linear gradient, or image.
+ */
+export type SlideBackground =
+  | { type: 'solid'; color: string }
+  | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
+  | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
+
+/**
  * Represents a single slide containing multiple elements.
  */
 export interface Slide {
@@ -66,4 +74,7 @@ export interface Slide {
 
   /** Array of elements (shapes, text, images) on this slide */
   elements: DeckElement[]
+
+  /** Optional background — null/undefined means white */
+  background?: SlideBackground
 }

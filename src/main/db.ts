@@ -1,5 +1,8 @@
 import type { Database } from 'better-sqlite3'
 import { v4 as uuid_v4 } from 'uuid'
+import type { SlideBackground } from '../renderer/src/lib/types'
+
+export type { SlideBackground }
 
 // ============================================================================
 // Type Definitions
@@ -66,6 +69,9 @@ export interface Slide {
 
   /** Array of elements (shapes, text) on this slide */
   elements: DeckElement[]
+
+  /** Optional background — null/undefined means white */
+  background?: SlideBackground
 }
 
 /**
@@ -148,6 +154,14 @@ export function initializeDatabase(db: Database): void {
     )
   `)
 
+  // Create the settings table for per-presentation key/value configuration
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `)
+
   // Migrations: each column addition has its own try/catch so a failure in one
   // does not prevent the others from running on subsequent launches.
   let columnNames: string[] = []
@@ -204,12 +218,15 @@ export function initializeDatabase(db: Database): void {
       }
     }
 
-    // Migration: add thumbnail column to slides table.
+    // Migrations: add thumbnail and background columns to slides table.
     // Kept inside the schemaReadOk guard so a locked/corrupted DB prevents
-    // all migrations consistently rather than allowing this one to run alone.
+    // all migrations consistently rather than allowing them to run alone.
+    // Read PRAGMA once and check all column names against it.
     try {
-      const slideTableInfo = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
-      const slideColumnNames = slideTableInfo.map((col) => col.name)
+      const slideColumnNames = (
+        db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
+      ).map((col) => col.name)
+
       if (!slideColumnNames.includes('thumbnail')) {
         try {
           console.log('Adding thumbnail column to slides table')
@@ -218,8 +235,17 @@ export function initializeDatabase(db: Database): void {
           console.error('Migration failed: thumbnail column', error)
         }
       }
+
+      if (!slideColumnNames.includes('background')) {
+        try {
+          console.log('Adding background column to slides table')
+          db.exec('ALTER TABLE slides ADD COLUMN background TEXT')
+        } catch (error) {
+          console.error('Migration failed: background column', error)
+        }
+      }
     } catch (error) {
-      console.error('Failed to read slides schema for thumbnail migration:', error)
+      console.error('Failed to read slides schema for migrations:', error)
     }
   }
 }
@@ -273,7 +299,7 @@ interface ElementRow {
 export function getSlide(db: Database, slideId: string): Slide | null {
   // First, check if the slide exists
   const slideRow = db.prepare('SELECT * FROM slides WHERE id = ?').get(slideId) as
-    | { id: string }
+    | { id: string; background?: string | null }
     | undefined
   if (!slideRow) {
     return null
@@ -315,7 +341,16 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     zIndex: el.z_index ?? 0
   }))
 
-  return { id: slideRow.id, elements }
+  let background: SlideBackground | undefined
+  if (slideRow.background) {
+    try {
+      background = JSON.parse(slideRow.background)
+    } catch {
+      /* ignore malformed JSON */
+    }
+  }
+
+  return { id: slideRow.id, elements, background }
 }
 
 // ============================================================================
@@ -438,7 +473,16 @@ export function saveSlide(db: Database, slide: Slide): void {
         max: number | null
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
-      db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(s.id, newOrder)
+      db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
+        s.id, newOrder, s.background ? JSON.stringify(s.background) : null
+      )
+    }
+
+    // Always sync background (handles both new and existing slides)
+    if (slideInfo) {
+      db.prepare('UPDATE slides SET background = ? WHERE id = ?').run(
+        s.background ? JSON.stringify(s.background) : null, s.id
+      )
     }
 
     s.elements.forEach((el) => {
@@ -538,10 +582,14 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         | undefined
 
       if (slideInfo) {
-        db.prepare('UPDATE slides SET slide_order = ? WHERE id = ?').run(index, slide.id)
+        db.prepare('UPDATE slides SET slide_order = ?, background = ? WHERE id = ?').run(
+          index, slide.background ? JSON.stringify(slide.background) : null, slide.id
+        )
       } else {
         hasNewSlides = true
-        db.prepare('INSERT INTO slides (id, slide_order) VALUES (?, ?)').run(slide.id, index)
+        db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
+          slide.id, index, slide.background ? JSON.stringify(slide.background) : null
+        )
       }
 
       slide.elements.forEach((el) => {
@@ -693,4 +741,37 @@ export function addFont(db: Database, fontData: FontData): void {
     )
     stmt.run(fontData.id, fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
   }
+}
+
+// ============================================================================
+// Settings Functions
+// ============================================================================
+
+/**
+ * Retrieves a setting value by key.
+ */
+export function getSetting(db: Database, key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined
+  return row?.value ?? null
+}
+
+/**
+ * Saves a setting value. Passing null removes the key.
+ */
+export function setSetting(db: Database, key: string, value: string | null): void {
+  if (value === null) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(key)
+  } else {
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
+  }
+}
+
+/**
+ * Sets the same background on every slide in the presentation.
+ */
+export function applyBackgroundToAllSlides(db: Database, background: SlideBackground | null): void {
+  const value = background ? JSON.stringify(background) : null
+  db.prepare('UPDATE slides SET background = ?').run(value)
 }

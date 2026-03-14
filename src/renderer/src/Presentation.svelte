@@ -8,8 +8,8 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { Canvas, Textbox, Rect, FabricImage, type FabricObject } from 'fabric'
-  import type { DeckElement, Slide } from './lib/types'
+  import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient } from 'fabric'
+  import type { DeckElement, Slide, SlideBackground } from './lib/types'
   import { normalizeFontBytes } from './lib/fontUtils'
 
   export interface PresentationState {
@@ -136,6 +136,50 @@
     }
   })
 
+  async function applyPresentationBackground(
+    bg: SlideBackground | undefined,
+    generation: number
+  ): Promise<void> {
+    if (!presentationCanvas) return
+    const W = SLIDE_WIDTH, H = SLIDE_HEIGHT
+    presentationCanvas.backgroundImage = undefined
+    if (!bg || bg.type === 'solid') {
+      presentationCanvas.backgroundColor = bg?.color ?? '#ffffff'
+    } else if (bg.type === 'gradient') {
+      const rad = (bg.angle * Math.PI) / 180
+      const grad = new Gradient({
+        type: 'linear',
+        coords: {
+          x1: W / 2 - Math.cos(rad) * (W / 2),
+          y1: H / 2 - Math.sin(rad) * (H / 2),
+          x2: W / 2 + Math.cos(rad) * (W / 2),
+          y2: H / 2 + Math.sin(rad) * (H / 2)
+        },
+        colorStops: bg.stops.map((s) => ({ offset: s.offset, color: s.color }))
+      })
+      presentationCanvas.set({ backgroundColor: grad })
+    } else if (bg.type === 'image' && bg.src) {
+      presentationCanvas.backgroundColor = '#ffffff'
+      const img = await FabricImage.fromURL(bg.src, { crossOrigin: 'anonymous' })
+      if (renderGeneration !== generation || !presentationCanvas) return
+      const fit = bg.fit ?? 'cover'
+      if (fit === 'stretch') {
+        img.scaleX = W / (img.width || 1)
+        img.scaleY = H / (img.height || 1)
+      } else {
+        const scale = fit === 'contain'
+          ? Math.min(W / (img.width || 1), H / (img.height || 1))
+          : Math.max(W / (img.width || 1), H / (img.height || 1))
+        img.scaleX = scale
+        img.scaleY = scale
+      }
+      img.left = W / 2
+      img.top = H / 2
+      presentationCanvas.backgroundImage = img
+      presentationCanvas.renderAll()
+    }
+  }
+
   function renderSlide(): void {
     const slide = loadedSlide
     if (!presentationCanvas || !slide) return
@@ -146,6 +190,7 @@
 
     presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
     lastRenderedSlideId = slide.id
+    applyPresentationBackground(slide.background, generation).catch(console.error)
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
