@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { Canvas, IText, Rect, FabricImage, type FabricObject } from 'fabric'
+  import { Canvas, Textbox, Rect, FabricImage, type FabricObject } from 'fabric'
   import type { DeckElement, Slide } from './lib/types'
   import { normalizeFontBytes } from './lib/fontUtils'
 
@@ -165,9 +165,10 @@
           evented: false
         })
       } else if (element.type === 'text') {
-        fabObj = new IText(element.text || '', {
+        fabObj = new Textbox(element.text || '', {
           left: element.x,
           top: element.y,
+          width: element.width,
           angle: element.angle,
           fill: element.fill,
           fontFamily: element.fontFamily,
@@ -176,7 +177,8 @@
           selectable: false,
           evented: false,
           editable: false,
-          objectCaching: false
+          objectCaching: false,
+          lockScalingY: true
         })
       }
 
