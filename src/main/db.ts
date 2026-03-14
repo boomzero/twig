@@ -1,5 +1,8 @@
 import type { Database } from 'better-sqlite3'
 import { v4 as uuid_v4 } from 'uuid'
+import type { SlideBackground } from '../renderer/src/lib/types'
+
+export type { SlideBackground }
 
 // ============================================================================
 // Type Definitions
@@ -56,14 +59,6 @@ export interface DeckElement {
   /** Z-index for layer ordering (higher = in front) */
   zIndex: number
 }
-
-/**
- * Describes the background of a slide — solid color, linear gradient, or image.
- */
-export type SlideBackground =
-  | { type: 'solid'; color: string }
-  | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
-  | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
 
 /**
  * Represents a single slide containing multiple elements.
@@ -223,12 +218,15 @@ export function initializeDatabase(db: Database): void {
       }
     }
 
-    // Migration: add thumbnail column to slides table.
+    // Migrations: add thumbnail and background columns to slides table.
     // Kept inside the schemaReadOk guard so a locked/corrupted DB prevents
-    // all migrations consistently rather than allowing this one to run alone.
+    // all migrations consistently rather than allowing them to run alone.
+    // Read PRAGMA once and check all column names against it.
     try {
-      const slideTableInfo = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
-      const slideColumnNames = slideTableInfo.map((col) => col.name)
+      const slideColumnNames = (
+        db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
+      ).map((col) => col.name)
+
       if (!slideColumnNames.includes('thumbnail')) {
         try {
           console.log('Adding thumbnail column to slides table')
@@ -237,14 +235,8 @@ export function initializeDatabase(db: Database): void {
           console.error('Migration failed: thumbnail column', error)
         }
       }
-    } catch (error) {
-      console.error('Failed to read slides schema for thumbnail migration:', error)
-    }
 
-    // Migration: add background column to slides table.
-    try {
-      const slideTableInfo2 = db.prepare('PRAGMA table_info(slides)').all() as { name: string }[]
-      if (!slideTableInfo2.map((c) => c.name).includes('background')) {
+      if (!slideColumnNames.includes('background')) {
         try {
           console.log('Adding background column to slides table')
           db.exec('ALTER TABLE slides ADD COLUMN background TEXT')
@@ -253,7 +245,7 @@ export function initializeDatabase(db: Database): void {
         }
       }
     } catch (error) {
-      console.error('Failed to read slides schema for background migration:', error)
+      console.error('Failed to read slides schema for migrations:', error)
     }
   }
 }

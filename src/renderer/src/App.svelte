@@ -2871,8 +2871,9 @@
         onPropertyChange={scheduleSave}
         onSlideBackgroundChange={async (bg) => {
           if (appState.currentSlide) {
-            appState.currentSlide.background = bg
-            await applySlideBackground(bg)
+            const plain: SlideBackground = JSON.parse(JSON.stringify(bg))
+            appState.currentSlide.background = plain
+            await applySlideBackground(plain)
             fabCanvas!.renderAll()
             scheduleSave()
           }
