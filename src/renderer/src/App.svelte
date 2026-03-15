@@ -352,6 +352,21 @@
     }
   }
 
+  function pushCheckpointForSlide(slide: Slide): void {
+    const snapshot: SlideSnapshot = {
+      elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
+      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined
+    }
+    const serialized = JSON.stringify(snapshot)
+    const h = getSlideHistory(slide.id)
+    const top = h.undo[h.undo.length - 1]
+    if (top && serialized === top.serialized) return
+    h.undo.push({ snapshot, serialized })
+    if (h.undo.length > MAX_UNDO_ENTRIES) h.undo.shift()
+    h.redo = []
+    historyRevision++
+  }
+
   function pushCheckpoint(): void {
     const slideId = appState.currentSlide?.id
     if (!slideId) return
@@ -3125,6 +3140,17 @@
         }}
         onApplyToAll={async (bg) => {
           if (!appState.currentFilePath || !appState.currentSlide) return
+          // Snapshot every slide before the DB write so each slide's undo history
+          // has a restore point. Non-current slides must be fetched from the DB first.
+          const filePath = appState.currentFilePath
+          await Promise.all(appState.slideIds.map(async (id) => {
+            if (id === appState.currentSlide?.id) {
+              pushCheckpoint()
+            } else {
+              const slide = await window.api.db.getSlide(filePath, id)
+              if (slide) pushCheckpointForSlide(slide)
+            }
+          }))
           const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
           try {
             await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)
