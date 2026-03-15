@@ -110,6 +110,9 @@ export interface FontData {
  * @param db - The SQLite database connection to initialize
  */
 export function initializeDatabase(db: Database): void {
+  // Enable foreign key enforcement (SQLite defaults this to OFF per connection)
+  db.pragma('foreign_keys = ON')
+
   // Create the slides table to store slide metadata and ordering
   db.exec(`
     CREATE TABLE IF NOT EXISTS slides (

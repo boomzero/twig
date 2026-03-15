@@ -2516,6 +2516,7 @@
       const ids = await window.api.db.getSlideIds(filePath)
       appState.slideIds = ids
       appState.thumbnails = await window.api.db.getThumbnails(filePath)
+      appState.currentSlideIndex = ids.indexOf(appState.currentSlide?.id ?? '')
       if (savedHistory) historyBySlideId.set(slideId, savedHistory)
       if (isDeletingCurrent) await loadSlide(slideId)
     }
