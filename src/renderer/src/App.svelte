@@ -194,6 +194,7 @@
 
   // Copy/paste state
   let pasteCount = 0                      // resets on each copy; increments each paste
+  let lastCopiedPayload = ''              // detects cross-window clipboard changes to reset pasteCount
   let pendingSelectionIds: string[] = []  // consumed by renderCanvasFromState after render
 
   // Slide drag-to-reorder state
@@ -2831,6 +2832,7 @@
     event.clipboardData?.setData('text/plain', payload)
     event.preventDefault()
     pasteCount = 0
+    lastCopiedPayload = payload
     return true
   }
 
@@ -2849,11 +2851,16 @@
     if (!appState.currentSlide) return
     event.preventDefault()
 
+    if (raw !== lastCopiedPayload) {
+      pasteCount = 0
+      lastCopiedPayload = raw
+    }
     pasteCount++
     const offset = pasteCount * 20
     const baseZ = nextZIndex()
 
-    const newElements: DeckElement[] = parsed.elements.map((el, i) => {
+    const sortedElements = [...parsed.elements].sort((a, b) => a.zIndex - b.zIndex)
+    const newElements: DeckElement[] = sortedElements.map((el, i) => {
       const prefix = el.id.split('_')[0] ?? el.type
       const newId = `${prefix}_${uuid_v4()}`
       if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
