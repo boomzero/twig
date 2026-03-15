@@ -20,6 +20,7 @@
   import type { DeckElement } from '../lib/state.svelte'
 
   const {
+    onBeforeLayerChange,
     onLayerChange,
     onSelect,
     onBringToFront,
@@ -27,6 +28,7 @@
     onMoveDown,
     onSendToBack
   }: {
+    onBeforeLayerChange?: () => void
     onLayerChange?: () => void
     onSelect?: (id: string) => void
     onBringToFront?: (id: string) => void
@@ -78,6 +80,8 @@
   function reorderElements(fromDisplayIndex: number, toDisplayIndex: number): void {
     if (!appState.currentSlide) return
     if (fromDisplayIndex === toDisplayIndex) return
+
+    onBeforeLayerChange?.()
 
     const ordered = [...sortedElements]
     const [moved] = ordered.splice(fromDisplayIndex, 1)

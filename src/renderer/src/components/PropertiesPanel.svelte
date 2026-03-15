@@ -17,15 +17,32 @@
 
   const {
     onPropertyChange,
+    onBeforePropertyChange,
     onSlideBackgroundChange,
     onSetAsDefault,
     onApplyToAll
   }: {
     onPropertyChange?: () => void
+    onBeforePropertyChange?: () => void
     onSlideBackgroundChange?: (bg: SlideBackground) => void
     onSetAsDefault?: (bg: SlideBackground | null) => void
     onApplyToAll?: (bg: SlideBackground | null) => void
   } = $props()
+
+  // One-shot checkpoint guard: push a history checkpoint on the first real value
+  // change per focus session, not on focus itself (which would clear redo even
+  // if the user never edits anything). Reset on blur so the next session is fresh.
+  let snapshotPushed = false
+  function handleInput(): void {
+    if (!snapshotPushed) {
+      onBeforePropertyChange?.()
+      snapshotPushed = true
+    }
+    onPropertyChange?.()
+  }
+  function handleBlur(): void {
+    snapshotPushed = false
+  }
 
   // Reactively compute the currently selected object from app state
   const selectedObject = $derived(
@@ -81,7 +98,8 @@
           type="number"
           id="x"
           bind:value={selectedObject.x}
-          oninput={onPropertyChange}
+          oninput={handleInput}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -91,7 +109,8 @@
           type="number"
           id="y"
           bind:value={selectedObject.y}
-          oninput={onPropertyChange}
+          oninput={handleInput}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -101,7 +120,8 @@
           type="number"
           id="width"
           bind:value={selectedObject.width}
-          oninput={onPropertyChange}
+          oninput={handleInput}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -111,7 +131,8 @@
           type="number"
           id="height"
           bind:value={selectedObject.height}
-          oninput={onPropertyChange}
+          oninput={handleInput}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -121,7 +142,8 @@
           type="number"
           id="angle"
           bind:value={selectedObject.angle}
-          oninput={onPropertyChange}
+          oninput={handleInput}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
@@ -132,7 +154,8 @@
           type="color"
           id="fill"
           bind:value={selectedObject.fill}
-          oninput={onPropertyChange}
+          oninput={handleInput}
+          onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
       </div>

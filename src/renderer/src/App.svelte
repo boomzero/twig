@@ -172,6 +172,38 @@
   // Debounced thumbnail capture (500ms, separate from auto-save debounce)
   let thumbnailTimeoutId: ReturnType<typeof setTimeout> | null = null
 
+  // ============================================================================
+  // Undo/Redo History
+  // ============================================================================
+
+  // Image asset store: elementId → base64 data URI.
+  // Snapshots omit src blobs; this map is used to re-attach them on restore.
+  const imageAssets = new Map<string, string>()
+
+  type ElementSnapshot = Omit<DeckElement, 'src'>
+  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined }
+  // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
+  type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
+  type SlideHistory = { undo: HistoryEntry[], redo: HistoryEntry[] }
+
+  const historyBySlideId = new Map<string, SlideHistory>()
+  const MAX_UNDO_ENTRIES = 50
+  let historyRevision = $state(0) // bumped on every history mutation to drive $derived
+
+  let bgCheckpointPushed = false // gates background-change history to first event per drag
+
+  // Reactive booleans for toolbar disabled state.
+  // historyRevision is read to subscribe to stack mutations; appState.currentSlide?.id
+  // is also tracked so canUndo/canRedo update immediately on slide switch.
+  const canUndo = $derived((() => {
+    void historyRevision
+    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
+  })())
+  const canRedo = $derived((() => {
+    void historyRevision
+    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
+  })())
+
   // Auto-save status indicator
   // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
   // 'pending' — unsaved changes exist, debounced save queued
@@ -284,6 +316,127 @@
         setSaveStatus('error')
       }
     }
+  }
+
+  // ============================================================================
+  // Image Asset Registration
+  // ============================================================================
+
+  function registerImageAssetsFromSlide(slide: typeof appState.currentSlide): void {
+    if (!slide) return
+    for (const el of slide.elements) {
+      if (el.type === 'image' && el.src && el.id) {
+        imageAssets.set(el.id, el.src)
+      }
+    }
+  }
+
+  // ============================================================================
+  // Undo/Redo Core
+  // ============================================================================
+
+  function getSlideHistory(slideId: string): SlideHistory {
+    if (!historyBySlideId.has(slideId)) {
+      historyBySlideId.set(slideId, { undo: [], redo: [] })
+    }
+    return historyBySlideId.get(slideId)!
+  }
+
+  function takeSnapshot(): SlideSnapshot | null {
+    if (!appState.currentSlide) return null
+    return {
+      elements: appState.currentSlide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
+      background: appState.currentSlide.background
+        ? JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground
+        : undefined
+    }
+  }
+
+  function pushCheckpointForSlide(slide: Slide): void {
+    const snapshot: SlideSnapshot = {
+      elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
+      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined
+    }
+    const serialized = JSON.stringify(snapshot)
+    const h = getSlideHistory(slide.id)
+    const top = h.undo[h.undo.length - 1]
+    if (top && serialized === top.serialized) return
+    h.undo.push({ snapshot, serialized })
+    if (h.undo.length > MAX_UNDO_ENTRIES) h.undo.shift()
+    h.redo = []
+    historyRevision++
+  }
+
+  function pushCheckpoint(): void {
+    const slideId = appState.currentSlide?.id
+    if (!slideId) return
+    const snapshot = takeSnapshot()
+    if (!snapshot) return
+    const serialized = JSON.stringify(snapshot)
+    const h = getSlideHistory(slideId)
+    // Deduplicate: skip if identical to the most recent undo entry
+    const top = h.undo[h.undo.length - 1]
+    if (top && serialized === top.serialized) return
+    h.undo.push({ snapshot, serialized })
+    if (h.undo.length > MAX_UNDO_ENTRIES) h.undo.shift()
+    h.redo = []
+    historyRevision++
+  }
+
+  function restoreSnapshot(snapshot: SlideSnapshot): void {
+    if (!appState.currentSlide) return
+    appState.currentSlide.elements = snapshot.elements.map((el) => {
+      if (el.type === 'image') {
+        return { ...el, src: imageAssets.get(el.id) } as DeckElement
+      }
+      return { ...el } as DeckElement
+    })
+    appState.currentSlide.background = snapshot.background
+      ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
+      : undefined
+    appState.selectedObjectId = null
+    fabCanvas?.discardActiveObject()
+    // The $effect watching appState.currentSlide triggers renderCanvasFromState() automatically
+  }
+
+  function performUndo(): void {
+    const slideId = appState.currentSlide?.id
+    if (!slideId) return
+    const h = getSlideHistory(slideId)
+    if (h.undo.length === 0) return
+    // Sync mid-edit text state before snapshotting current
+    if (activeTextObject?.isEditing) updateStateFromObject(activeTextObject)
+    const current = takeSnapshot()
+    const prevEntry = h.undo.pop()!
+    if (current) h.redo.push({ snapshot: current, serialized: JSON.stringify(current) })
+    historyRevision++
+    restoreSnapshot(prevEntry.snapshot)
+    scheduleThumbnailCapture()
+    scheduleSave()
+  }
+
+  function performRedo(): void {
+    const slideId = appState.currentSlide?.id
+    if (!slideId) return
+    const h = getSlideHistory(slideId)
+    if (h.redo.length === 0) return
+    if (activeTextObject?.isEditing) updateStateFromObject(activeTextObject)
+    const current = takeSnapshot()
+    const nextEntry = h.redo.pop()!
+    if (current) {
+      h.undo.push({ snapshot: current, serialized: JSON.stringify(current) })
+      if (h.undo.length > MAX_UNDO_ENTRIES) h.undo.shift()
+    }
+    historyRevision++
+    restoreSnapshot(nextEntry.snapshot)
+    scheduleThumbnailCapture()
+    scheduleSave()
+  }
+
+  function clearAllHistory(): void {
+    historyBySlideId.clear()
+    imageAssets.clear()
+    historyRevision++
   }
 
   function scheduleSave(): void {
@@ -462,6 +615,14 @@
   let unsubscribePresentationNavigate: (() => void) | undefined
   let unsubscribePresentationClosed: (() => void) | undefined
   let unsubscribePresentationReady: (() => void) | undefined
+
+  // Reset background checkpoint gate on pointer release so the next drag
+  // session gets its own undo entry.
+  onMount(() => {
+    const resetBgGate = () => { bgCheckpointPushed = false }
+    window.addEventListener('pointerup', resetBgGate, { passive: true })
+    return () => window.removeEventListener('pointerup', resetBgGate)
+  })
 
   onMount(async () => {
     await loadSystemFonts()
@@ -842,6 +1003,9 @@
       return Promise.resolve()
     }
 
+    // Register any image src blobs for this slide so undo/redo can reconstruct them
+    registerImageAssetsFromSlide(appState.currentSlide)
+
     // Stamp this render so async callbacks can detect staleness
     const generation = ++renderGeneration
 
@@ -857,6 +1021,7 @@
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
     fabCanvas.off('text:changed', handleTextChanged)
+    fabCanvas.off('text:editing:entered', pushCheckpoint)
     fabCanvas.off('selection:created', handleSelection)
     fabCanvas.off('selection:updated', handleSelection)
     fabCanvas.off('selection:cleared', handleSelectionCleared)
@@ -990,6 +1155,7 @@
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)
     fabCanvas.on('text:changed', handleTextChanged)
+    fabCanvas.on('text:editing:entered', pushCheckpoint)
     fabCanvas.on('selection:created', handleSelection)
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
@@ -1026,6 +1192,9 @@
     if (!appState.currentSlide) return
     const target = event.target
     if (!target) return
+
+    // Capture state BEFORE updateStateFromObject mutates it — this is the pre-drag snapshot
+    pushCheckpoint()
 
     // Handle both single and multi-selection modifications
     if (target.type === 'activeselection') {
@@ -1077,6 +1246,28 @@
       // Clean up any unwanted transparent values before saving to state
       elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
     }
+  }
+
+  /**
+   * Syncs property panel changes (x, y, width, height, angle, fill) from state
+   * back to the live Fabric object, then schedules a save.
+   *
+   * The $effect that drives renderCanvasFromState() only tracks the elements
+   * array reference, not deep property mutations — so we must push changes
+   * to the canvas object directly instead of relying on a full re-render.
+   */
+  function handlePropertyChange(): void {
+    const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
+    const obj = fabCanvas?.getObjects().find((o) => (o as DeckFabricObject).id === appState.selectedObjectId)
+    if (el && obj) {
+      // State stores effective (scaled) dimensions: width = obj.width * scaleX.
+      // Reset scale to 1 and set the raw dimensions so the visual size matches
+      // the state value without double-applying any residual scale factor.
+      obj.set({ left: el.x, top: el.y, angle: el.angle, fill: el.fill, scaleX: 1, scaleY: 1, width: el.width, height: el.height })
+      obj.setCoords()
+      fabCanvas?.renderAll()
+    }
+    scheduleSave()
   }
 
   // ============================================================================
@@ -1470,6 +1661,8 @@
         // Flush any pending saves before switching presentations
         await flushPendingSave()
 
+        clearAllHistory()
+
         // Clear current slide to prevent any accidental saves to new database
         appState.currentSlide = null
         appState.currentSlideIndex = -1
@@ -1560,6 +1753,7 @@
         // Flush any pending saves before switching presentations
         await flushPendingSave()
 
+        clearAllHistory()
         imageElementCache.clear()
         await loadPresentation(filePath)
         setSaveStatus('saved')
@@ -2115,6 +2309,7 @@
 
   function addText(): void {
     if (!appState.currentSlide) return
+    pushCheckpoint()
     const newText: DeckElement = {
       type: 'text',
       id: `text_${uuid_v4()}`,
@@ -2138,6 +2333,7 @@
    */
   function addRectangle(): void {
     if (!appState.currentSlide) return
+    pushCheckpoint()
     const newRect: DeckElement = {
       type: 'rect',
       id: `rect_${uuid_v4()}`,
@@ -2206,6 +2402,8 @@
         zIndex: nextZIndex()
       }
 
+      pushCheckpoint()
+      imageAssets.set(newImage.id, newImage.src!)
       appState.currentSlide.elements.push(newImage)
       scheduleSave()
     } catch (error) {
@@ -2282,6 +2480,7 @@
     const idsToDelete = activeObjects.map((obj) => (obj as DeckFabricObject).id).filter((id) => id)
 
     if (idsToDelete.length > 0) {
+      pushCheckpoint()
       // Remove elements from state
       appState.currentSlide.elements = appState.currentSlide.elements.filter(
         (el) => !idsToDelete.includes(el.id)
@@ -2359,6 +2558,7 @@
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
+    pushCheckpoint()
     const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
     el.zIndex = max + 1
     compactZIndexes()
@@ -2370,6 +2570,7 @@
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
+    pushCheckpoint()
     const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
     el.zIndex = min - 1
     compactZIndexes()
@@ -2385,6 +2586,7 @@
       .filter((e) => e.zIndex > el.zIndex)
       .sort((a, b) => a.zIndex - b.zIndex)[0]
     if (!above) return
+    pushCheckpoint()
     ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
     compactZIndexes()
     applyZOrderToCanvas()
@@ -2399,6 +2601,7 @@
       .filter((e) => e.zIndex < el.zIndex)
       .sort((a, b) => b.zIndex - a.zIndex)[0]
     if (!below) return
+    pushCheckpoint()
     ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
     compactZIndexes()
     applyZOrderToCanvas()
@@ -2413,7 +2616,33 @@
    * Global keyboard event handler for shortcuts.
    * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
    */
+  function isNativeTextTarget(t: EventTarget | null): boolean {
+    if (!t || !(t instanceof HTMLElement)) return false
+    return t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable
+  }
+
   function handleKeyDown(event: KeyboardEvent): void {
+    // Cmd/Ctrl+Z: Undo
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
+      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing) {
+        event.preventDefault()
+        performUndo()
+        return
+      }
+    }
+
+    // Cmd/Ctrl+Shift+Z or Ctrl+Y: Redo
+    if (
+      ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'z') ||
+      (event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'y')
+    ) {
+      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing) {
+        event.preventDefault()
+        performRedo()
+        return
+      }
+    }
+
     // Cmd/Ctrl+Shift+D: Open debug window
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'd') {
       event.preventDefault()
@@ -2589,6 +2818,22 @@
         class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
       >
         Save As
+      </button>
+      <button
+        onclick={performUndo}
+        disabled={!canUndo}
+        title="Undo (Cmd/Ctrl+Z)"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Undo
+      </button>
+      <button
+        onclick={performRedo}
+        disabled={!canRedo}
+        title="Redo (Cmd/Ctrl+Shift+Z)"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Redo
       </button>
       <div class="flex items-center mr-2 w-28">
         {#if saveStatus === 'idle' && lastSavedAt !== null}
@@ -2850,6 +3095,7 @@
             onLayerChange to avoid a double canvas update.
           -->
           <StackPanel
+            onBeforeLayerChange={pushCheckpoint}
             onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
             onSelect={(id) => {
               if (!fabCanvas) return
@@ -2868,9 +3114,14 @@
         </div>
       {/if}
       <PropertiesPanel
-        onPropertyChange={scheduleSave}
+        onPropertyChange={handlePropertyChange}
+        onBeforePropertyChange={pushCheckpoint}
         onSlideBackgroundChange={async (bg) => {
           if (appState.currentSlide) {
+            if (!bgCheckpointPushed) {
+              pushCheckpoint()
+              bgCheckpointPushed = true
+            }
             const plain: SlideBackground = JSON.parse(JSON.stringify(bg))
             appState.currentSlide.background = plain
             await applySlideBackground(plain)
@@ -2891,6 +3142,17 @@
         }}
         onApplyToAll={async (bg) => {
           if (!appState.currentFilePath || !appState.currentSlide) return
+          // Snapshot every slide before the DB write so each slide's undo history
+          // has a restore point. Non-current slides must be fetched from the DB first.
+          const filePath = appState.currentFilePath
+          await Promise.all(appState.slideIds.map(async (id) => {
+            if (id === appState.currentSlide?.id) {
+              pushCheckpoint()
+            } else {
+              const slide = await window.api.db.getSlide(filePath, id)
+              if (slide) pushCheckpointForSlide(slide)
+            }
+          }))
           const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
           try {
             await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)
