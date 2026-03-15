@@ -100,6 +100,8 @@ declare global {
         getSetting: (filePath: string, key: string) => Promise<string | null>
         setSetting: (filePath: string, key: string, value: string | null) => Promise<void>
         applyBackgroundToAll: (filePath: string, background: SlideBackground | null) => Promise<void>
+        deleteSlide: (filePath: string, slideId: string) => Promise<void>
+        reorderSlides: (filePath: string, orderedIds: string[]) => Promise<void>
       }
       fonts: {
         getSystemFonts: () => Promise<SystemFont[]>

@@ -88,7 +88,15 @@ const api = {
 
     /** Set the same background on every slide in the presentation */
     applyBackgroundToAll: (filePath: string, background: object | null) =>
-      ipcRenderer.invoke('db:apply-background-to-all', filePath, background)
+      ipcRenderer.invoke('db:apply-background-to-all', filePath, background),
+
+    /** Delete a slide and all its elements from the database */
+    deleteSlide: (filePath: string, slideId: string) =>
+      ipcRenderer.invoke('db:delete-slide', filePath, slideId),
+
+    /** Update slide ordering to match the provided ID sequence */
+    reorderSlides: (filePath: string, orderedIds: string[]) =>
+      ipcRenderer.invoke('db:reorder-slides', filePath, orderedIds)
   },
 
   // Font operations

@@ -110,6 +110,9 @@ export interface FontData {
  * @param db - The SQLite database connection to initialize
  */
 export function initializeDatabase(db: Database): void {
+  // Enable foreign key enforcement (SQLite defaults this to OFF per connection)
+  db.pragma('foreign_keys = ON')
+
   // Create the slides table to store slide metadata and ordering
   db.exec(`
     CREATE TABLE IF NOT EXISTS slides (
@@ -634,6 +637,35 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
   // Execute the transaction
   transaction(slides)
+}
+
+/**
+ * Deletes a slide and all its elements from the database.
+ * Elements are removed via ON DELETE CASCADE on the foreign key.
+ * Slide order is compacted after deletion.
+ *
+ * @param db - The SQLite database connection
+ * @param slideId - The ID of the slide to delete
+ */
+export function deleteSlide(db: Database, slideId: string): void {
+  db.transaction(() => {
+    db.prepare('DELETE FROM slides WHERE id = ?').run(slideId)
+    validateAndRepairSlideOrder(db)
+  })()
+}
+
+/**
+ * Updates slide ordering to match the provided ID sequence.
+ *
+ * @param db - The SQLite database connection
+ * @param orderedIds - Slide IDs in the desired display order
+ */
+export function reorderSlides(db: Database, orderedIds: string[]): void {
+  const stmt = db.prepare('UPDATE slides SET slide_order = ? WHERE id = ?')
+  db.transaction(() => {
+    orderedIds.forEach((id, index) => stmt.run(index, id))
+    validateAndRepairSlideOrder(db)
+  })()
 }
 
 // ============================================================================

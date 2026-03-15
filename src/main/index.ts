@@ -1012,6 +1012,28 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('db:delete-slide', (_event, filePath: string, slideId: string): void => {
+    try {
+      validateFilePath(filePath)
+      validateSlideId(slideId)
+      withDbConnection(filePath, (db) => dbService.deleteSlide(db, slideId))
+    } catch (error) {
+      console.error('Error in db:delete-slide:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('db:reorder-slides', (_event, filePath: string, orderedIds: string[]): void => {
+    try {
+      validateFilePath(filePath)
+      for (const id of orderedIds) validateSlideId(id)
+      withDbConnection(filePath, (db) => dbService.reorderSlides(db, orderedIds))
+    } catch (error) {
+      console.error('Error in db:reorder-slides:', error)
+      throw error
+    }
+  })
+
   /**
    * Saves all slides to a new file (Save As operation).
    * This creates a completely new database file with all slides.

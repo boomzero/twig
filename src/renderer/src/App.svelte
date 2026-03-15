@@ -192,6 +192,11 @@
 
   let bgCheckpointPushed = false // gates background-change history to first event per drag
 
+  // Slide drag-to-reorder state
+  let slideDragSourceId = $state<string | null>(null)
+  let slideDragOverId = $state<string | null>(null)
+  let slideDragOverPosition = $state<'before' | 'after'>('before')
+
   // Reactive booleans for toolbar disabled state.
   // historyRevision is read to subscribe to stack mutations; appState.currentSlide?.id
   // is also tracked so canUndo/canRedo update immediately on slide switch.
@@ -2467,6 +2472,128 @@
   }
 
   /**
+   * Deletes a slide by ID. Navigates to an adjacent slide if the current one is deleted.
+   * No-ops if this is the last slide.
+   */
+  async function deleteSlideById(slideId: string): Promise<void> {
+    if (appState.isPresentingMode) return
+    if (appState.slideIds.length <= 1) return
+    const filePath = appState.currentFilePath
+    if (!filePath) return
+
+    await flushPendingSave()
+
+    const slideIds = [...appState.slideIds]
+    const deleteIndex = slideIds.indexOf(slideId)
+    if (deleteIndex === -1) return
+
+    const isDeletingCurrent = slideId === appState.currentSlide?.id
+    let nextSlideId: string | null = null
+    if (isDeletingCurrent) {
+      nextSlideId = deleteIndex > 0 ? slideIds[deleteIndex - 1] : slideIds[deleteIndex + 1]
+    }
+
+    // Optimistic state update — save rollback values before mutating
+    const savedHistory = historyBySlideId.get(slideId)
+    const newSlideIds = slideIds.filter((id) => id !== slideId)
+    appState.slideIds = newSlideIds
+    const { [slideId]: _removed, ...remainingThumbnails } = appState.thumbnails
+    appState.thumbnails = remainingThumbnails
+    historyBySlideId.delete(slideId)
+    historyRevision++
+
+    if (isDeletingCurrent && nextSlideId) {
+      await loadSlide(nextSlideId)
+    } else {
+      appState.currentSlideIndex = newSlideIds.indexOf(appState.currentSlide?.id ?? '')
+    }
+
+    try {
+      await window.api.db.deleteSlide(filePath, slideId)
+    } catch (error) {
+      console.error('Failed to delete slide:', error)
+      // Rollback by reloading from DB
+      const ids = await window.api.db.getSlideIds(filePath)
+      appState.slideIds = ids
+      appState.thumbnails = await window.api.db.getThumbnails(filePath)
+      appState.currentSlideIndex = ids.indexOf(appState.currentSlide?.id ?? '')
+      if (savedHistory) historyBySlideId.set(slideId, savedHistory)
+      if (isDeletingCurrent) await loadSlide(slideId)
+    }
+  }
+
+  /**
+   * Reorders slides to match newOrderIds. Optimistically updates state and persists to DB.
+   */
+  async function handleSlideReorder(newOrderIds: string[]): Promise<void> {
+    if (appState.isPresentingMode) return
+    const filePath = appState.currentFilePath
+    if (!filePath) return
+
+    const previousIds = [...appState.slideIds]
+    appState.slideIds = newOrderIds
+    appState.currentSlideIndex = newOrderIds.indexOf(appState.currentSlide?.id ?? '')
+
+    try {
+      await window.api.db.reorderSlides(filePath, newOrderIds)
+    } catch (error) {
+      console.error('Failed to reorder slides:', error)
+      appState.slideIds = previousIds
+      appState.currentSlideIndex = previousIds.indexOf(appState.currentSlide?.id ?? '')
+    }
+  }
+
+  function onSlideDragStart(e: DragEvent, id: string): void {
+    if (!e.dataTransfer) return
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+    slideDragSourceId = id
+  }
+
+  function onSlideDragOver(e: DragEvent, id: string): void {
+    e.preventDefault()
+    if (!e.dataTransfer || id === slideDragSourceId) return
+    e.dataTransfer.dropEffect = 'move'
+    const target = e.currentTarget as HTMLElement
+    const rect = target.getBoundingClientRect()
+    slideDragOverId = id
+    slideDragOverPosition = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+  }
+
+  function onSlideDragLeave(e: DragEvent): void {
+    const target = e.currentTarget as HTMLElement
+    if (target.contains(e.relatedTarget as Node)) return
+    slideDragOverId = null
+  }
+
+  function onSlideDrop(e: DragEvent, targetId: string): void {
+    e.preventDefault()
+    const sourceId = slideDragSourceId
+    const dropPosition = slideDragOverPosition
+    slideDragSourceId = null
+    slideDragOverId = null
+    if (!sourceId || sourceId === targetId || loadingState.isLoadingSlide) return
+
+    const newIds = [...appState.slideIds]
+    const sourceIndex = newIds.indexOf(sourceId)
+    if (sourceIndex === -1) return
+    newIds.splice(sourceIndex, 1)
+
+    const newTargetIndex = newIds.indexOf(targetId)
+    if (newTargetIndex === -1) return
+    const insertAt = dropPosition === 'before' ? newTargetIndex : newTargetIndex + 1
+    newIds.splice(insertAt, 0, sourceId)
+
+    handleSlideReorder(newIds)
+  }
+
+  function onSlideDragEnd(): void {
+    slideDragSourceId = null
+    slideDragOverId = null
+    slideDragOverPosition = 'before'
+  }
+
+  /**
    * Deletes the currently selected object(s) from the canvas and state.
    * Supports deleting multiple objects when a multi-selection is active.
    */
@@ -2667,6 +2794,15 @@
         }
       }
       return
+    }
+
+    // Cmd/Ctrl+Backspace: Delete current slide (not while editing text, not last slide)
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Backspace') {
+      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing && appState.currentSlide) {
+        event.preventDefault()
+        deleteSlideById(appState.currentSlide.id)
+        return
+      }
     }
 
     // Delete/Backspace: Delete selected object (but not while editing text)
@@ -3045,21 +3181,51 @@
       {/if}
     </div>
     <div class="flex flex-1 overflow-hidden">
-      <div class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
+      <div role="list" class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
         {#each appState.slideIds as slideId, index (slideId)}
-          <button
-            class="w-full px-2 py-2 rounded-lg cursor-pointer hover:bg-gray-200 flex flex-col items-center gap-1"
-            class:bg-gray-200={slideId === appState.currentSlide.id}
-            onclick={async () => await handleSlideSelect(slideId)}
-            disabled={loadingState.isLoadingSlide}
+          <div
+            class="relative w-full group"
+            class:opacity-40={slideDragSourceId === slideId}
+            draggable={!loadingState.isLoadingSlide}
+            ondragstart={(e) => onSlideDragStart(e, slideId)}
+            ondragover={(e) => onSlideDragOver(e, slideId)}
+            ondragleave={onSlideDragLeave}
+            ondrop={(e) => onSlideDrop(e, slideId)}
+            ondragend={onSlideDragEnd}
+            role="listitem"
           >
-            {#if appState.thumbnails[slideId]}
-              <img src={appState.thumbnails[slideId]} alt="Slide {index + 1}" class="w-full block rounded-md shadow-md" />
-            {:else}
-              <div class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs" style="aspect-ratio: 16/9;"></div>
+            {#if slideDragOverId === slideId && slideDragOverPosition === 'before'}
+              <div class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
             {/if}
-            <div class="w-full text-xs text-left text-gray-500">{index + 1}</div>
-          </button>
+            <button
+              class="w-full px-2 py-2 rounded-lg cursor-pointer hover:bg-gray-200 flex flex-col items-center gap-1"
+              class:bg-gray-200={slideId === appState.currentSlide.id}
+              onclick={async () => await handleSlideSelect(slideId)}
+              disabled={loadingState.isLoadingSlide}
+            >
+              {#if appState.thumbnails[slideId]}
+                <img src={appState.thumbnails[slideId]} alt="Slide {index + 1}" class="w-full block rounded-md shadow-md" />
+              {:else}
+                <div class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs" style="aspect-ratio: 16/9;"></div>
+              {/if}
+              <div class="w-full text-xs text-left text-gray-500">{index + 1}</div>
+            </button>
+            {#if appState.slideIds.length > 1}
+              <button
+                class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-opacity z-10"
+                onclick={() => { if (confirm('Delete this slide? This cannot be undone.')) deleteSlideById(slideId) }}
+                title="Delete slide"
+                aria-label="Delete slide"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3">
+                  <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            {/if}
+            {#if slideDragOverId === slideId && slideDragOverPosition === 'after'}
+              <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+            {/if}
+          </div>
         {/each}
         <button
           onclick={addNewSlide}
