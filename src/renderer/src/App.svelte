@@ -1263,8 +1263,7 @@
       // State stores effective (scaled) dimensions: width = obj.width * scaleX.
       // Reset scale to 1 and set the raw dimensions so the visual size matches
       // the state value without double-applying any residual scale factor.
-      obj.set({ left: el.x, top: el.y, angle: el.angle, fill: el.fill, scaleX: 1, scaleY: 1, width: el.width })
-      if (el.type === 'rect') obj.set({ height: el.height })
+      obj.set({ left: el.x, top: el.y, angle: el.angle, fill: el.fill, scaleX: 1, scaleY: 1, width: el.width, height: el.height })
       obj.setCoords()
       fabCanvas?.renderAll()
     }
