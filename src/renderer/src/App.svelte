@@ -2382,6 +2382,39 @@
       let width = tempImg.naturalWidth
       let height = tempImg.naturalHeight
 
+      // SVGs often report naturalWidth/naturalHeight as 0 when they only have a viewBox.
+      // Fall back to parsing the SVG XML for dimensions.
+      if ((width === 0 || height === 0) && imageData.src.includes('image/svg')) {
+        try {
+          const svgContent = atob(imageData.src.split(',')[1])
+          const parser = new DOMParser()
+          const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml')
+          const svgEl = svgDoc.documentElement
+          const svgW = parseFloat(svgEl.getAttribute('width') ?? '0')
+          const svgH = parseFloat(svgEl.getAttribute('height') ?? '0')
+          if (svgW > 0 && svgH > 0) {
+            width = svgW
+            height = svgH
+          } else {
+            const viewBox = svgEl.getAttribute('viewBox')
+            if (viewBox) {
+              const parts = viewBox.trim().split(/[\s,]+/)
+              if (parts.length === 4) {
+                width = parseFloat(parts[2])
+                height = parseFloat(parts[3])
+              }
+            }
+          }
+        } catch {
+          // ignore parsing errors
+        }
+        // Final fallback
+        if (width === 0 || height === 0) {
+          width = 400
+          height = 300
+        }
+      }
+
       if (width > maxSize || height > maxSize) {
         const aspectRatio = width / height
         if (width > height) {
@@ -2393,6 +2426,18 @@
         }
       }
 
+      // Rasterize SVGs to PNG so fabric.js always gets a bitmap with concrete
+      // naturalWidth/naturalHeight. SVGs with %-based or missing dimensions have
+      // naturalWidth=0, which causes fabric's 9-arg drawImage to draw nothing.
+      let src = imageData.src
+      if (imageData.src.includes('image/svg')) {
+        const rasterCanvas = document.createElement('canvas')
+        rasterCanvas.width = width
+        rasterCanvas.height = height
+        rasterCanvas.getContext('2d')?.drawImage(tempImg, 0, 0, width, height)
+        src = rasterCanvas.toDataURL('image/png')
+      }
+
       // Create the image element
       const newImage: DeckElement = {
         type: 'image',
@@ -2402,7 +2447,7 @@
         width: width,
         height: height,
         angle: 0,
-        src: imageData.src,
+        src,
         filename: imageData.filename,
         zIndex: nextZIndex()
       }
