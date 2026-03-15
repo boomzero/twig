@@ -661,6 +661,7 @@ export function reorderSlides(db: Database, orderedIds: string[]): void {
   const stmt = db.prepare('UPDATE slides SET slide_order = ? WHERE id = ?')
   db.transaction(() => {
     orderedIds.forEach((id, index) => stmt.run(index, id))
+    validateAndRepairSlideOrder(db)
   })()
 }
 

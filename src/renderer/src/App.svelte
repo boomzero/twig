@@ -2493,7 +2493,8 @@
       nextSlideId = deleteIndex > 0 ? slideIds[deleteIndex - 1] : slideIds[deleteIndex + 1]
     }
 
-    // Optimistic state update
+    // Optimistic state update — save rollback values before mutating
+    const savedHistory = historyBySlideId.get(slideId)
     const newSlideIds = slideIds.filter((id) => id !== slideId)
     appState.slideIds = newSlideIds
     const { [slideId]: _removed, ...remainingThumbnails } = appState.thumbnails
@@ -2515,6 +2516,8 @@
       const ids = await window.api.db.getSlideIds(filePath)
       appState.slideIds = ids
       appState.thumbnails = await window.api.db.getThumbnails(filePath)
+      if (savedHistory) historyBySlideId.set(slideId, savedHistory)
+      if (isDeletingCurrent) await loadSlide(slideId)
     }
   }
 
@@ -2548,7 +2551,7 @@
 
   function onSlideDragOver(e: DragEvent, id: string): void {
     e.preventDefault()
-    if (!e.dataTransfer) return
+    if (!e.dataTransfer || id === slideDragSourceId) return
     e.dataTransfer.dropEffect = 'move'
     const target = e.currentTarget as HTMLElement
     const rect = target.getBoundingClientRect()
@@ -2586,6 +2589,7 @@
   function onSlideDragEnd(): void {
     slideDragSourceId = null
     slideDragOverId = null
+    slideDragOverPosition = 'before'
   }
 
   /**
