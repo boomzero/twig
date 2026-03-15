@@ -636,6 +636,34 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
   transaction(slides)
 }
 
+/**
+ * Deletes a slide and all its elements from the database.
+ * Elements are removed via ON DELETE CASCADE on the foreign key.
+ * Slide order is compacted after deletion.
+ *
+ * @param db - The SQLite database connection
+ * @param slideId - The ID of the slide to delete
+ */
+export function deleteSlide(db: Database, slideId: string): void {
+  db.transaction(() => {
+    db.prepare('DELETE FROM slides WHERE id = ?').run(slideId)
+    validateAndRepairSlideOrder(db)
+  })()
+}
+
+/**
+ * Updates slide ordering to match the provided ID sequence.
+ *
+ * @param db - The SQLite database connection
+ * @param orderedIds - Slide IDs in the desired display order
+ */
+export function reorderSlides(db: Database, orderedIds: string[]): void {
+  const stmt = db.prepare('UPDATE slides SET slide_order = ? WHERE id = ?')
+  db.transaction(() => {
+    orderedIds.forEach((id, index) => stmt.run(index, id))
+  })()
+}
+
 // ============================================================================
 // Font Management Functions
 // ============================================================================
