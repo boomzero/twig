@@ -392,7 +392,7 @@
       return { ...el } as DeckElement
     })
     appState.currentSlide.background = snapshot.background
-      ? structuredClone(snapshot.background)
+      ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
       : undefined
     appState.selectedObjectId = null
     fabCanvas?.discardActiveObject()
@@ -1260,8 +1260,10 @@
     const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
     const obj = fabCanvas?.getObjects().find((o) => (o as DeckFabricObject).id === appState.selectedObjectId)
     if (el && obj) {
-      obj.set({ left: el.x, top: el.y, width: el.width, angle: el.angle, fill: el.fill })
-      // For rects the height is stored directly; for Textbox height is content-driven.
+      // State stores effective (scaled) dimensions: width = obj.width * scaleX.
+      // Reset scale to 1 and set the raw dimensions so the visual size matches
+      // the state value without double-applying any residual scale factor.
+      obj.set({ left: el.x, top: el.y, angle: el.angle, fill: el.fill, scaleX: 1, scaleY: 1, width: el.width })
       if (el.type === 'rect') obj.set({ height: el.height })
       obj.setCoords()
       fabCanvas?.renderAll()
@@ -3094,7 +3096,8 @@
             onLayerChange to avoid a double canvas update.
           -->
           <StackPanel
-            onLayerChange={() => { pushCheckpoint(); applyZOrderToCanvas(); scheduleSave() }}
+            onBeforeLayerChange={pushCheckpoint}
+            onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
             onSelect={(id) => {
               if (!fabCanvas) return
               const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === id)
