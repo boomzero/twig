@@ -192,6 +192,10 @@
 
   let bgCheckpointPushed = false // gates background-change history to first event per drag
 
+  // Copy/paste state
+  let pasteCount = 0                      // resets on each copy; increments each paste
+  let pendingSelectionIds: string[] = []  // consumed by renderCanvasFromState after render
+
   // Slide drag-to-reorder state
   let slideDragSourceId = $state<string | null>(null)
   let slideDragOverId = $state<string | null>(null)
@@ -1167,6 +1171,7 @@
     fabCanvas.on('contextmenu', handleContextMenu)
 
     if (imageLoads.length === 0) {
+      applyPendingSelection()
       captureAndStoreThumbnail().catch(console.error)
       return Promise.resolve()
     }
@@ -1184,9 +1189,24 @@
           .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
         sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
       }
-      fabCanvas.renderAll()
+      applyPendingSelection()
       captureAndStoreThumbnail().catch(console.error)
     })
+  }
+
+  function applyPendingSelection(): void {
+    if (pendingSelectionIds.length === 0 || !fabCanvas) return
+    const ids = new Set(pendingSelectionIds)
+    pendingSelectionIds = []
+    const targets = fabCanvas.getObjects().filter(
+      (o) => ids.has((o as DeckFabricObject).id ?? '')
+    )
+    if (targets.length === 1) {
+      fabCanvas.setActiveObject(targets[0])
+    } else if (targets.length > 1) {
+      fabCanvas.setActiveObject(new ActiveSelection(targets, { canvas: fabCanvas }))
+    }
+    fabCanvas.renderAll()
   }
 
   /**
@@ -2784,6 +2804,68 @@
   // Keyboard and Mouse Event Handlers
   // ============================================================================
 
+  // ============================================================================
+  // Copy / Cut / Paste
+  // ============================================================================
+
+  function shouldBypassClipboard(event: ClipboardEvent): boolean {
+    if (activeTextObject?.isEditing) return true
+    const target = event.target as HTMLElement | null
+    if (!target) return false
+    if (target instanceof HTMLSelectElement) return true
+    return isNativeTextTarget(target)
+  }
+
+  function handleCopy(event: ClipboardEvent): boolean {
+    if (shouldBypassClipboard(event)) return false
+    const activeObjects = fabCanvas?.getActiveObjects() ?? []
+    if (activeObjects.length === 0) return false
+    const ids = new Set(activeObjects.map((o) => (o as DeckFabricObject).id).filter(Boolean))
+    const elements = (appState.currentSlide?.elements ?? [])
+      .filter((el) => ids.has(el.id))
+      .map((el) => ({
+        ...el,
+        src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
+      }))
+    const payload = JSON.stringify({ __twig_clipboard__: true, elements })
+    event.clipboardData?.setData('text/plain', payload)
+    event.preventDefault()
+    pasteCount = 0
+    return true
+  }
+
+  function handleCut(event: ClipboardEvent): void {
+    if (handleCopy(event)) {
+      deleteSelectedObject()
+    }
+  }
+
+  function handlePaste(event: ClipboardEvent): void {
+    if (shouldBypassClipboard(event)) return
+    const raw = event.clipboardData?.getData('text/plain') ?? ''
+    let parsed: { __twig_clipboard__?: boolean; elements?: DeckElement[] }
+    try { parsed = JSON.parse(raw) } catch { return }
+    if (!parsed.__twig_clipboard__ || !Array.isArray(parsed.elements) || parsed.elements.length === 0) return
+    if (!appState.currentSlide) return
+    event.preventDefault()
+
+    pasteCount++
+    const offset = pasteCount * 20
+    const baseZ = nextZIndex()
+
+    const newElements: DeckElement[] = parsed.elements.map((el, i) => {
+      const prefix = el.id.split('_')[0] ?? el.type
+      const newId = `${prefix}_${uuid_v4()}`
+      if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
+      return { ...el, id: newId, x: el.x + offset, y: el.y + offset, zIndex: baseZ + i }
+    })
+
+    pushCheckpoint()
+    appState.currentSlide.elements.push(...newElements)
+    pendingSelectionIds = newElements.map((el) => el.id)
+    scheduleSave()
+  }
+
   /**
    * Global keyboard event handler for shortcuts.
    * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
@@ -2955,7 +3037,8 @@
   })
 </script>
 
-<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
+<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu}
+  oncopy={handleCopy} oncut={handleCut} onpaste={handlePaste} />
 
 {#if appState.currentSlide}
   <div
