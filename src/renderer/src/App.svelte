@@ -3180,7 +3180,7 @@
       {/if}
     </div>
     <div class="flex flex-1 overflow-hidden">
-      <div class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
+      <div role="list" class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
         {#each appState.slideIds as slideId, index (slideId)}
           <div
             class="relative w-full group"
