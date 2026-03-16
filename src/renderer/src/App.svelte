@@ -1190,6 +1190,7 @@
           .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
         sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
       }
+      fabCanvas.renderAll()
       applyPendingSelection()
       captureAndStoreThumbnail().catch(console.error)
     })
