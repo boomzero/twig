@@ -2828,7 +2828,7 @@
         ...el,
         src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
       }))
-    const payload = JSON.stringify({ __twig_clipboard__: true, elements })
+    const payload = JSON.stringify({ __twig_clipboard__: true, copyId: uuid_v4(), elements })
     event.clipboardData?.setData('text/plain', payload)
     event.preventDefault()
     pasteCount = 0
@@ -2847,9 +2847,19 @@
 
     // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
-    let parsed: { __twig_clipboard__?: boolean; elements?: DeckElement[] } = {}
+    let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
     try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
-    if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && parsed.elements.length > 0 && appState.currentSlide) {
+    if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
+      const validElements = parsed.elements.filter(
+        (el): el is DeckElement =>
+          typeof el === 'object' && el !== null &&
+          typeof (el as Record<string, unknown>).id === 'string' &&
+          ['rect', 'text', 'image'].includes((el as Record<string, unknown>).type as string) &&
+          typeof (el as Record<string, unknown>).x === 'number' &&
+          typeof (el as Record<string, unknown>).y === 'number' &&
+          typeof (el as Record<string, unknown>).zIndex === 'number'
+      )
+      if (validElements.length === 0) return
       event.preventDefault()
 
       if (raw !== lastCopiedPayload) {
@@ -2860,7 +2870,7 @@
       const offset = pasteCount * 20
       const baseZ = nextZIndex()
 
-      const sortedElements = [...parsed.elements].sort((a, b) => a.zIndex - b.zIndex)
+      const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
       const newElements: DeckElement[] = sortedElements.map((el, i) => {
         const prefix = el.id.split('_')[0] ?? el.type
         const newId = `${prefix}_${uuid_v4()}`
