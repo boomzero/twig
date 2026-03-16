@@ -2842,34 +2842,88 @@
     }
   }
 
-  function handlePaste(event: ClipboardEvent): void {
+  async function handlePaste(event: ClipboardEvent): Promise<void> {
     if (shouldBypassClipboard(event)) return
+
+    // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
-    let parsed: { __twig_clipboard__?: boolean; elements?: DeckElement[] }
-    try { parsed = JSON.parse(raw) } catch { return }
-    if (!parsed.__twig_clipboard__ || !Array.isArray(parsed.elements) || parsed.elements.length === 0) return
-    if (!appState.currentSlide) return
+    let parsed: { __twig_clipboard__?: boolean; elements?: DeckElement[] } = {}
+    try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
+    if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && parsed.elements.length > 0 && appState.currentSlide) {
+      event.preventDefault()
+
+      if (raw !== lastCopiedPayload) {
+        pasteCount = 0
+        lastCopiedPayload = raw
+      }
+      pasteCount++
+      const offset = pasteCount * 20
+      const baseZ = nextZIndex()
+
+      const sortedElements = [...parsed.elements].sort((a, b) => a.zIndex - b.zIndex)
+      const newElements: DeckElement[] = sortedElements.map((el, i) => {
+        const prefix = el.id.split('_')[0] ?? el.type
+        const newId = `${prefix}_${uuid_v4()}`
+        if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
+        return { ...el, id: newId, x: el.x + offset, y: el.y + offset, zIndex: baseZ + i }
+      })
+
+      pushCheckpoint()
+      appState.currentSlide.elements.push(...newElements)
+      pendingSelectionIds = newElements.map((el) => el.id)
+      scheduleSave()
+      return
+    }
+
+    // --- Raw image from clipboard (screenshot, copied image, etc.) ---
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find(
+      (item) => item.type.startsWith('image/')
+    )
+    if (!imageItem || !appState.currentSlide) return
     event.preventDefault()
 
-    if (raw !== lastCopiedPayload) {
-      pasteCount = 0
-      lastCopiedPayload = raw
-    }
-    pasteCount++
-    const offset = pasteCount * 20
-    const baseZ = nextZIndex()
+    const blob = imageItem.getAsFile()
+    if (!blob) return
 
-    const sortedElements = [...parsed.elements].sort((a, b) => a.zIndex - b.zIndex)
-    const newElements: DeckElement[] = sortedElements.map((el, i) => {
-      const prefix = el.id.split('_')[0] ?? el.type
-      const newId = `${prefix}_${uuid_v4()}`
-      if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
-      return { ...el, id: newId, x: el.x + offset, y: el.y + offset, zIndex: baseZ + i }
+    const src = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
     })
 
+    const tempImg = new Image()
+    tempImg.src = src
+    await new Promise<void>((resolve, reject) => {
+      tempImg.onload = () => resolve()
+      tempImg.onerror = reject
+    })
+
+    // Convert physical pixels → logical pixels, then cap to canvas size
+    const dpr = window.devicePixelRatio || 1
+    const CANVAS_W = 960, CANVAS_H = 540
+    let width = Math.round((tempImg.naturalWidth || 200) / dpr)
+    let height = Math.round((tempImg.naturalHeight || 200) / dpr)
+    const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
+    width = Math.round(width * scale)
+    height = Math.round(height * scale)
+
+    const newImage: DeckElement = {
+      type: 'image',
+      id: `image_${uuid_v4()}`,
+      x: 480, // Center of 960px canvas
+      y: 270, // Center of 540px canvas
+      width,
+      height,
+      angle: 0,
+      src,
+      zIndex: nextZIndex()
+    }
+
     pushCheckpoint()
-    appState.currentSlide.elements.push(...newElements)
-    pendingSelectionIds = newElements.map((el) => el.id)
+    imageAssets.set(newImage.id, src)
+    appState.currentSlide.elements.push(newImage)
+    pendingSelectionIds = [newImage.id]
     scheduleSave()
   }
 
