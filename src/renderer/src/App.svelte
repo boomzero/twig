@@ -2852,13 +2852,18 @@
     try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
     if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
       const validElements = parsed.elements.filter(
-        (el): el is DeckElement =>
-          typeof el === 'object' && el !== null &&
-          typeof (el as Record<string, unknown>).id === 'string' &&
-          ['rect', 'text', 'image'].includes((el as Record<string, unknown>).type as string) &&
-          typeof (el as Record<string, unknown>).x === 'number' &&
-          typeof (el as Record<string, unknown>).y === 'number' &&
-          typeof (el as Record<string, unknown>).zIndex === 'number'
+        (el): el is DeckElement => {
+          if (typeof el !== 'object' || el === null) return false
+          const e = el as Record<string, unknown>
+          const type = e.type
+          if (typeof e.id !== 'string') return false
+          if (type !== 'rect' && type !== 'text' && type !== 'image') return false
+          if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
+          if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
+          if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
+          if (type === 'image' && typeof e.src !== 'string') return false
+          return true
+        }
       )
       if (validElements.length === 0) return
       event.preventDefault()
