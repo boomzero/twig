@@ -2829,6 +2829,9 @@
         ...el,
         src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
       }))
+    // copyId is an intentional uniqueness nonce: it makes every copy's JSON string
+    // distinct so raw !== lastCopiedPayload reliably resets pasteCount even when
+    // the same selection is copied again (including from another window).
     const payload = JSON.stringify({ __twig_clipboard__: true, copyId: uuid_v4(), elements })
     event.clipboardData?.setData('text/plain', payload)
     event.preventDefault()
@@ -2876,12 +2879,16 @@
       const offset = pasteCount * 20
       const baseZ = nextZIndex()
 
+      const CANVAS_W = 960, CANVAS_H = 540
       const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
       const newElements: DeckElement[] = sortedElements.map((el, i) => {
         const prefix = el.id.split('_')[0] ?? el.type
         const newId = `${prefix}_${uuid_v4()}`
         if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
-        return { ...el, id: newId, x: el.x + offset, y: el.y + offset, zIndex: baseZ + i }
+        // Clamp so repeated pastes don't walk elements off canvas
+        const x = Math.min(el.x + offset, CANVAS_W - 1)
+        const y = Math.min(el.y + offset, CANVAS_H - 1)
+        return { ...el, id: newId, x, y, zIndex: baseZ + i }
       })
 
       pushCheckpoint()
@@ -2901,46 +2908,50 @@
     const blob = imageItem.getAsFile()
     if (!blob) return
 
-    const src = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
+    try {
+      const src = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
 
-    const tempImg = new Image()
-    tempImg.src = src
-    await new Promise<void>((resolve, reject) => {
-      tempImg.onload = () => resolve()
-      tempImg.onerror = reject
-    })
+      const tempImg = new Image()
+      tempImg.src = src
+      await new Promise<void>((resolve, reject) => {
+        tempImg.onload = () => resolve()
+        tempImg.onerror = reject
+      })
 
-    // Convert physical pixels → logical pixels, then cap to canvas size
-    const dpr = window.devicePixelRatio || 1
-    const CANVAS_W = 960, CANVAS_H = 540
-    let width = Math.round((tempImg.naturalWidth || 200) / dpr)
-    let height = Math.round((tempImg.naturalHeight || 200) / dpr)
-    const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
-    width = Math.round(width * scale)
-    height = Math.round(height * scale)
+      // Convert physical pixels → logical pixels, then cap to canvas size
+      const dpr = window.devicePixelRatio || 1
+      const CANVAS_W = 960, CANVAS_H = 540
+      let width = Math.round((tempImg.naturalWidth || 200) / dpr)
+      let height = Math.round((tempImg.naturalHeight || 200) / dpr)
+      const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
+      width = Math.round(width * scale)
+      height = Math.round(height * scale)
 
-    const newImage: DeckElement = {
-      type: 'image',
-      id: `image_${uuid_v4()}`,
-      x: 480, // Center of 960px canvas
-      y: 270, // Center of 540px canvas
-      width,
-      height,
-      angle: 0,
-      src,
-      zIndex: nextZIndex()
+      const newImage: DeckElement = {
+        type: 'image',
+        id: `image_${uuid_v4()}`,
+        x: 480, // Center of 960px canvas
+        y: 270, // Center of 540px canvas
+        width,
+        height,
+        angle: 0,
+        src,
+        zIndex: nextZIndex()
+      }
+
+      pushCheckpoint()
+      imageAssets.set(newImage.id, src)
+      appState.currentSlide.elements.push(newImage)
+      pendingSelectionIds = [newImage.id]
+      scheduleSave()
+    } catch (error) {
+      console.error('Failed to paste image from clipboard:', error)
     }
-
-    pushCheckpoint()
-    imageAssets.set(newImage.id, src)
-    appState.currentSlide.elements.push(newImage)
-    pendingSelectionIds = [newImage.id]
-    scheduleSave()
   }
 
   /**
