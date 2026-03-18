@@ -192,6 +192,11 @@
 
   let bgCheckpointPushed = false // gates background-change history to first event per drag
 
+  // Copy/paste state
+  let pasteCount = 0                      // resets on each copy; increments each paste
+  let lastCopiedPayload = ''              // detects cross-window clipboard changes to reset pasteCount
+  let pendingSelectionIds: string[] = []  // consumed by renderCanvasFromState after render
+
   // Slide drag-to-reorder state
   let slideDragSourceId = $state<string | null>(null)
   let slideDragOverId = $state<string | null>(null)
@@ -1167,6 +1172,7 @@
     fabCanvas.on('contextmenu', handleContextMenu)
 
     if (imageLoads.length === 0) {
+      applyPendingSelection()
       captureAndStoreThumbnail().catch(console.error)
       return Promise.resolve()
     }
@@ -1185,8 +1191,24 @@
         sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
       }
       fabCanvas.renderAll()
+      applyPendingSelection()
       captureAndStoreThumbnail().catch(console.error)
     })
+  }
+
+  function applyPendingSelection(): void {
+    if (pendingSelectionIds.length === 0 || !fabCanvas) return
+    const ids = new Set(pendingSelectionIds)
+    pendingSelectionIds = []
+    const targets = fabCanvas.getObjects().filter(
+      (o) => ids.has((o as DeckFabricObject).id ?? '')
+    )
+    if (targets.length === 1) {
+      fabCanvas.setActiveObject(targets[0])
+    } else if (targets.length > 1) {
+      fabCanvas.setActiveObject(new ActiveSelection(targets, { canvas: fabCanvas }))
+    }
+    fabCanvas.renderAll()
   }
 
   /**
@@ -2784,6 +2806,154 @@
   // Keyboard and Mouse Event Handlers
   // ============================================================================
 
+  // ============================================================================
+  // Copy / Cut / Paste
+  // ============================================================================
+
+  function shouldBypassClipboard(event: ClipboardEvent): boolean {
+    if (activeTextObject?.isEditing) return true
+    const target = event.target as HTMLElement | null
+    if (!target) return false
+    if (target instanceof HTMLSelectElement) return true
+    return isNativeTextTarget(target)
+  }
+
+  function handleCopy(event: ClipboardEvent): boolean {
+    if (shouldBypassClipboard(event)) return false
+    const activeObjects = fabCanvas?.getActiveObjects() ?? []
+    if (activeObjects.length === 0) return false
+    const ids = new Set(activeObjects.map((o) => (o as DeckFabricObject).id).filter(Boolean))
+    const elements = (appState.currentSlide?.elements ?? [])
+      .filter((el) => ids.has(el.id))
+      .map((el) => ({
+        ...el,
+        src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
+      }))
+    // copyId is an intentional uniqueness nonce: it makes every copy's JSON string
+    // distinct so raw !== lastCopiedPayload reliably resets pasteCount even when
+    // the same selection is copied again (including from another window).
+    const payload = JSON.stringify({ __twig_clipboard__: true, copyId: uuid_v4(), elements })
+    event.clipboardData?.setData('text/plain', payload)
+    event.preventDefault()
+    pasteCount = 0
+    lastCopiedPayload = payload
+    return true
+  }
+
+  function handleCut(event: ClipboardEvent): void {
+    if (handleCopy(event)) {
+      deleteSelectedObject()
+    }
+  }
+
+  async function handlePaste(event: ClipboardEvent): Promise<void> {
+    if (shouldBypassClipboard(event)) return
+
+    // --- Twig element clipboard ---
+    const raw = event.clipboardData?.getData('text/plain') ?? ''
+    let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
+    try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
+    if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
+      const validElements = parsed.elements.filter(
+        (el): el is DeckElement => {
+          if (typeof el !== 'object' || el === null) return false
+          const e = el as Record<string, unknown>
+          const type = e.type
+          if (typeof e.id !== 'string') return false
+          if (type !== 'rect' && type !== 'text' && type !== 'image') return false
+          if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
+          if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
+          if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
+          if (type === 'image' && typeof e.src !== 'string') return false
+          return true
+        }
+      )
+      if (validElements.length === 0) return
+      event.preventDefault()
+
+      if (raw !== lastCopiedPayload) {
+        pasteCount = 0
+        lastCopiedPayload = raw
+      }
+      pasteCount++
+      const offset = pasteCount * 20
+      const baseZ = nextZIndex()
+
+      const CANVAS_W = 960, CANVAS_H = 540
+      const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
+      const newElements: DeckElement[] = sortedElements.map((el, i) => {
+        const prefix = el.id.split('_')[0] ?? el.type
+        const newId = `${prefix}_${uuid_v4()}`
+        if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
+        // Clamp so repeated pastes don't walk elements off canvas
+        const x = Math.min(el.x + offset, CANVAS_W - 1)
+        const y = Math.min(el.y + offset, CANVAS_H - 1)
+        return { ...el, id: newId, x, y, zIndex: baseZ + i }
+      })
+
+      pushCheckpoint()
+      appState.currentSlide.elements.push(...newElements)
+      pendingSelectionIds = newElements.map((el) => el.id)
+      scheduleSave()
+      return
+    }
+
+    // --- Raw image from clipboard (screenshot, copied image, etc.) ---
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find(
+      (item) => item.type.startsWith('image/')
+    )
+    if (!imageItem || !appState.currentSlide) return
+    event.preventDefault()
+
+    const blob = imageItem.getAsFile()
+    if (!blob) return
+
+    try {
+      const src = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+
+      const tempImg = new Image()
+      tempImg.src = src
+      await new Promise<void>((resolve, reject) => {
+        tempImg.onload = () => resolve()
+        tempImg.onerror = reject
+      })
+
+      // Convert physical pixels → logical pixels, then cap to canvas size
+      const dpr = window.devicePixelRatio || 1
+      const CANVAS_W = 960, CANVAS_H = 540
+      let width = Math.round((tempImg.naturalWidth || 200) / dpr)
+      let height = Math.round((tempImg.naturalHeight || 200) / dpr)
+      const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
+      width = Math.round(width * scale)
+      height = Math.round(height * scale)
+
+      const newImage: DeckElement = {
+        type: 'image',
+        id: `image_${uuid_v4()}`,
+        x: 480, // Center of 960px canvas
+        y: 270, // Center of 540px canvas
+        width,
+        height,
+        angle: 0,
+        src,
+        zIndex: nextZIndex()
+      }
+
+      pushCheckpoint()
+      imageAssets.set(newImage.id, src)
+      appState.currentSlide.elements.push(newImage)
+      pendingSelectionIds = [newImage.id]
+      scheduleSave()
+    } catch (error) {
+      console.error('Failed to paste image from clipboard:', error)
+    }
+  }
+
   /**
    * Global keyboard event handler for shortcuts.
    * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
@@ -2955,7 +3125,8 @@
   })
 </script>
 
-<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu} />
+<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu}
+  oncopy={handleCopy} oncut={handleCut} onpaste={handlePaste} />
 
 {#if appState.currentSlide}
   <div
