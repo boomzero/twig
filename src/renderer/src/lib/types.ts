@@ -9,7 +9,7 @@
 /**
  * Represents a single element (shape, text, or image) on a slide.
  */
-export interface DeckElement {
+export interface TwigElement {
   /** Type of element - rectangle shape, text, or image */
   type: 'rect' | 'text' | 'image'
 
@@ -62,7 +62,11 @@ export interface DeckElement {
  */
 export type SlideBackground =
   | { type: 'solid'; color: string }
-  | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
+  | {
+      type: 'gradient'
+      angle: number
+      stops: [{ offset: 0; color: string }, { offset: 1; color: string }]
+    }
   | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
 
 /**
@@ -73,7 +77,7 @@ export interface Slide {
   id: string
 
   /** Array of elements (shapes, text, images) on this slide */
-  elements: DeckElement[]
+  elements: TwigElement[]
 
   /** Optional background — null/undefined means white */
   background?: SlideBackground

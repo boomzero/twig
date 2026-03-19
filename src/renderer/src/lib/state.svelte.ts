@@ -11,11 +11,11 @@
  */
 
 import { getFlushSave } from './saveCallbacks'
-import type { DeckElement, Slide } from './types'
+import type { TwigElement, Slide } from './types'
 
 // Re-export so existing importers (App.svelte, Debug.svelte, etc.) don't need
 // to change their import paths.
-export type { DeckElement, Slide }
+export type { TwigElement, Slide }
 
 // ============================================================================
 // Type Definitions
@@ -189,14 +189,17 @@ export async function loadSlide(slideId: string): Promise<void> {
           break // Success!
         } catch (error) {
           flushAttempts++
-          console.error(`Failed to flush pending save before navigation (attempt ${flushAttempts}/${maxFlushAttempts}):`, error)
+          console.error(
+            `Failed to flush pending save before navigation (attempt ${flushAttempts}/${maxFlushAttempts}):`,
+            error
+          )
 
           if (flushAttempts >= maxFlushAttempts) {
             // All retries failed - ask user what to do
             const errorMessage = error instanceof Error ? error.message : 'Unknown error'
             const userChoice = confirm(
               `Failed to save current slide before navigation:\n${errorMessage}\n\n` +
-              'Click OK to discard unsaved changes and continue, or Cancel to stay on this slide.'
+                'Click OK to discard unsaved changes and continue, or Cancel to stay on this slide.'
             )
 
             if (!userChoice) {
@@ -208,7 +211,7 @@ export async function loadSlide(slideId: string): Promise<void> {
           }
 
           // Wait a bit before retrying
-          await new Promise(resolve => setTimeout(resolve, 100))
+          await new Promise((resolve) => setTimeout(resolve, 100))
         }
       }
     }

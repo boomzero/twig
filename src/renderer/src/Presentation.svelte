@@ -9,7 +9,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient } from 'fabric'
-  import type { DeckElement, Slide, SlideBackground } from './lib/types'
+  import type { TwigElement, Slide, SlideBackground } from './lib/types'
   import { normalizeFontBytes } from './lib/fontUtils'
 
   export interface PresentationState {
@@ -72,25 +72,27 @@
     // Listen for slide state updates from the main window.
     // Fonts and slide data are fetched in parallel; loadedSlide is only set once
     // BOTH are ready, so the render effect always has fonts available on first draw.
-    const unsubState = window.api.presentation.onStateChanged(async (newState: PresentationState) => {
-      currentState = newState
-      const { slideId, filePath } = newState
+    const unsubState = window.api.presentation.onStateChanged(
+      async (newState: PresentationState) => {
+        currentState = newState
+        const { slideId, filePath } = newState
 
-      if (!slideId || !filePath) {
-        loadedSlide = null
-        return
-      }
+        if (!slideId || !filePath) {
+          loadedSlide = null
+          return
+        }
 
-      const generation = ++fetchGeneration
-      if (filePath !== fontsLoadedForPath) {
-        fontLoadingPromise = loadEmbeddedFonts(filePath)
+        const generation = ++fetchGeneration
+        if (filePath !== fontsLoadedForPath) {
+          fontLoadingPromise = loadEmbeddedFonts(filePath)
+        }
+        const [slide] = await Promise.all([
+          window.api.db.getSlide(filePath, slideId),
+          fontLoadingPromise
+        ])
+        if (fetchGeneration === generation) loadedSlide = slide
       }
-      const [slide] = await Promise.all([
-        window.api.db.getSlide(filePath, slideId),
-        fontLoadingPromise
-      ])
-      if (fetchGeneration === generation) loadedSlide = slide
-    })
+    )
 
     // Signal main window that we're ready to receive state
     window.api.presentation.signalReady()
@@ -141,7 +143,8 @@
     generation: number
   ): Promise<void> {
     if (!presentationCanvas) return
-    const W = SLIDE_WIDTH, H = SLIDE_HEIGHT
+    const W = SLIDE_WIDTH,
+      H = SLIDE_HEIGHT
     presentationCanvas.backgroundImage = undefined
     if (!bg || bg.type === 'solid') {
       presentationCanvas.backgroundColor = bg?.color ?? '#ffffff'
@@ -167,9 +170,10 @@
         img.scaleX = W / (img.width || 1)
         img.scaleY = H / (img.height || 1)
       } else {
-        const scale = fit === 'contain'
-          ? Math.min(W / (img.width || 1), H / (img.height || 1))
-          : Math.max(W / (img.width || 1), H / (img.height || 1))
+        const scale =
+          fit === 'contain'
+            ? Math.min(W / (img.width || 1), H / (img.height || 1))
+            : Math.max(W / (img.width || 1), H / (img.height || 1))
         img.scaleX = scale
         img.scaleY = scale
       }
@@ -188,13 +192,13 @@
     // render can detect that the slide has since changed and bail out.
     const generation = ++renderGeneration
 
-    presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
+    presentationCanvas.getObjects().forEach((obj) => presentationCanvas!.remove(obj))
     lastRenderedSlideId = slide.id
     applyPresentationBackground(slide.background, generation).catch(console.error)
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
-    sorted.forEach((element: DeckElement) => {
+    sorted.forEach((element: TwigElement) => {
       if (element.type === 'image') return
       let fabObj: FabricObject | undefined
 
@@ -232,7 +236,7 @@
 
     // Load images asynchronously. Guard against stale callbacks by comparing
     // the generation counter captured above with the current value.
-    sorted.forEach((element: DeckElement) => {
+    sorted.forEach((element: TwigElement) => {
       if (element.type !== 'image' || !element.src) return
       FabricImage.fromURL(element.src)
         .then((img) => {
@@ -268,9 +272,9 @@
     fontsLoadedForPath = filePath
     try {
       const embeddedFonts = await window.api.fonts.getEmbeddedFonts(filePath)
-      await Promise.all(embeddedFonts.map((font) =>
-        injectFont(font.fontFamily, font.fontData, font.variant)
-      ))
+      await Promise.all(
+        embeddedFonts.map((font) => injectFont(font.fontFamily, font.fontData, font.variant))
+      )
     } catch (err) {
       fontsLoadedForPath = null
       console.error('Failed to load embedded fonts in presentation window:', err)
@@ -278,7 +282,11 @@
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function injectFont(fontFamily: string, fontData: any, variant: string = 'normal-normal'): Promise<void> {
+  async function injectFont(
+    fontFamily: string,
+    fontData: any,
+    variant: string = 'normal-normal'
+  ): Promise<void> {
     const key = `${fontFamily}-${variant}`
     if (loadedFontKeys.has(key)) return
 
@@ -355,7 +363,10 @@
     right: 30px;
     color: rgba(255, 255, 255, 0.7);
     font-size: 18px;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
     font-weight: 500;
     background: rgba(0, 0, 0, 0.5);
     padding: 8px 16px;
