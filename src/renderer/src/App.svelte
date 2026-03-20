@@ -181,10 +181,10 @@
   const imageAssets = new Map<string, string>()
 
   type ElementSnapshot = Omit<TwigElement, 'src'>
-  type SlideSnapshot = { elements: ElementSnapshot[]; background: SlideBackground | undefined }
+  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined }
   // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
-  type HistoryEntry = { snapshot: SlideSnapshot; serialized: string }
-  type SlideHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] }
+  type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
+  type SlideHistory = { undo: HistoryEntry[], redo: HistoryEntry[] }
 
   const historyBySlideId = new Map<string, SlideHistory>()
   const MAX_UNDO_ENTRIES = 50
@@ -193,9 +193,9 @@
   let bgCheckpointPushed = false // gates background-change history to first event per drag
 
   // Copy/paste state
-  let pasteCount = 0 // resets on each copy; increments each paste
-  let lastCopiedPayload = '' // detects cross-window clipboard changes to reset pasteCount
-  let pendingSelectionIds: string[] = [] // consumed by renderCanvasFromState after render
+  let pasteCount = 0                      // resets on each copy; increments each paste
+  let lastCopiedPayload = ''              // detects cross-window clipboard changes to reset pasteCount
+  let pendingSelectionIds: string[] = []  // consumed by renderCanvasFromState after render
 
   // Slide drag-to-reorder state
   let slideDragSourceId = $state<string | null>(null)
@@ -205,18 +205,14 @@
   // Reactive booleans for toolbar disabled state.
   // historyRevision is read to subscribe to stack mutations; appState.currentSlide?.id
   // is also tracked so canUndo/canRedo update immediately on slide switch.
-  const canUndo = $derived(
-    (() => {
-      void historyRevision
-      return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
-    })()
-  )
-  const canRedo = $derived(
-    (() => {
-      void historyRevision
-      return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
-    })()
-  )
+  const canUndo = $derived((() => {
+    void historyRevision
+    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
+  })())
+  const canRedo = $derived((() => {
+    void historyRevision
+    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
+  })())
 
   // Auto-save status indicator
   // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
@@ -249,10 +245,7 @@
     if (status === 'saved') {
       lastSavedAt = Date.now()
       // Stop the tick during the 2s green-flash; it will restart on idle entry
-      if (nowTickId) {
-        clearInterval(nowTickId)
-        nowTickId = null
-      }
+      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
       savedResetTimeoutId = setTimeout(() => {
         savedResetTimeoutId = null
         setSaveStatus('idle')
@@ -262,16 +255,11 @@
       // then tick every 10s to keep it fresh.
       now = Date.now()
       if (!nowTickId) {
-        nowTickId = setInterval(() => {
-          now = Date.now()
-        }, 10_000)
+        nowTickId = setInterval(() => { now = Date.now() }, 10_000)
       }
     } else {
       // pending / saving / error — relative timestamp not shown, stop the ticker
-      if (nowTickId) {
-        clearInterval(nowTickId)
-        nowTickId = null
-      }
+      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
     }
   }
 
@@ -367,23 +355,17 @@
   function takeSnapshot(): SlideSnapshot | null {
     if (!appState.currentSlide) return null
     return {
-      elements: appState.currentSlide.elements.map(
-        ({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot
-      ),
+      elements: appState.currentSlide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
       background: appState.currentSlide.background
-        ? (JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground)
+        ? JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground
         : undefined
     }
   }
 
   function pushCheckpointForSlide(slide: Slide): void {
     const snapshot: SlideSnapshot = {
-      elements: slide.elements.map(
-        ({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot
-      ),
-      background: slide.background
-        ? (JSON.parse(JSON.stringify(slide.background)) as SlideBackground)
-        : undefined
+      elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
+      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined
     }
     const serialized = JSON.stringify(snapshot)
     const h = getSlideHistory(slide.id)
@@ -420,7 +402,7 @@
       return { ...el } as TwigElement
     })
     appState.currentSlide.background = snapshot.background
-      ? (JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground)
+      ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
       : undefined
     appState.selectedObjectId = null
     fabCanvas?.discardActiveObject()
@@ -486,8 +468,7 @@
   ): Promise<void> {
     const c = target ?? fabCanvas
     if (!c) return
-    const W = 960,
-      H = 540
+    const W = 960, H = 540
 
     // Always clear backgroundImage first; re-set if needed
     c.backgroundImage = undefined
@@ -515,10 +496,9 @@
         img.scaleX = W / (img.width || 1)
         img.scaleY = H / (img.height || 1)
       } else {
-        const scale =
-          fit === 'contain'
-            ? Math.min(W / (img.width || 1), H / (img.height || 1))
-            : Math.max(W / (img.width || 1), H / (img.height || 1))
+        const scale = fit === 'contain'
+          ? Math.min(W / (img.width || 1), H / (img.height || 1))
+          : Math.max(W / (img.width || 1), H / (img.height || 1))
         img.scaleX = scale
         img.scaleY = scale
       }
@@ -533,9 +513,7 @@
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
     appState.thumbnails[appState.currentSlide.id] = dataUrl
-    window.api.db
-      .saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl)
-      .catch(console.error)
+    window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
 
   function scheduleThumbnailCapture(): void {
@@ -576,28 +554,15 @@
         const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
         for (const el of sorted) {
           if (el.type === 'rect') {
-            tempCanvas.add(
-              new Rect({
-                left: el.x,
-                top: el.y,
-                width: el.width,
-                height: el.height,
-                angle: el.angle,
-                fill: el.fill
-              })
-            )
+            tempCanvas.add(new Rect({
+              left: el.x, top: el.y, width: el.width, height: el.height,
+              angle: el.angle, fill: el.fill
+            }))
           } else if (el.type === 'text') {
-            tempCanvas.add(
-              new Textbox(el.text || '', {
-                left: el.x,
-                top: el.y,
-                width: el.width,
-                angle: el.angle,
-                fill: el.fill,
-                fontFamily: el.fontFamily,
-                fontSize: el.fontSize
-              })
-            )
+            tempCanvas.add(new Textbox(el.text || '', {
+              left: el.x, top: el.y, width: el.width, angle: el.angle,
+              fill: el.fill, fontFamily: el.fontFamily, fontSize: el.fontSize
+            }))
           } else if (el.type === 'image' && el.src) {
             try {
               const img = await FabricImage.fromURL(el.src, { crossOrigin: 'anonymous' })
@@ -664,9 +629,7 @@
   // Reset background checkpoint gate on pointer release so the next drag
   // session gets its own undo entry.
   onMount(() => {
-    const resetBgGate = () => {
-      bgCheckpointPushed = false
-    }
+    const resetBgGate = () => { bgCheckpointPushed = false }
     window.addEventListener('pointerup', resetBgGate, { passive: true })
     return () => window.removeEventListener('pointerup', resetBgGate)
   })
@@ -690,16 +653,14 @@
     })
 
     // Forward navigation requests from the presentation window
-    unsubscribePresentationNavigate = window.api?.presentation?.onNavigateRequest(
-      async (direction) => {
-        const idx = appState.currentSlideIndex
-        if (direction === 'next' && idx < appState.slideIds.length - 1) {
-          await loadSlide(appState.slideIds[idx + 1])
-        } else if (direction === 'prev' && idx > 0) {
-          await loadSlide(appState.slideIds[idx - 1])
-        }
+    unsubscribePresentationNavigate = window.api?.presentation?.onNavigateRequest(async (direction) => {
+      const idx = appState.currentSlideIndex
+      if (direction === 'next' && idx < appState.slideIds.length - 1) {
+        await loadSlide(appState.slideIds[idx + 1])
+      } else if (direction === 'prev' && idx > 0) {
+        await loadSlide(appState.slideIds[idx - 1])
       }
-    )
+    })
 
     // Handle presentation window being closed externally
     unsubscribePresentationClosed = window.api?.presentation?.onWindowClosed(() => {
@@ -836,12 +797,9 @@
   $effect(() => {
     const filePath = appState.currentFilePath
     if (filePath) {
-      window.api.db
-        .getSetting(filePath, 'default_background')
-        .then((value) => {
-          defaultSlideBackground = value ? JSON.parse(value) : undefined
-        })
-        .catch(console.error)
+      window.api.db.getSetting(filePath, 'default_background').then((value) => {
+        defaultSlideBackground = value ? JSON.parse(value) : undefined
+      }).catch(console.error)
     } else {
       defaultSlideBackground = undefined
     }
@@ -956,6 +914,7 @@
         }
       }
     }
+
   })
 
   /**
@@ -1241,7 +1200,9 @@
     if (pendingSelectionIds.length === 0 || !fabCanvas) return
     const ids = new Set(pendingSelectionIds)
     pendingSelectionIds = []
-    const targets = fabCanvas.getObjects().filter((o) => ids.has((o as TwigFabricObject).id ?? ''))
+    const targets = fabCanvas.getObjects().filter(
+      (o) => ids.has((o as TwigFabricObject).id ?? '')
+    )
     if (targets.length === 1) {
       fabCanvas.setActiveObject(targets[0])
     } else if (targets.length > 1) {
@@ -1324,23 +1285,12 @@
    */
   function handlePropertyChange(): void {
     const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
-    const obj = fabCanvas
-      ?.getObjects()
-      .find((o) => (o as TwigFabricObject).id === appState.selectedObjectId)
+    const obj = fabCanvas?.getObjects().find((o) => (o as TwigFabricObject).id === appState.selectedObjectId)
     if (el && obj) {
       // State stores effective (scaled) dimensions: width = obj.width * scaleX.
       // Reset scale to 1 and set the raw dimensions so the visual size matches
       // the state value without double-applying any residual scale factor.
-      obj.set({
-        left: el.x,
-        top: el.y,
-        angle: el.angle,
-        fill: el.fill,
-        scaleX: 1,
-        scaleY: 1,
-        width: el.width,
-        height: el.height
-      })
+      obj.set({ left: el.x, top: el.y, angle: el.angle, fill: el.fill, scaleX: 1, scaleY: 1, width: el.width, height: el.height })
       obj.setCoords()
       fabCanvas?.renderAll()
     }
@@ -1611,13 +1561,7 @@
 
     // Helper to get effective style value using fabric's getValueOfPropertyAt
     // which properly handles base + character-level style inheritance
-    type StyleProperty =
-      | 'fontWeight'
-      | 'fontStyle'
-      | 'underline'
-      | 'fontFamily'
-      | 'fontSize'
-      | 'fill'
+    type StyleProperty = 'fontWeight' | 'fontStyle' | 'underline' | 'fontFamily' | 'fontSize' | 'fill'
     const getEffectiveStyle = (charIndex: number, property: StyleProperty): unknown => {
       const loc = activeTextObject.get2DCursorLocation(charIndex, true)
       return activeTextObject.getValueOfPropertyAt(loc.lineIndex, loc.charIndex, property)
@@ -1671,10 +1615,7 @@
 
       // Read fill color from first selected character
       if (end > start) {
-        selectionFillColor =
-          (getEffectiveStyle(start, 'fill') as string) ||
-          (activeTextObject.fill as string) ||
-          '#333333'
+        selectionFillColor = (getEffectiveStyle(start, 'fill') as string) || activeTextObject.fill as string || '#333333'
       }
     } else {
       if (!suppressSelectionTracking) {
@@ -1719,7 +1660,9 @@
       // Read fill color from first character
       if (textLength > 0) {
         selectionFillColor =
-          (getEffectiveStyle(0, 'fill') as string) || (activeTextObject.fill as string) || '#333333'
+          (getEffectiveStyle(0, 'fill') as string) ||
+          (activeTextObject.fill as string) ||
+          '#333333'
       }
     }
   }
@@ -1775,10 +1718,7 @@
         setSaveStatus('saved')
         return // Success!
       } catch (error) {
-        console.error(
-          `Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`,
-          error
-        )
+        console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
 
         // Clean up the temp file if it was created
         if (tempPath) {
@@ -1799,11 +1739,11 @@
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           const retry = confirm(
             `Failed to create new presentation after ${maxRetries} attempts: ${errorMessage}\n\n` +
-              'This might be due to:\n' +
-              '• Insufficient disk space\n' +
-              '• Permission issues\n' +
-              '• Corrupted temp directory\n\n' +
-              'Would you like to try again?'
+            'This might be due to:\n' +
+            '• Insufficient disk space\n' +
+            '• Permission issues\n' +
+            '• Corrupted temp directory\n\n' +
+            'Would you like to try again?'
           )
 
           if (retry) {
@@ -1812,7 +1752,7 @@
             if (userInitiatedRetries > maxUserRetries) {
               alert(
                 'Unable to create a new presentation after multiple attempts. ' +
-                  'Please check your system resources and try again later.'
+                'Please check your system resources and try again later.'
               )
               return
             }
@@ -1823,7 +1763,7 @@
           }
         } else {
           // Wait before retrying
-          await new Promise((resolve) => setTimeout(resolve, NEW_PRESENTATION_RETRY_DELAY_MS))
+          await new Promise(resolve => setTimeout(resolve, NEW_PRESENTATION_RETRY_DELAY_MS))
         }
       }
     }
@@ -2756,9 +2696,7 @@
   function compactZIndexes(): void {
     if (!appState.currentSlide) return
     const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
-    sorted.forEach((el, i) => {
-      el.zIndex = i
-    })
+    sorted.forEach((el, i) => { el.zIndex = i })
   }
 
   /**
@@ -2914,24 +2852,22 @@
     // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
     let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      /* not JSON */
-    }
+    try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
     if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
-      const validElements = parsed.elements.filter((el): el is TwigElement => {
-        if (typeof el !== 'object' || el === null) return false
-        const e = el as Record<string, unknown>
-        const type = e.type
-        if (typeof e.id !== 'string') return false
-        if (type !== 'rect' && type !== 'text' && type !== 'image') return false
-        if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
-        if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
-        if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
-        if (type === 'image' && typeof e.src !== 'string') return false
-        return true
-      })
+      const validElements = parsed.elements.filter(
+        (el): el is TwigElement => {
+          if (typeof el !== 'object' || el === null) return false
+          const e = el as Record<string, unknown>
+          const type = e.type
+          if (typeof e.id !== 'string') return false
+          if (type !== 'rect' && type !== 'text' && type !== 'image') return false
+          if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
+          if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
+          if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
+          if (type === 'image' && typeof e.src !== 'string') return false
+          return true
+        }
+      )
       if (validElements.length === 0) return
       event.preventDefault()
 
@@ -2943,8 +2879,7 @@
       const offset = pasteCount * 20
       const baseZ = nextZIndex()
 
-      const CANVAS_W = 960,
-        CANVAS_H = 540
+      const CANVAS_W = 960, CANVAS_H = 540
       const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
       const newElements: TwigElement[] = sortedElements.map((el, i) => {
         const prefix = el.id.split('_')[0] ?? el.type
@@ -2964,8 +2899,8 @@
     }
 
     // --- Raw image from clipboard (screenshot, copied image, etc.) ---
-    const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) =>
-      item.type.startsWith('image/')
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find(
+      (item) => item.type.startsWith('image/')
     )
     if (!imageItem || !appState.currentSlide) return
     event.preventDefault()
@@ -2990,8 +2925,7 @@
 
       // Convert physical pixels → logical pixels, then cap to canvas size
       const dpr = window.devicePixelRatio || 1
-      const CANVAS_W = 960,
-        CANVAS_H = 540
+      const CANVAS_W = 960, CANVAS_H = 540
       let width = Math.round((tempImg.naturalWidth || 200) / dpr)
       let height = Math.round((tempImg.naturalHeight || 200) / dpr)
       const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
@@ -3079,11 +3013,7 @@
 
     // Cmd/Ctrl+Backspace: Delete current slide (not while editing text, not last slide)
     if ((event.metaKey || event.ctrlKey) && event.key === 'Backspace') {
-      if (
-        !isNativeTextTarget(event.target) &&
-        !activeTextObject?.isEditing &&
-        appState.currentSlide
-      ) {
+      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing && appState.currentSlide) {
         event.preventDefault()
         deleteSlideById(appState.currentSlide.id)
         return
@@ -3195,48 +3125,23 @@
   })
 </script>
 
-<svelte:window
-  onkeydown={handleKeyDown}
-  onclick={hideContextMenu}
-  oncopy={handleCopy}
-  oncut={handleCut}
-  onpaste={handlePaste}
-/>
+<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu}
+  oncopy={handleCopy} oncut={handleCut} onpaste={handlePaste} />
 
 {#if appState.currentSlide}
-  <div class="flex flex-col h-screen font-sans" role="application">
+  <div
+    class="flex flex-col h-screen font-sans"
+    role="application"
+  >
     {#if contextMenuVisible}
       <ContextMenu
         x={contextMenuPosition.x}
         y={contextMenuPosition.y}
-        onDelete={() => {
-          deleteSelectedObject()
-          hideContextMenu()
-        }}
-        onBringToFront={appState.selectedObjectId
-          ? () => {
-              layerBringToFront(appState.selectedObjectId!)
-              hideContextMenu()
-            }
-          : undefined}
-        onMoveUp={appState.selectedObjectId
-          ? () => {
-              layerMoveUp(appState.selectedObjectId!)
-              hideContextMenu()
-            }
-          : undefined}
-        onMoveDown={appState.selectedObjectId
-          ? () => {
-              layerMoveDown(appState.selectedObjectId!)
-              hideContextMenu()
-            }
-          : undefined}
-        onSendToBack={appState.selectedObjectId
-          ? () => {
-              layerSendToBack(appState.selectedObjectId!)
-              hideContextMenu()
-            }
-          : undefined}
+        onDelete={() => { deleteSelectedObject(); hideContextMenu() }}
+        onBringToFront={appState.selectedObjectId ? () => { layerBringToFront(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onMoveUp={appState.selectedObjectId ? () => { layerMoveUp(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onMoveDown={appState.selectedObjectId ? () => { layerMoveDown(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onSendToBack={appState.selectedObjectId ? () => { layerSendToBack(appState.selectedObjectId!); hideContextMenu() } : undefined}
         isAtFront={selectedIsAtFront}
         isAtBack={selectedIsAtBack}
       />
@@ -3285,18 +3190,10 @@
       <div class="flex items-center mr-2 w-28">
         {#if saveStatus === 'idle' && lastSavedAt !== null}
           <span class="flex items-center gap-1 text-xs text-gray-400">
-            <svg
-              class="w-3 h-3 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
+            <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
             </svg>
             {formatRelativeTime(lastSavedAt)}
           </span>
@@ -3309,46 +3206,21 @@
           </span>
         {:else if saveStatus === 'saving'}
           <span class="flex items-center gap-1 text-xs text-blue-500">
-            <svg
-              class="w-3 h-3 animate-spin"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-            >
-              <path
-                d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-                stroke-linecap="round"
-              />
+            <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke-linecap="round"/>
             </svg>
             Saving...
           </span>
         {:else if saveStatus === 'saved'}
           <span class="flex items-center gap-1 text-xs text-green-600">
-            <svg
-              class="w-3 h-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
             Saved
           </span>
         {:else if saveStatus === 'error'}
           <span class="flex items-center gap-1 text-xs text-red-500" title="Auto-save failed">
-            <svg
-              class="w-3 h-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -3362,20 +3234,10 @@
           class="flex items-center gap-1 px-2 py-0.5 mr-2 text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md"
           title="This presentation hasn't been saved to a file yet. Click 'Save' to choose a location."
         >
-          <svg
-            class="w-3 h-3"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path
-              d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-            />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           Temp file
         </span>
@@ -3535,10 +3397,7 @@
       {/if}
     </div>
     <div class="flex flex-1 overflow-hidden">
-      <div
-        role="list"
-        class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1"
-      >
+      <div role="list" class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
         {#each appState.slideIds as slideId, index (slideId)}
           <div
             class="relative w-full group"
@@ -3552,9 +3411,7 @@
             role="listitem"
           >
             {#if slideDragOverId === slideId && slideDragOverPosition === 'before'}
-              <div
-                class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"
-              ></div>
+              <div class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
             {/if}
             <button
               class="w-full px-2 py-2 rounded-lg cursor-pointer hover:bg-gray-200 flex flex-col items-center gap-1"
@@ -3563,46 +3420,26 @@
               disabled={loadingState.isLoadingSlide}
             >
               {#if appState.thumbnails[slideId]}
-                <img
-                  src={appState.thumbnails[slideId]}
-                  alt="Slide {index + 1}"
-                  class="w-full block rounded-md shadow-md"
-                />
+                <img src={appState.thumbnails[slideId]} alt="Slide {index + 1}" class="w-full block rounded-md shadow-md" />
               {:else}
-                <div
-                  class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs"
-                  style="aspect-ratio: 16/9;"
-                ></div>
+                <div class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs" style="aspect-ratio: 16/9;"></div>
               {/if}
               <div class="w-full text-xs text-left text-gray-500">{index + 1}</div>
             </button>
             {#if appState.slideIds.length > 1}
               <button
                 class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-opacity z-10"
-                onclick={() => {
-                  if (confirm('Delete this slide? This cannot be undone.')) deleteSlideById(slideId)
-                }}
+                onclick={() => { if (confirm('Delete this slide? This cannot be undone.')) deleteSlideById(slideId) }}
                 title="Delete slide"
                 aria-label="Delete slide"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  class="w-3 h-3"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z"
-                    clip-rule="evenodd"
-                  />
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3">
+                  <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z" clip-rule="evenodd" />
                 </svg>
               </button>
             {/if}
             {#if slideDragOverId === slideId && slideDragOverPosition === 'after'}
-              <div
-                class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"
-              ></div>
+              <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
             {/if}
           </div>
         {/each}
@@ -3641,10 +3478,7 @@
           -->
           <StackPanel
             onBeforeLayerChange={pushCheckpoint}
-            onLayerChange={() => {
-              applyZOrderToCanvas()
-              scheduleSave()
-            }}
+            onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
             onSelect={(id) => {
               if (!fabCanvas) return
               const obj = fabCanvas.getObjects().find((o) => (o as TwigFabricObject).id === id)
@@ -3693,16 +3527,14 @@
           // Snapshot every slide before the DB write so each slide's undo history
           // has a restore point. Non-current slides must be fetched from the DB first.
           const filePath = appState.currentFilePath
-          await Promise.all(
-            appState.slideIds.map(async (id) => {
-              if (id === appState.currentSlide?.id) {
-                pushCheckpoint()
-              } else {
-                const slide = await window.api.db.getSlide(filePath, id)
-                if (slide) pushCheckpointForSlide(slide)
-              }
-            })
-          )
+          await Promise.all(appState.slideIds.map(async (id) => {
+            if (id === appState.currentSlide?.id) {
+              pushCheckpoint()
+            } else {
+              const slide = await window.api.db.getSlide(filePath, id)
+              if (slide) pushCheckpointForSlide(slide)
+            }
+          }))
           const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
           try {
             await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)

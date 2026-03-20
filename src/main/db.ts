@@ -179,9 +179,7 @@ export function initializeDatabase(db: Database): void {
   }
 
   if (!schemaReadOk) {
-    console.warn(
-      'Skipping all migrations — could not read schema (database may be locked or corrupted).'
-    )
+    console.warn('Skipping all migrations — could not read schema (database may be locked or corrupted).')
   } else {
     if (!columnNames.includes('src')) {
       try {
@@ -316,6 +314,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
+
   const elements: TwigElement[] = elementRows.map((el) => ({
     type: el.type as 'rect' | 'text' | 'image',
     id: el.id,
@@ -370,10 +369,9 @@ export function getSlide(db: Database, slideId: string): Slide | null {
  */
 function validateAndRepairSlideOrder(db: Database): void {
   // Get all slides ordered by their current slide_order
-  const slides = db.prepare('SELECT id, slide_order FROM slides ORDER BY slide_order').all() as {
-    id: string
-    slide_order: number
-  }[]
+  const slides = db
+    .prepare('SELECT id, slide_order FROM slides ORDER BY slide_order')
+    .all() as { id: string; slide_order: number }[]
 
   // Check if reordering is needed
   let needsRepair = false
@@ -479,17 +477,14 @@ export function saveSlide(db: Database, slide: Slide): void {
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
       db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
-        s.id,
-        newOrder,
-        s.background ? JSON.stringify(s.background) : null
+        s.id, newOrder, s.background ? JSON.stringify(s.background) : null
       )
     }
 
     // Always sync background (handles both new and existing slides)
     if (slideInfo) {
       db.prepare('UPDATE slides SET background = ? WHERE id = ?').run(
-        s.background ? JSON.stringify(s.background) : null,
-        s.id
+        s.background ? JSON.stringify(s.background) : null, s.id
       )
     }
 
@@ -591,16 +586,12 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
 
       if (slideInfo) {
         db.prepare('UPDATE slides SET slide_order = ?, background = ? WHERE id = ?').run(
-          index,
-          slide.background ? JSON.stringify(slide.background) : null,
-          slide.id
+          index, slide.background ? JSON.stringify(slide.background) : null, slide.id
         )
       } else {
         hasNewSlides = true
         db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
-          slide.id,
-          index,
-          slide.background ? JSON.stringify(slide.background) : null
+          slide.id, index, slide.background ? JSON.stringify(slide.background) : null
         )
       }
 

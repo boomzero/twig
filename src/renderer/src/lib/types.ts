@@ -62,11 +62,7 @@ export interface TwigElement {
  */
 export type SlideBackground =
   | { type: 'solid'; color: string }
-  | {
-      type: 'gradient'
-      angle: number
-      stops: [{ offset: 0; color: string }, { offset: 1; color: string }]
-    }
+  | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
   | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
 
 /**

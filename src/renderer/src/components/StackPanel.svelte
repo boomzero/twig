@@ -184,12 +184,7 @@
           class:ring-indigo-400={isDragTarget}
           class:ring-inset={isDragTarget}
           onclick={() => selectElement(el.id)}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              selectElement(el.id)
-            }
-          }}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectElement(el.id) } }}
           draggable={true}
           ondragstart={(e) => onDragStart(e, el.id)}
           ondragover={(e) => onDragOver(e, el.id)}
@@ -219,10 +214,7 @@
           <div class="flex gap-0.5 flex-shrink-0">
             <!-- Bring to Front -->
             <button
-              onclick={(e) => {
-                e.stopPropagation()
-                onBringToFront?.(el.id)
-              }}
+              onclick={(e) => { e.stopPropagation(); onBringToFront?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Bring to Front')}
               onmouseleave={hideTooltip}
               disabled={isFirst}
@@ -230,16 +222,13 @@
               aria-label="Bring to Front"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
-                <rect x="1" y="1" width="10" height="1.5" rx="0.5" />
-                <path d="M6 3.5 L9.5 8 L6.75 8 L6.75 11 L5.25 11 L5.25 8 L2.5 8 Z" />
+                <rect x="1" y="1" width="10" height="1.5" rx="0.5"/>
+                <path d="M6 3.5 L9.5 8 L6.75 8 L6.75 11 L5.25 11 L5.25 8 L2.5 8 Z"/>
               </svg>
             </button>
             <!-- Move Up -->
             <button
-              onclick={(e) => {
-                e.stopPropagation()
-                onMoveUp?.(el.id)
-              }}
+              onclick={(e) => { e.stopPropagation(); onMoveUp?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Move Up')}
               onmouseleave={hideTooltip}
               disabled={isFirst}
@@ -247,15 +236,12 @@
               aria-label="Move Up"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
-                <path d="M6 1.5 L9.5 6.5 L6.75 6.5 L6.75 10.5 L5.25 10.5 L5.25 6.5 L2.5 6.5 Z" />
+                <path d="M6 1.5 L9.5 6.5 L6.75 6.5 L6.75 10.5 L5.25 10.5 L5.25 6.5 L2.5 6.5 Z"/>
               </svg>
             </button>
             <!-- Move Down -->
             <button
-              onclick={(e) => {
-                e.stopPropagation()
-                onMoveDown?.(el.id)
-              }}
+              onclick={(e) => { e.stopPropagation(); onMoveDown?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Move Down')}
               onmouseleave={hideTooltip}
               disabled={isLast}
@@ -263,15 +249,12 @@
               aria-label="Move Down"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
-                <path d="M6 10.5 L2.5 5.5 L5.25 5.5 L5.25 1.5 L6.75 1.5 L6.75 5.5 L9.5 5.5 Z" />
+                <path d="M6 10.5 L2.5 5.5 L5.25 5.5 L5.25 1.5 L6.75 1.5 L6.75 5.5 L9.5 5.5 Z"/>
               </svg>
             </button>
             <!-- Send to Back -->
             <button
-              onclick={(e) => {
-                e.stopPropagation()
-                onSendToBack?.(el.id)
-              }}
+              onclick={(e) => { e.stopPropagation(); onSendToBack?.(el.id) }}
               onmouseenter={(e) => showTooltip(e, 'Send to Back')}
               onmouseleave={hideTooltip}
               disabled={isLast}
@@ -279,8 +262,8 @@
               aria-label="Send to Back"
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
-                <rect x="1" y="9.5" width="10" height="1.5" rx="0.5" />
-                <path d="M6 8.5 L2.5 4 L5.25 4 L5.25 1 L6.75 1 L6.75 4 L9.5 4 Z" />
+                <rect x="1" y="9.5" width="10" height="1.5" rx="0.5"/>
+                <path d="M6 8.5 L2.5 4 L5.25 4 L5.25 1 L6.75 1 L6.75 4 L9.5 4 Z"/>
               </svg>
             </button>
           </div>
