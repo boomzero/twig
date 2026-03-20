@@ -13,20 +13,22 @@
 
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
-  import type { SlideBackground } from '../lib/types'
+  import type { SlideBackground, ElementAnimations } from '../lib/types'
 
   const {
     onPropertyChange,
     onBeforePropertyChange,
     onSlideBackgroundChange,
     onSetAsDefault,
-    onApplyToAll
+    onApplyToAll,
+    onAnimationChange
   }: {
     onPropertyChange?: () => void
     onBeforePropertyChange?: () => void
     onSlideBackgroundChange?: (bg: SlideBackground) => void
     onSetAsDefault?: (bg: SlideBackground | null) => void
     onApplyToAll?: (bg: SlideBackground | null) => void
+    onAnimationChange?: (elementId: string, animations: ElementAnimations) => void
   } = $props()
 
   // One-shot checkpoint guard: push a history checkpoint on the first real value
@@ -42,6 +44,37 @@
   }
   function handleBlur(): void {
     snapshotPushed = false
+  }
+
+  // Guard for continuous animation input (number fields). Resets on blur so
+  // each new focus session gets its own undo entry. Discrete actions (buttons,
+  // selects) always checkpoint unconditionally — pass continuous=true only for
+  // oninput handlers where per-keystroke checkpointing would be wrong.
+  let animSnapshotPushed = false
+
+  function emitAnimationChange(animations: ElementAnimations, continuous = false): void {
+    if (!selectedObject) return
+    if (!continuous || !animSnapshotPushed) {
+      onBeforePropertyChange?.()
+      animSnapshotPushed = continuous  // stay true only for continuous sessions
+    }
+    onAnimationChange?.(selectedObject.id, animations)
+  }
+
+  function handleAnimationBlur(): void {
+    animSnapshotPushed = false
+  }
+
+  // Duration presets in ms
+  const DURATION_FAST   = 250
+  const DURATION_NORMAL = 500
+  const DURATION_SLOW   = 1000
+
+  function durationLabel(ms: number): string {
+    if (ms === DURATION_FAST)   return 'Fast'
+    if (ms === DURATION_NORMAL) return 'Normal'
+    if (ms === DURATION_SLOW)   return 'Slow'
+    return 'Custom'
   }
 
   // Reactively compute the currently selected object from app state
@@ -86,7 +119,7 @@
   }
 </script>
 
-<div class="p-4 bg-gray-50 border-l border-gray-300 basis-64">
+<div class="p-4 overflow-y-auto flex-1">
   <h3 class="text-lg font-semibold mb-4">Properties</h3>
 
   {#if selectedObject}
@@ -160,6 +193,220 @@
         />
       </div>
       {/if}
+
+      <!-- Animations section -->
+      <div class="pt-3 border-t border-gray-200">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Animations</p>
+
+        <!-- Build In -->
+        <div class="mb-2">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Build In</label>
+          <select
+            class="block w-full rounded border-gray-300 text-xs py-1"
+            value={selectedObject.animations?.buildIn?.type ?? 'none'}
+            onchange={(e) => {
+              const val = (e.target as HTMLSelectElement).value
+              const cur = selectedObject.animations ?? {}
+              if (val === 'none') {
+                const { buildIn: _bi, ...rest } = cur
+                emitAnimationChange(rest)
+              } else {
+                const type = val as 'appear' | 'fade-in'
+                emitAnimationChange({ ...cur, buildIn: { type, duration: cur.buildIn?.duration ?? DURATION_NORMAL } })
+              }
+            }}
+            onblur={handleAnimationBlur}
+          >
+            <option value="none">None</option>
+            <option value="appear">Appear</option>
+            <option value="fade-in">Fade In</option>
+          </select>
+          {#if selectedObject.animations?.buildIn?.type === 'fade-in'}
+            <div class="mt-1 flex gap-1">
+              {#each [[DURATION_FAST,'Fast'],[DURATION_NORMAL,'Normal'],[DURATION_SLOW,'Slow']] as [ms, lbl]}
+                <button
+                  class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildIn.duration === ms ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
+                  onclick={() => {
+                    const cur = selectedObject.animations ?? {}
+                    emitAnimationChange({ ...cur, buildIn: { type: 'fade-in', duration: ms as number } })
+                  }}
+                >{lbl}</button>
+              {/each}
+              <input
+                type="number"
+                min="50"
+                max="5000"
+                value={selectedObject.animations.buildIn.duration}
+                oninput={(e) => {
+                  const ms = parseInt((e.target as HTMLInputElement).value)
+                  if (!isNaN(ms) && ms > 0) {
+                    const cur = selectedObject.animations ?? {}
+                    emitAnimationChange({ ...cur, buildIn: { type: 'fade-in', duration: ms } }, true)
+                  }
+                }}
+                onblur={handleAnimationBlur}
+                class="w-16 text-xs border border-gray-300 rounded px-1"
+                title="Duration (ms)"
+              />
+            </div>
+          {/if}
+        </div>
+
+        <!-- Actions (multiple) -->
+        <div class="mb-2">
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-medium text-gray-500">Actions</label>
+            <button
+              class="text-xs text-indigo-600 hover:text-indigo-700"
+              onclick={() => {
+                const cur = selectedObject.animations ?? {}
+                const newAction = {
+                  id: crypto.randomUUID(),
+                  type: 'move' as const,
+                  toX: selectedObject.x + 100,
+                  toY: selectedObject.y,
+                  duration: DURATION_NORMAL
+                }
+                emitAnimationChange({ ...cur, actions: [...(cur.actions ?? []), newAction] })
+              }}
+            >+ Add Move</button>
+          </div>
+          {#each selectedObject.animations?.actions ?? [] as action (action.id)}
+            <div class="mb-2 p-2 border border-gray-200 rounded bg-gray-50">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-medium text-blue-600">Move</span>
+                <button
+                  class="text-xs text-gray-300 hover:text-red-500"
+                  onclick={() => {
+                    const cur = selectedObject.animations ?? {}
+                    const remaining = (cur.actions ?? []).filter((a) => a.id !== action.id)
+                    const updated = { ...cur }
+                    if (remaining.length > 0) updated.actions = remaining
+                    else delete updated.actions
+                    emitAnimationChange(updated)
+                  }}
+                  aria-label="Remove action"
+                >×</button>
+              </div>
+              <div class="space-y-1">
+                <div class="flex gap-1 items-center">
+                  <label class="text-xs text-gray-400 w-8">To X</label>
+                  <input
+                    type="number"
+                    value={action.toX}
+                    oninput={(e) => {
+                      const v = parseFloat((e.target as HTMLInputElement).value)
+                      if (!isNaN(v)) {
+                        const cur = selectedObject.animations ?? {}
+                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, toX: v } : a) }, true)
+                      }
+                    }}
+                    onblur={handleAnimationBlur}
+                    class="flex-1 text-xs border border-gray-300 rounded px-1 py-0.5"
+                  />
+                </div>
+                <div class="flex gap-1 items-center">
+                  <label class="text-xs text-gray-400 w-8">To Y</label>
+                  <input
+                    type="number"
+                    value={action.toY}
+                    oninput={(e) => {
+                      const v = parseFloat((e.target as HTMLInputElement).value)
+                      if (!isNaN(v)) {
+                        const cur = selectedObject.animations ?? {}
+                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, toY: v } : a) }, true)
+                      }
+                    }}
+                    onblur={handleAnimationBlur}
+                    class="flex-1 text-xs border border-gray-300 rounded px-1 py-0.5"
+                  />
+                </div>
+                <div class="flex gap-1">
+                  {#each [[DURATION_FAST,'Fast'],[DURATION_NORMAL,'Normal'],[DURATION_SLOW,'Slow']] as [ms, lbl]}
+                    <button
+                      class="flex-1 py-0.5 text-xs rounded border {action.duration === ms ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
+                      onclick={() => {
+                        const cur = selectedObject.animations ?? {}
+                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, duration: ms as number } : a) })
+                      }}
+                    >{lbl}</button>
+                  {/each}
+                  <input
+                    type="number"
+                    min="50"
+                    max="5000"
+                    value={action.duration}
+                    oninput={(e) => {
+                      const ms = parseInt((e.target as HTMLInputElement).value)
+                      if (!isNaN(ms) && ms > 0) {
+                        const cur = selectedObject.animations ?? {}
+                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, duration: ms } : a) }, true)
+                      }
+                    }}
+                    onblur={handleAnimationBlur}
+                    class="w-16 text-xs border border-gray-300 rounded px-1"
+                    title="Duration (ms)"
+                  />
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <!-- Build Out -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Build Out</label>
+          <select
+            class="block w-full rounded border-gray-300 text-xs py-1"
+            value={selectedObject.animations?.buildOut?.type ?? 'none'}
+            onchange={(e) => {
+              const val = (e.target as HTMLSelectElement).value
+              const cur = selectedObject.animations ?? {}
+              if (val === 'none') {
+                const { buildOut: _bo, ...rest } = cur
+                emitAnimationChange(rest)
+              } else {
+                const type = val as 'disappear' | 'fade-out'
+                emitAnimationChange({ ...cur, buildOut: { type, duration: cur.buildOut?.duration ?? DURATION_NORMAL } })
+              }
+            }}
+            onblur={handleAnimationBlur}
+          >
+            <option value="none">None</option>
+            <option value="disappear">Disappear</option>
+            <option value="fade-out">Fade Out</option>
+          </select>
+          {#if selectedObject.animations?.buildOut?.type === 'fade-out'}
+            <div class="mt-1 flex gap-1">
+              {#each [[DURATION_FAST,'Fast'],[DURATION_NORMAL,'Normal'],[DURATION_SLOW,'Slow']] as [ms, lbl]}
+                <button
+                  class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildOut.duration === ms ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
+                  onclick={() => {
+                    const cur = selectedObject.animations ?? {}
+                    emitAnimationChange({ ...cur, buildOut: { type: 'fade-out', duration: ms as number } })
+                  }}
+                >{lbl}</button>
+              {/each}
+              <input
+                type="number"
+                min="50"
+                max="5000"
+                value={selectedObject.animations.buildOut.duration}
+                oninput={(e) => {
+                  const ms = parseInt((e.target as HTMLInputElement).value)
+                  if (!isNaN(ms) && ms > 0) {
+                    const cur = selectedObject.animations ?? {}
+                    emitAnimationChange({ ...cur, buildOut: { type: 'fade-out', duration: ms } }, true)
+                  }
+                }}
+                onblur={handleAnimationBlur}
+                class="w-16 text-xs border border-gray-300 rounded px-1"
+                title="Duration (ms)"
+              />
+            </div>
+          {/if}
+        </div>
+      </div>
     </div>
   {:else}
     <!-- Slide background controls when nothing is selected -->

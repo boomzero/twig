@@ -99,6 +99,7 @@
   // Drag-and-drop state
   let dragSourceId = $state<string | null>(null)
   let dragOverId = $state<string | null>(null)
+  let dragOverPosition = $state<'before' | 'after'>('before')
 
   function onDragStart(e: DragEvent, id: string): void {
     e.dataTransfer?.setData('text/plain', id)
@@ -108,6 +109,8 @@
   function onDragOver(e: DragEvent, id: string): void {
     e.preventDefault()
     dragOverId = id
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    dragOverPosition = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
   }
 
   function onDragLeave(e: DragEvent): void {
@@ -120,11 +123,13 @@
   }
 
   function onDrop(targetId: string): void {
+    const pos = dragOverPosition
     dragOverId = null
     if (!dragSourceId || dragSourceId === targetId) return
     const fromIdx = sortedElements.findIndex((e) => e.id === dragSourceId)
-    const toIdx = sortedElements.findIndex((e) => e.id === targetId)
+    let toIdx = sortedElements.findIndex((e) => e.id === targetId)
     if (fromIdx < 0 || toIdx < 0) return
+    if (pos === 'after') toIdx = Math.min(toIdx + 1, sortedElements.length - 1)
     reorderElements(fromIdx, toIdx)
     dragSourceId = null
   }
@@ -176,13 +181,10 @@
         {@const isDragSource = dragSourceId === el.id}
         {@const isDragTarget = dragOverId === el.id && dragSourceId !== el.id}
         <div
-          class="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+          class="relative flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
           class:bg-indigo-50={appState.selectedObjectId === el.id}
           class:border-indigo-300={appState.selectedObjectId === el.id}
           class:opacity-40={isDragSource}
-          class:ring-2={isDragTarget}
-          class:ring-indigo-400={isDragTarget}
-          class:ring-inset={isDragTarget}
           onclick={() => selectElement(el.id)}
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectElement(el.id) } }}
           draggable={true}
@@ -195,6 +197,12 @@
           tabindex="0"
           aria-selected={appState.selectedObjectId === el.id}
         >
+          {#if isDragTarget && dragOverPosition === 'before'}
+            <div class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+          {/if}
+          {#if isDragTarget && dragOverPosition === 'after'}
+            <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+          {/if}
           <!-- Type icon -->
           <span class="text-xs w-5 text-center text-gray-400 flex-shrink-0 font-mono">
             {getIcon(el)}

@@ -25,7 +25,8 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { TwigElement, SelectionState } from './lib/state.svelte'
-  import type { SlideBackground } from './lib/types'
+  import type { SlideBackground, ElementAnimations, AnimationStep } from './lib/types'
+  import { normalizeAnimationOrder } from './lib/animationUtils'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
@@ -42,6 +43,7 @@
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import StackPanel from './components/StackPanel.svelte'
+  import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import { PressedKeys } from 'runed'
 
   // ============================================================================
@@ -59,9 +61,10 @@
   let lastTextSelectionRange: { start: number; end: number } | null = null
   let suppressSelectionTracking = false
 
-  // Layers panel visibility and width
-  let showStackPanel = $state(false)
-  let stackPanelWidth = $state(240)
+  // Active side panel — only one can be open at a time
+  type SidePanel = 'properties' | 'layers' | 'animate'
+  let activeSidePanel = $state<SidePanel>('properties')
+  let stackPanelWidth = $state(256)
   // Default background applied to newly created slides in this presentation
   let defaultSlideBackground = $state<SlideBackground | undefined>(undefined)
   // Incremented each time regenerateAllThumbnails() is called; lets a superseded
@@ -181,7 +184,7 @@
   const imageAssets = new Map<string, string>()
 
   type ElementSnapshot = Omit<TwigElement, 'src'>
-  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined }
+  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined, animationOrder: AnimationStep[] }
   // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
   type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
   type SlideHistory = { undo: HistoryEntry[], redo: HistoryEntry[] }
@@ -358,14 +361,16 @@
       elements: appState.currentSlide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
       background: appState.currentSlide.background
         ? JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground
-        : undefined
+        : undefined,
+      animationOrder: JSON.parse(JSON.stringify(appState.currentSlide.animationOrder))
     }
   }
 
   function pushCheckpointForSlide(slide: Slide): void {
     const snapshot: SlideSnapshot = {
       elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
-      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined
+      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined,
+      animationOrder: JSON.parse(JSON.stringify(slide.animationOrder ?? []))
     }
     const serialized = JSON.stringify(snapshot)
     const h = getSlideHistory(slide.id)
@@ -404,6 +409,10 @@
     appState.currentSlide.background = snapshot.background
       ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
       : undefined
+    appState.currentSlide.animationOrder = normalizeAnimationOrder({
+      ...appState.currentSlide,
+      animationOrder: JSON.parse(JSON.stringify(snapshot.animationOrder ?? []))
+    })
     appState.selectedObjectId = null
     fabCanvas?.discardActiveObject()
     // The $effect watching appState.currentSlide triggers renderCanvasFromState() automatically
@@ -1295,6 +1304,67 @@
       fabCanvas?.renderAll()
     }
     scheduleSave()
+  }
+
+  // ============================================================================
+  // Animation Handlers
+  // ============================================================================
+
+  function handleAnimationChange(elementId: string, animations: ElementAnimations): void {
+    const el = appState.currentSlide?.elements.find((e) => e.id === elementId)
+    if (!el || !appState.currentSlide) return
+
+    const prev = el.animations ?? {}
+    el.animations = Object.keys(animations).length > 0 ? animations : undefined
+
+    // Append steps for newly-added buildIn / buildOut
+    const order = [...appState.currentSlide.animationOrder]
+    for (const cat of ['buildIn', 'buildOut'] as const) {
+      const wasSet = !!(prev as ElementAnimations)[cat]
+      const isSet  = !!(animations as ElementAnimations)[cat]
+      if (!wasSet && isSet) {
+        order.push({ elementId, category: cat })
+      }
+    }
+
+    // Append steps for newly-added actions (detect by id)
+    const prevActionIds = new Set((prev.actions ?? []).map((a) => a.id))
+    for (const action of (animations.actions ?? [])) {
+      if (!prevActionIds.has(action.id)) {
+        order.push({ elementId, category: 'action', actionId: action.id })
+      }
+    }
+
+    // Prune steps for removed categories
+    appState.currentSlide.animationOrder = normalizeAnimationOrder({
+      ...appState.currentSlide, animationOrder: order
+    })
+
+    scheduleSave()
+    scheduleThumbnailCapture()
+  }
+
+  function handleRemoveAnimationStep(step: AnimationStep): void {
+    if (!appState.currentSlide) return
+    pushCheckpoint()
+
+    const el = appState.currentSlide.elements.find((e) => e.id === step.elementId)
+    if (el?.animations) {
+      const updated = { ...el.animations }
+      if (step.category === 'action' && step.actionId) {
+        const remaining = (updated.actions ?? []).filter((a) => a.id !== step.actionId)
+        if (remaining.length > 0) updated.actions = remaining
+        else delete updated.actions
+      } else {
+        delete updated[step.category as 'buildIn' | 'buildOut']
+      }
+      el.animations = Object.keys(updated).length > 0 ? updated : undefined
+    }
+
+    appState.currentSlide.animationOrder = normalizeAnimationOrder(appState.currentSlide)
+
+    scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   // ============================================================================
@@ -2679,6 +2749,8 @@
       appState.currentSlide.elements = appState.currentSlide.elements.filter(
         (el) => !idsToDelete.includes(el.id)
       )
+      // Prune animation steps for deleted elements
+      appState.currentSlide.animationOrder = normalizeAnimationOrder(appState.currentSlide)
       // Clear the canvas selection
       fabCanvas.discardActiveObject()
       scheduleSave()
@@ -2888,7 +2960,8 @@
         // Clamp so repeated pastes don't walk elements off canvas
         const x = Math.min(el.x + offset, CANVAS_W - 1)
         const y = Math.min(el.y + offset, CANVAS_H - 1)
-        return { ...el, id: newId, x, y, zIndex: baseZ + i }
+        // Pasted elements start with no animation config (new IDs, no stale steps)
+        return { ...el, id: newId, x, y, zIndex: baseZ + i, animations: undefined }
       })
 
       pushCheckpoint()
@@ -3260,34 +3333,47 @@
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
         onclick={addRectangle}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
       >
         Add Shape
       </button>
       <button
         onclick={addText}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
       >
         Add Text
       </button>
       <button
         onclick={addImage}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
       >
         Add Image
       </button>
       <button
-        onclick={() => (showStackPanel = !showStackPanel)}
-        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        class:bg-indigo-100={showStackPanel}
-        class:border-indigo-400={showStackPanel}
-        class:text-indigo-700={showStackPanel}
-        class:bg-white={!showStackPanel}
-        class:border-gray-300={!showStackPanel}
-        class:text-gray-700={!showStackPanel}
+        onclick={() => activeSidePanel = activeSidePanel === 'layers' ? 'properties' : 'layers'}
+        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none"
+        class:bg-indigo-100={activeSidePanel === 'layers'}
+        class:border-indigo-400={activeSidePanel === 'layers'}
+        class:text-indigo-700={activeSidePanel === 'layers'}
+        class:bg-white={activeSidePanel !== 'layers'}
+        class:border-gray-300={activeSidePanel !== 'layers'}
+        class:text-gray-700={activeSidePanel !== 'layers'}
         title="Toggle Layers panel"
       >
         Layers
+      </button>
+      <button
+        onclick={() => activeSidePanel = activeSidePanel === 'animate' ? 'properties' : 'animate'}
+        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none"
+        class:bg-indigo-100={activeSidePanel === 'animate'}
+        class:border-indigo-400={activeSidePanel === 'animate'}
+        class:text-indigo-700={activeSidePanel === 'animate'}
+        class:bg-white={activeSidePanel !== 'animate'}
+        class:border-gray-300={activeSidePanel !== 'animate'}
+        class:text-gray-700={activeSidePanel !== 'animate'}
+        title="Toggle Animations panel"
+      >
+        Animate
       </button>
       {#if showRichTextControls}
         <div class="h-6 w-px bg-gray-300 mx-2"></div>
@@ -3457,7 +3543,7 @@
           </div>
         </div>
       </div>
-      {#if showStackPanel}
+      {#if activeSidePanel === 'layers'}
         <div
           class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
           style="width: {stackPanelWidth}px;"
@@ -3467,7 +3553,7 @@
             class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
             onmousedown={startStackPanelResize}
             role="separator"
-            aria-label="Resize layers panel"
+            aria-label="Resize panel"
           ></div>
           <!--
             onLayerChange is only called by the drag-to-reorder path in StackPanel.
@@ -3495,9 +3581,36 @@
           />
         </div>
       {/if}
+      {#if activeSidePanel === 'animate'}
+        <div
+          class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
+          style="width: {stackPanelWidth}px;"
+        >
+          <div
+            class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
+            onmousedown={startStackPanelResize}
+            role="separator"
+            aria-label="Resize panel"
+          ></div>
+          <AnimationOrderPanel
+            onBeforeChange={pushCheckpoint}
+            onAfterChange={() => { scheduleSave(); scheduleThumbnailCapture() }}
+            onRemoveStep={handleRemoveAnimationStep}
+          />
+        </div>
+      {/if}
+      {#if activeSidePanel === 'properties'}
+      <div class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0" style="width: {stackPanelWidth}px;">
+        <div
+          class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
+          onmousedown={startStackPanelResize}
+          role="separator"
+          aria-label="Resize panel"
+        ></div>
       <PropertiesPanel
         onPropertyChange={handlePropertyChange}
         onBeforePropertyChange={pushCheckpoint}
+        onAnimationChange={handleAnimationChange}
         onSlideBackgroundChange={async (bg) => {
           if (appState.currentSlide) {
             if (!bgCheckpointPushed) {
@@ -3552,6 +3665,8 @@
           regenerateAllThumbnails(plain ?? undefined).catch(console.error)
         }}
       />
+      </div>
+      {/if}
     </div>
   </div>
 {:else}

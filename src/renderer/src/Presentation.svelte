@@ -8,7 +8,7 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient } from 'fabric'
+  import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient, util } from 'fabric'
   import type { TwigElement, Slide, SlideBackground } from './lib/types'
   import { normalizeFontBytes } from './lib/fontUtils'
 
@@ -47,6 +47,10 @@
   let fetchGeneration = 0
   // Guards stale async image loads within renderSlide (incremented on each render).
   let renderGeneration = 0
+  // Animation state
+  const fabObjById = new Map<string, FabricObject>()  // elementId → fabric object
+  let animProgress = 0    // steps consumed on current slide; reset on every slide entry
+  let animating = false   // guard against concurrent animations
   // Tracks which fonts have been injected in this window so we don't repeat work.
   let loadedFontKeys = new Set<string>()
   let fontsLoadedForPath: string | null = null
@@ -189,6 +193,9 @@
     const generation = ++renderGeneration
 
     presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
+    fabObjById.clear()
+    animProgress = 0
+    animating = false
     lastRenderedSlideId = slide.id
     applyPresentationBackground(slide.background, generation).catch(console.error)
 
@@ -227,7 +234,10 @@
         })
       }
 
-      if (fabObj) presentationCanvas!.add(fabObj)
+      if (fabObj) {
+        presentationCanvas!.add(fabObj)
+        fabObjById.set(element.id, fabObj)
+      }
     })
 
     // Load images asynchronously. Guard against stale callbacks by comparing
@@ -248,12 +258,126 @@
             evented: false
           })
           presentationCanvas.add(img)
+          fabObjById.set(element.id, img)
+          applyInitialAnimationState(slide)
           presentationCanvas.renderAll()
         })
         .catch((err) => console.error('Failed to load image in presentation:', err))
     })
 
     presentationCanvas.renderAll()
+    applyInitialAnimationState(slide)
+  }
+
+  function applyInitialAnimationState(slide: Slide): void {
+    if (!presentationCanvas) return
+    const order = slide.animationOrder
+    const triggered = new Set(order.slice(0, animProgress).map((s) => `${s.elementId}::${s.category}`))
+
+    for (const el of slide.elements) {
+      const fabObj = fabObjById.get(el.id)
+      if (!fabObj) continue
+      const anim = el.animations ?? {}
+      const hasBuildInStep = order.some((s) => s.elementId === el.id && s.category === 'buildIn')
+
+      if (anim.buildIn && hasBuildInStep) {
+        const inDone  = triggered.has(`${el.id}::buildIn`)
+        const outDone = triggered.has(`${el.id}::buildOut`)
+        fabObj.set({ opacity: (inDone && !outDone) ? 1 : 0 })
+      }
+
+      // Apply position of the last completed action for this element
+      let lastX: number | undefined
+      let lastY: number | undefined
+      for (const step of order.slice(0, animProgress)) {
+        if (step.elementId === el.id && step.category === 'action' && step.actionId) {
+          const found = anim.actions?.find((a) => a.id === step.actionId)
+          if (found?.type === 'move') { lastX = found.toX; lastY = found.toY }
+        }
+      }
+      if (lastX !== undefined && lastY !== undefined) {
+        fabObj.set({ left: lastX, top: lastY })
+        fabObj.setCoords()
+      }
+    }
+    presentationCanvas.renderAll()
+  }
+
+  async function runAnimation(fabObj: FabricObject, el: TwigElement, category: string, actionId?: string): Promise<void> {
+    const anim = el.animations!
+    const canvas = presentationCanvas!
+    return new Promise<void>((resolve) => {
+      if (category === 'buildIn' && anim.buildIn?.type === 'appear') {
+        // Instant appear
+        fabObj.set({ opacity: 1 })
+        canvas.renderAll()
+        resolve()
+      } else if (category === 'buildIn' && anim.buildIn?.type === 'fade-in') {
+        util.animate({
+          startValue: 0, endValue: 1, duration: anim.buildIn.duration,
+          easing: util.ease.easeInQuad,
+          onChange: (v: number) => { fabObj.set({ opacity: v }); canvas.renderAll() },
+          onComplete: resolve
+        })
+      } else if (category === 'buildOut' && anim.buildOut?.type === 'disappear') {
+        // Instant disappear
+        fabObj.set({ opacity: 0 })
+        canvas.renderAll()
+        resolve()
+      } else if (category === 'buildOut' && anim.buildOut?.type === 'fade-out') {
+        util.animate({
+          startValue: fabObj.opacity as number, endValue: 0, duration: anim.buildOut.duration,
+          easing: util.ease.easeOutQuad,
+          onChange: (v: number) => { fabObj.set({ opacity: v }); canvas.renderAll() },
+          onComplete: resolve
+        })
+      } else if (category === 'action') {
+        const action = anim.actions?.find((a) => a.id === actionId)
+        if (action?.type === 'move') {
+          const { toX, toY, duration } = action
+          const fromX = fabObj.left as number
+          const fromY = fabObj.top as number
+          util.animate({
+            startValue: 0, endValue: 1, duration,
+            easing: util.ease.easeInOutCubic,
+            onChange: (v: number) => {
+              fabObj.set({ left: fromX + (toX - fromX) * v, top: fromY + (toY - fromY) * v })
+              canvas.renderAll()
+            },
+            onComplete: () => { fabObj.setCoords(); resolve() }
+          })
+        } else {
+          resolve()
+        }
+      } else {
+        resolve()
+      }
+    })
+  }
+
+  async function executeNextAnimation(slide: Slide): Promise<void> {
+    if (animating) return
+    const order = slide.animationOrder
+
+    for (; animProgress < order.length; animProgress++) {
+      const step = order[animProgress]
+      const el = slide.elements.find((e) => e.id === step.elementId)
+      const fabObj = fabObjById.get(step.elementId)
+      if (el && fabObj) {
+        animating = true
+        try {
+          await runAnimation(fabObj, el, step.category, step.actionId)
+          animProgress++
+        } finally {
+          animating = false
+        }
+        return
+      }
+      // Skip invalid step, continue loop
+    }
+
+    // All steps consumed — go to next slide
+    window.api.presentation.navigate('next')
   }
 
   // ============================================================================
@@ -312,12 +436,23 @@
       case ' ':
       case 'PageDown':
         event.preventDefault()
-        window.api.presentation.navigate('next')
+        if (animating || !loadedSlide) return
+        if (animProgress < loadedSlide.animationOrder.length) {
+          executeNextAnimation(loadedSlide).catch(console.error)
+        } else {
+          window.api.presentation.navigate('next')
+        }
         break
       case 'ArrowLeft':
       case 'PageUp':
         event.preventDefault()
-        window.api.presentation.navigate('prev')
+        if (animating || !loadedSlide) return
+        if (animProgress > 0) {
+          animProgress = 0
+          applyInitialAnimationState(loadedSlide)
+        } else {
+          window.api.presentation.navigate('prev')
+        }
         break
     }
   }

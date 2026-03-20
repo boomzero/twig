@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3'
 import { v4 as uuid_v4 } from 'uuid'
-import type { SlideBackground } from '../renderer/src/lib/types'
+import type { SlideBackground, AnimationStep, ElementAnimations } from '../renderer/src/lib/types'
 
 export type { SlideBackground }
 
@@ -58,6 +58,9 @@ export interface TwigElement {
 
   /** Z-index for layer ordering (higher = in front) */
   zIndex: number
+
+  /** Per-element animation configuration */
+  animations?: ElementAnimations
 }
 
 /**
@@ -72,6 +75,9 @@ export interface Slide {
 
   /** Optional background — null/undefined means white */
   background?: SlideBackground
+
+  /** Ordered animation steps for this slide */
+  animationOrder: AnimationStep[]
 }
 
 /**
@@ -221,7 +227,16 @@ export function initializeDatabase(db: Database): void {
       }
     }
 
-    // Migrations: add thumbnail and background columns to slides table.
+    if (!columnNames.includes('animations')) {
+      try {
+        console.log('Adding animations column to elements table')
+        db.exec('ALTER TABLE elements ADD COLUMN animations TEXT')
+      } catch (error) {
+        console.error('Migration failed: animations column', error)
+      }
+    }
+
+    // Migrations: add thumbnail, background, and animation_order columns to slides table.
     // Kept inside the schemaReadOk guard so a locked/corrupted DB prevents
     // all migrations consistently rather than allowing them to run alone.
     // Read PRAGMA once and check all column names against it.
@@ -245,6 +260,15 @@ export function initializeDatabase(db: Database): void {
           db.exec('ALTER TABLE slides ADD COLUMN background TEXT')
         } catch (error) {
           console.error('Migration failed: background column', error)
+        }
+      }
+
+      if (!slideColumnNames.includes('animation_order')) {
+        try {
+          console.log('Adding animation_order column to slides table')
+          db.exec('ALTER TABLE slides ADD COLUMN animation_order TEXT')
+        } catch (error) {
+          console.error('Migration failed: animation_order column', error)
         }
       }
     } catch (error) {
@@ -290,6 +314,7 @@ interface ElementRow {
   src?: string | null // Image data as base64 data URI
   filename?: string | null // Original image filename
   z_index: number
+  animations?: string | null // Stored as JSON string in database
 }
 
 /**
@@ -301,8 +326,8 @@ interface ElementRow {
  */
 export function getSlide(db: Database, slideId: string): Slide | null {
   // First, check if the slide exists
-  const slideRow = db.prepare('SELECT * FROM slides WHERE id = ?').get(slideId) as
-    | { id: string; background?: string | null }
+  const slideRow = db.prepare('SELECT id, slide_order, background, animation_order FROM slides WHERE id = ?').get(slideId) as
+    | { id: string; background?: string | null; animation_order?: string | null }
     | undefined
   if (!slideRow) {
     return null
@@ -310,39 +335,46 @@ export function getSlide(db: Database, slideId: string): Slide | null {
 
   // Load all elements belonging to this slide, ordered by z_index
   const elementStmt = db.prepare(
-    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
   )
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
+  const elements: TwigElement[] = elementRows.map((el) => {
+    let parsedAnimations: ElementAnimations | undefined
+    try {
+      parsedAnimations = el.animations ? JSON.parse(el.animations) : undefined
+    } catch { parsedAnimations = undefined }
 
-  const elements: TwigElement[] = elementRows.map((el) => ({
-    type: el.type as 'rect' | 'text' | 'image',
-    id: el.id,
-    x: el.x,
-    y: el.y,
-    width: el.width,
-    height: el.height,
-    angle: el.angle,
-    fill: el.fill,
-    text: el.text,
-    fontSize: el.fontSize,
-    fontFamily: el.fontFamily,
-    // Parse the styles JSON string back into an object with error handling
-    styles: el.styles
-      ? (() => {
-          try {
-            return JSON.parse(el.styles)
-          } catch (error) {
-            console.error(`Failed to parse styles for element ${el.id}:`, error)
-            return undefined
-          }
-        })()
-      : undefined,
-    // Image-specific fields
-    src: el.src || undefined,
-    filename: el.filename || undefined,
-    zIndex: el.z_index ?? 0
-  }))
+    return {
+      type: el.type as 'rect' | 'text' | 'image',
+      id: el.id,
+      x: el.x,
+      y: el.y,
+      width: el.width,
+      height: el.height,
+      angle: el.angle,
+      fill: el.fill,
+      text: el.text,
+      fontSize: el.fontSize,
+      fontFamily: el.fontFamily,
+      // Parse the styles JSON string back into an object with error handling
+      styles: el.styles
+        ? (() => {
+            try {
+              return JSON.parse(el.styles)
+            } catch (error) {
+              console.error(`Failed to parse styles for element ${el.id}:`, error)
+              return undefined
+            }
+          })()
+        : undefined,
+      // Image-specific fields
+      src: el.src || undefined,
+      filename: el.filename || undefined,
+      zIndex: el.z_index ?? 0,
+      animations: parsedAnimations
+    }
+  })
 
   let background: SlideBackground | undefined
   if (slideRow.background) {
@@ -353,7 +385,12 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     }
   }
 
-  return { id: slideRow.id, elements, background }
+  let animationOrder: AnimationStep[]
+  try {
+    animationOrder = slideRow.animation_order ? JSON.parse(slideRow.animation_order) : []
+  } catch { animationOrder = [] }
+
+  return { id: slideRow.id, elements, background, animationOrder }
 }
 
 // ============================================================================
@@ -425,8 +462,8 @@ function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string
  */
 function prepareElementUpsert(db: Database) {
   return db.prepare(`
-    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       slide_id = excluded.slide_id,
       type = excluded.type,
@@ -441,7 +478,8 @@ function prepareElementUpsert(db: Database) {
       fontFamily = excluded.fontFamily,
       styles = excluded.styles,
       filename = excluded.filename,
-      z_index = excluded.z_index
+      z_index = excluded.z_index,
+      animations = excluded.animations
   `)
 }
 
@@ -476,15 +514,18 @@ export function saveSlide(db: Database, slide: Slide): void {
         max: number | null
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
-      db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
-        s.id, newOrder, s.background ? JSON.stringify(s.background) : null
+      db.prepare('INSERT INTO slides (id, slide_order, background, animation_order) VALUES (?, ?, ?, ?)').run(
+        s.id, newOrder, s.background ? JSON.stringify(s.background) : null,
+        JSON.stringify(s.animationOrder ?? [])
       )
     }
 
-    // Always sync background (handles both new and existing slides)
+    // Always sync background and animation_order (handles both new and existing slides)
     if (slideInfo) {
-      db.prepare('UPDATE slides SET background = ? WHERE id = ?').run(
-        s.background ? JSON.stringify(s.background) : null, s.id
+      db.prepare('UPDATE slides SET background = ?, animation_order = ? WHERE id = ?').run(
+        s.background ? JSON.stringify(s.background) : null,
+        JSON.stringify(s.animationOrder ?? []),
+        s.id
       )
     }
 
@@ -497,6 +538,13 @@ export function saveSlide(db: Database, slide: Slide): void {
           console.error(`Failed to serialize styles for element ${el.id}:`, error)
           stylesJson = null
         }
+      }
+
+      let animationsJson: string | null = null
+      if (el.animations) {
+        try {
+          animationsJson = JSON.stringify(el.animations)
+        } catch { animationsJson = null }
       }
 
       elementUpsert.run(
@@ -515,7 +563,8 @@ export function saveSlide(db: Database, slide: Slide): void {
         stylesJson,
         el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
         el.filename ?? null,
-        el.zIndex
+        el.zIndex,
+        animationsJson
       )
     })
 
@@ -542,7 +591,8 @@ export function saveSlide(db: Database, slide: Slide): void {
 export function createSlide(db: Database): Slide {
   const newSlide: Slide = {
     id: uuid_v4(),
-    elements: []
+    elements: [],
+    animationOrder: []
   }
 
   saveSlide(db, newSlide)
@@ -585,13 +635,15 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         | undefined
 
       if (slideInfo) {
-        db.prepare('UPDATE slides SET slide_order = ?, background = ? WHERE id = ?').run(
-          index, slide.background ? JSON.stringify(slide.background) : null, slide.id
+        db.prepare('UPDATE slides SET slide_order = ?, background = ?, animation_order = ? WHERE id = ?').run(
+          index, slide.background ? JSON.stringify(slide.background) : null,
+          JSON.stringify(slide.animationOrder ?? []), slide.id
         )
       } else {
         hasNewSlides = true
-        db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)').run(
-          slide.id, index, slide.background ? JSON.stringify(slide.background) : null
+        db.prepare('INSERT INTO slides (id, slide_order, background, animation_order) VALUES (?, ?, ?, ?)').run(
+          slide.id, index, slide.background ? JSON.stringify(slide.background) : null,
+          JSON.stringify(slide.animationOrder ?? [])
         )
       }
 
@@ -604,6 +656,13 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
             console.error(`Failed to serialize styles for element ${el.id}:`, error)
             stylesJson = null
           }
+        }
+
+        let animationsJson: string | null = null
+        if (el.animations) {
+          try {
+            animationsJson = JSON.stringify(el.animations)
+          } catch { animationsJson = null }
         }
 
         elementUpsert.run(
@@ -622,7 +681,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           stylesJson,
           el.src ?? null,
           el.filename ?? null,
-          el.zIndex
+          el.zIndex,
+          animationsJson
         )
       })
 

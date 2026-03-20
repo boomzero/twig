@@ -55,6 +55,26 @@ export interface TwigElement {
 
   /** Z-index for layer ordering (higher = in front) */
   zIndex: number
+
+  /** Per-element animation configuration */
+  animations?: ElementAnimations
+}
+
+export interface BuildInAnimation  { type: 'appear' | 'fade-in';       duration: number }
+export interface BuildOutAnimation { type: 'disappear' | 'fade-out'; duration: number }
+export interface ActionAnimation   { id: string; type: 'move'; toX: number; toY: number; duration: number }
+export interface ElementAnimations {
+  buildIn?:  BuildInAnimation
+  actions?:  ActionAnimation[]
+  buildOut?: BuildOutAnimation
+}
+
+/** One entry in a slide's ordered animation sequence */
+export interface AnimationStep {
+  elementId: string
+  category: 'buildIn' | 'action' | 'buildOut'
+  /** For action steps: which ActionAnimation (by id) to run */
+  actionId?: string
 }
 
 /**
@@ -77,4 +97,7 @@ export interface Slide {
 
   /** Optional background — null/undefined means white */
   background?: SlideBackground
+
+  /** Ordered list of animation steps for this slide */
+  animationOrder: AnimationStep[]
 }
