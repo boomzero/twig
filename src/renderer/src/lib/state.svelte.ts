@@ -11,11 +11,11 @@
  */
 
 import { getFlushSave } from './saveCallbacks'
-import type { DeckElement, Slide } from './types'
+import type { TwigElement, Slide } from './types'
 
 // Re-export so existing importers (App.svelte, Debug.svelte, etc.) don't need
 // to change their import paths.
-export type { DeckElement, Slide }
+export type { TwigElement, Slide }
 
 // ============================================================================
 // Type Definitions

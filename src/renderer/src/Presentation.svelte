@@ -9,7 +9,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient } from 'fabric'
-  import type { DeckElement, Slide, SlideBackground } from './lib/types'
+  import type { TwigElement, Slide, SlideBackground } from './lib/types'
   import { normalizeFontBytes } from './lib/fontUtils'
 
   export interface PresentationState {
@@ -194,7 +194,7 @@
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
 
-    sorted.forEach((element: DeckElement) => {
+    sorted.forEach((element: TwigElement) => {
       if (element.type === 'image') return
       let fabObj: FabricObject | undefined
 
@@ -232,7 +232,7 @@
 
     // Load images asynchronously. Guard against stale callbacks by comparing
     // the generation counter captured above with the current value.
-    sorted.forEach((element: DeckElement) => {
+    sorted.forEach((element: TwigElement) => {
       if (element.type !== 'image' || !element.src) return
       FabricImage.fromURL(element.src)
         .then((img) => {

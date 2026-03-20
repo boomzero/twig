@@ -12,7 +12,7 @@ export type { SlideBackground }
  * Represents a single element (shape, text, or image) on a slide.
  * Elements can be rectangles, text objects, or images with various styling properties.
  */
-export interface DeckElement {
+export interface TwigElement {
   /** Type of element - rectangle shape, text, or image */
   type: 'rect' | 'text' | 'image'
 
@@ -68,7 +68,7 @@ export interface Slide {
   id: string
 
   /** Array of elements (shapes, text) on this slide */
-  elements: DeckElement[]
+  elements: TwigElement[]
 
   /** Optional background — null/undefined means white */
   background?: SlideBackground
@@ -315,7 +315,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   const elementRows = elementStmt.all(slideId) as ElementRow[]
 
 
-  const elements: DeckElement[] = elementRows.map((el) => ({
+  const elements: TwigElement[] = elementRows.map((el) => ({
     type: el.type as 'rect' | 'text' | 'image',
     id: el.id,
     x: el.x,

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-twig is a presentation editor built with Electron, Svelte 5, and fabric.js. It allows users to create slide decks with text and shapes, which are stored in SQLite database files (.tb format).
+twig is a presentation editor built with Electron, Svelte 5, and fabric.js. It allows users to create slides with text and shapes, which are stored in SQLite database files (.tb format).
 
 ## Tech Stack
 
@@ -132,7 +132,7 @@ This project uses Svelte 5's runes syntax. See `svelte-docs-for-llms.md` for ful
 Canvas objects are extended with an `id` property to link them back to state:
 
 ```typescript
-type DeckFabricObject = FabricObject & { id?: string }
+type TwigFabricObject = FabricObject & { id?: string }
 ```
 
 This ID is crucial for synchronizing Canvas modifications back to the state.

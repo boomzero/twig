@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte'
-  import type { DeckElement } from './lib/state.svelte'
+  import type { TwigElement } from './lib/state.svelte'
 
   interface AppState {
     currentFilePath: string | null
@@ -20,7 +20,7 @@
     isLoadingSlide: boolean
     currentSlide: {
       id: string
-      elements: DeckElement[]
+      elements: TwigElement[]
     } | null
   }
 

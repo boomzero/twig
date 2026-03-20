@@ -9,7 +9,7 @@
 /**
  * Represents a single element (shape, text, or image) on a slide.
  */
-export interface DeckElement {
+export interface TwigElement {
   /** Type of element - rectangle shape, text, or image */
   type: 'rect' | 'text' | 'image'
 
@@ -73,7 +73,7 @@ export interface Slide {
   id: string
 
   /** Array of elements (shapes, text, images) on this slide */
-  elements: DeckElement[]
+  elements: TwigElement[]
 
   /** Optional background — null/undefined means white */
   background?: SlideBackground

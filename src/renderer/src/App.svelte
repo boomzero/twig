@@ -24,7 +24,7 @@
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
-  import type { DeckElement, SelectionState } from './lib/state.svelte'
+  import type { TwigElement, SelectionState } from './lib/state.svelte'
   import type { SlideBackground } from './lib/types'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
@@ -180,7 +180,7 @@
   // Snapshots omit src blobs; this map is used to re-attach them on restore.
   const imageAssets = new Map<string, string>()
 
-  type ElementSnapshot = Omit<DeckElement, 'src'>
+  type ElementSnapshot = Omit<TwigElement, 'src'>
   type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined }
   // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
   type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
@@ -397,9 +397,9 @@
     if (!appState.currentSlide) return
     appState.currentSlide.elements = snapshot.elements.map((el) => {
       if (el.type === 'image') {
-        return { ...el, src: imageAssets.get(el.id) } as DeckElement
+        return { ...el, src: imageAssets.get(el.id) } as TwigElement
       }
-      return { ...el } as DeckElement
+      return { ...el } as TwigElement
     })
     appState.currentSlide.background = snapshot.background
       ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
@@ -601,7 +601,7 @@
     // If a text object is actively being edited, sync its current content to
     // state before saving (normally this only happens on deselection via object:modified)
     if (activeTextObject?.id) {
-      updateStateFromObject(activeTextObject as DeckFabricObject)
+      updateStateFromObject(activeTextObject as TwigFabricObject)
     }
 
     await performSave(true) // Re-throw errors for caller to handle
@@ -611,7 +611,7 @@
    * Extended fabric.js object type that includes our custom 'id' property.
    * The id links canvas objects back to their corresponding state elements.
    */
-  type DeckFabricObject = FabricObject & { id?: string }
+  type TwigFabricObject = FabricObject & { id?: string }
 
   // ============================================================================
   // Lifecycle and Reactive Effects
@@ -851,8 +851,8 @@
         // Handle both single selection and multi-selection
         const selectedObjectIds =
           activeObject.type === 'activeselection'
-            ? (activeObject as ActiveSelection).getObjects().map((o) => (o as DeckFabricObject).id!)
-            : [(activeObject as DeckFabricObject).id!]
+            ? (activeObject as ActiveSelection).getObjects().map((o) => (o as TwigFabricObject).id!)
+            : [(activeObject as TwigFabricObject).id!]
 
         selectionStateToRestore = {
           selectedObjectIds: selectedObjectIds
@@ -886,7 +886,7 @@
       const objectsToSelect = fabCanvas
         .getObjects()
         .filter((o) =>
-          selectionStateToRestore!.selectedObjectIds.includes((o as DeckFabricObject).id!)
+          selectionStateToRestore!.selectedObjectIds.includes((o as TwigFabricObject).id!)
         )
 
       if (objectsToSelect.length > 0) {
@@ -1094,7 +1094,7 @@
 
     const applyImageElement = (
       htmlImg: HTMLImageElement,
-      element: DeckElement,
+      element: TwigElement,
       imageZIndex: number
     ) => {
       if (!fabCanvas || renderGeneration !== generation) return
@@ -1109,7 +1109,7 @@
         scaleY,
         id: element.id
       })
-      const insertIndex = (fabCanvas.getObjects() as DeckFabricObject[]).filter(
+      const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
       ).length
       fabCanvas.insertAt(insertIndex, img)
@@ -1145,7 +1145,7 @@
             })
 
             // Count objects already on the canvas whose zIndex is lower than ours
-            const insertIndex = (fabCanvas.getObjects() as DeckFabricObject[]).filter(
+            const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
               (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
             ).length
 
@@ -1185,7 +1185,7 @@
     return Promise.allSettled(imageLoads).then(() => {
       if (!fabCanvas || renderGeneration !== generation) return
       if (imageLoads.length > 1) {
-        const sorted = (fabCanvas.getObjects() as DeckFabricObject[])
+        const sorted = (fabCanvas.getObjects() as TwigFabricObject[])
           .slice()
           .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
         sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
@@ -1201,7 +1201,7 @@
     const ids = new Set(pendingSelectionIds)
     pendingSelectionIds = []
     const targets = fabCanvas.getObjects().filter(
-      (o) => ids.has((o as DeckFabricObject).id ?? '')
+      (o) => ids.has((o as TwigFabricObject).id ?? '')
     )
     if (targets.length === 1) {
       fabCanvas.setActiveObject(targets[0])
@@ -1215,7 +1215,7 @@
    * Handles the 'object:modified' event from fabric.js.
    * Syncs changes from the canvas back to the application state.
    */
-  function handleObjectModified(event: { target?: DeckFabricObject | ActiveSelection }): void {
+  function handleObjectModified(event: { target?: TwigFabricObject | ActiveSelection }): void {
     if (!appState.currentSlide) return
     const target = event.target
     if (!target) return
@@ -1227,10 +1227,10 @@
     if (target.type === 'activeselection') {
       const selection = target as ActiveSelection
       selection.getObjects().forEach((obj) => {
-        updateStateFromObject(obj as DeckFabricObject)
+        updateStateFromObject(obj as TwigFabricObject)
       })
     } else {
-      updateStateFromObject(target as DeckFabricObject)
+      updateStateFromObject(target as TwigFabricObject)
     }
 
     // Trigger auto-save directly — the $effect doesn't subscribe to deep element
@@ -1248,7 +1248,7 @@
    * Uses fabric.js's qrDecompose to extract position, rotation, and scale
    * from the object's transform matrix.
    */
-  function updateStateFromObject(obj: DeckFabricObject): void {
+  function updateStateFromObject(obj: TwigFabricObject): void {
     if (!obj.id || typeof obj.width !== 'number' || !appState.currentSlide) return
 
     const elementInState = appState.currentSlide.elements.find((el) => el.id === obj.id)
@@ -1285,7 +1285,7 @@
    */
   function handlePropertyChange(): void {
     const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
-    const obj = fabCanvas?.getObjects().find((o) => (o as DeckFabricObject).id === appState.selectedObjectId)
+    const obj = fabCanvas?.getObjects().find((o) => (o as TwigFabricObject).id === appState.selectedObjectId)
     if (el && obj) {
       // State stores effective (scaled) dimensions: width = obj.width * scaleX.
       // Reset scale to 1 and set the raw dimensions so the visual size matches
@@ -1305,7 +1305,7 @@
    * Handles selection creation and update events from fabric.js.
    * Updates app state and manages rich text editor visibility.
    */
-  function handleSelection(event: { selected?: DeckFabricObject[] }): void {
+  function handleSelection(event: { selected?: TwigFabricObject[] }): void {
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
     } else {
@@ -1314,7 +1314,7 @@
 
     // Sync previous text object state before switching - object:modified doesn't always fire
     if (activeTextObject) {
-      updateStateFromObject(activeTextObject as DeckFabricObject)
+      updateStateFromObject(activeTextObject as TwigFabricObject)
       // Explicit call: $effect doesn't subscribe to deep element property changes
       scheduleSave()
     }
@@ -1357,7 +1357,7 @@
   function handleSelectionCleared(): void {
     // Sync state before clearing - object:modified doesn't always fire reliably
     if (activeTextObject) {
-      updateStateFromObject(activeTextObject as DeckFabricObject)
+      updateStateFromObject(activeTextObject as TwigFabricObject)
       // Explicit call: $effect doesn't subscribe to deep element property changes
       scheduleSave()
     }
@@ -1375,7 +1375,7 @@
     suppressSelectionTracking = false
   }
 
-  function handleTextChanged(event: { target?: DeckFabricObject }): void {
+  function handleTextChanged(event: { target?: TwigFabricObject }): void {
     const target = event.target
     if (!(target instanceof Textbox)) return
     scheduleThumbnailCapture()
@@ -2337,7 +2337,7 @@
   function addText(): void {
     if (!appState.currentSlide) return
     pushCheckpoint()
-    const newText: DeckElement = {
+    const newText: TwigElement = {
       type: 'text',
       id: `text_${uuid_v4()}`,
       x: 250,
@@ -2361,7 +2361,7 @@
   function addRectangle(): void {
     if (!appState.currentSlide) return
     pushCheckpoint()
-    const newRect: DeckElement = {
+    const newRect: TwigElement = {
       type: 'rect',
       id: `rect_${uuid_v4()}`,
       x: 100,
@@ -2461,7 +2461,7 @@
       }
 
       // Create the image element
-      const newImage: DeckElement = {
+      const newImage: TwigElement = {
         type: 'image',
         id: `image_${uuid_v4()}`,
         x: 480, // Center of 960px canvas
@@ -2671,7 +2671,7 @@
     if (activeObjects.length === 0) return
 
     // Collect IDs of objects to delete
-    const idsToDelete = activeObjects.map((obj) => (obj as DeckFabricObject).id).filter((id) => id)
+    const idsToDelete = activeObjects.map((obj) => (obj as TwigFabricObject).id).filter((id) => id)
 
     if (idsToDelete.length > 0) {
       pushCheckpoint()
@@ -2710,14 +2710,14 @@
   function applyZOrderToCanvas(): void {
     if (!fabCanvas || !appState.currentSlide) return
     const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
-    const objs = fabCanvas.getObjects() as DeckFabricObject[]
+    const objs = fabCanvas.getObjects() as TwigFabricObject[]
     sorted.forEach((el, targetIndex) => {
       const obj = objs.find((o) => o.id === el.id)
       if (obj) fabCanvas.moveTo(obj, targetIndex)
     })
     const savedId = appState.selectedObjectId
     if (savedId) {
-      const obj = (fabCanvas.getObjects() as DeckFabricObject[]).find((o) => o.id === savedId)
+      const obj = (fabCanvas.getObjects() as TwigFabricObject[]).find((o) => o.id === savedId)
       if (obj) fabCanvas.setActiveObject(obj)
     }
     fabCanvas.requestRenderAll()
@@ -2739,7 +2739,7 @@
       .then(() => {
         if (!savedId || !fabCanvas) return
         if (renderGeneration !== expectedGeneration) return
-        const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === savedId)
+        const obj = fabCanvas.getObjects().find((o) => (o as TwigFabricObject).id === savedId)
         if (obj) {
           fabCanvas.setActiveObject(obj)
           fabCanvas.requestRenderAll()
@@ -2822,7 +2822,7 @@
     if (shouldBypassClipboard(event)) return false
     const activeObjects = fabCanvas?.getActiveObjects() ?? []
     if (activeObjects.length === 0) return false
-    const ids = new Set(activeObjects.map((o) => (o as DeckFabricObject).id).filter(Boolean))
+    const ids = new Set(activeObjects.map((o) => (o as TwigFabricObject).id).filter(Boolean))
     const elements = (appState.currentSlide?.elements ?? [])
       .filter((el) => ids.has(el.id))
       .map((el) => ({
@@ -2855,7 +2855,7 @@
     try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
     if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
       const validElements = parsed.elements.filter(
-        (el): el is DeckElement => {
+        (el): el is TwigElement => {
           if (typeof el !== 'object' || el === null) return false
           const e = el as Record<string, unknown>
           const type = e.type
@@ -2881,7 +2881,7 @@
 
       const CANVAS_W = 960, CANVAS_H = 540
       const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
-      const newElements: DeckElement[] = sortedElements.map((el, i) => {
+      const newElements: TwigElement[] = sortedElements.map((el, i) => {
         const prefix = el.id.split('_')[0] ?? el.type
         const newId = `${prefix}_${uuid_v4()}`
         if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
@@ -2932,7 +2932,7 @@
       width = Math.round(width * scale)
       height = Math.round(height * scale)
 
-      const newImage: DeckElement = {
+      const newImage: TwigElement = {
         type: 'image',
         id: `image_${uuid_v4()}`,
         x: 480, // Center of 960px canvas
@@ -3481,7 +3481,7 @@
             onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
             onSelect={(id) => {
               if (!fabCanvas) return
-              const obj = fabCanvas.getObjects().find((o) => (o as DeckFabricObject).id === id)
+              const obj = fabCanvas.getObjects().find((o) => (o as TwigFabricObject).id === id)
               if (obj) {
                 fabCanvas.discardActiveObject()
                 fabCanvas.setActiveObject(obj)

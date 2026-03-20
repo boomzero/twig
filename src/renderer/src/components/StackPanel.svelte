@@ -17,7 +17,7 @@
 
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
-  import type { DeckElement } from '../lib/state.svelte'
+  import type { TwigElement } from '../lib/state.svelte'
 
   const {
     onBeforeLayerChange,
@@ -44,7 +44,7 @@
       : []
   )
 
-  function getLabel(el: DeckElement): string {
+  function getLabel(el: TwigElement): string {
     if (el.type === 'text') {
       const preview = el.text?.slice(0, 20) ?? ''
       return `Text: ${preview}${(el.text?.length ?? 0) > 20 ? '…' : ''}`
@@ -55,7 +55,7 @@
     return 'Shape'
   }
 
-  function getIcon(el: DeckElement): string {
+  function getIcon(el: TwigElement): string {
     if (el.type === 'text') return 'T'
     if (el.type === 'image') return '🖼'
     return '▭'
