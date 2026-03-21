@@ -124,7 +124,6 @@
 
   // Custom font dropdown state
   let fontDropdownOpen = $state(false)
-  let fontDropdownRef: HTMLDivElement | null = null
   let fontSearchQuery = $state('')
   let fontLoadingQueue: Set<string> = new Set()
   let isLoadingFonts = false
@@ -1307,18 +1306,6 @@
       }
     }
 
-  })
-
-  /**
-   * Effect to handle click outside for closing font dropdown
-   */
-  $effect(() => {
-    if (typeof window !== 'undefined') {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside)
-      }
-    }
   })
 
   // ============================================================================
@@ -2819,15 +2806,6 @@
     return availableFonts.filter((font) => font.toLowerCase().includes(query))
   }
 
-  /**
-   * Handles click outside to close font dropdown
-   */
-  function handleClickOutside(event: MouseEvent): void {
-    if (fontDropdownOpen && fontDropdownRef && !fontDropdownRef.contains(event.target as Node)) {
-      fontDropdownOpen = false
-    }
-  }
-
   // ============================================================================
   // Slide and Element Creation
   // ============================================================================
@@ -3655,268 +3633,218 @@
         isAtBack={selectedIsAtBack}
       />
     {/if}
-    <div class="flex items-center p-2 bg-gray-100 border-b border-gray-300 shadow-sm">
+    <div class="flex items-center px-2 py-1 bg-gray-100 border-b border-gray-300 shadow-sm gap-0.5">
+      <!-- Group 1: File -->
       <button
         onclick={handleNewPresentation}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="New presentation"
       >
-        New
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-40-64a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,152Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">New</span>
       </button>
       <button
         onclick={handleOpen}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="Open presentation"
       >
-        Open
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Open</span>
       </button>
       <button
         onclick={handleSave}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="Save presentation"
       >
-        Save
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Save</span>
       </button>
       <button
         onclick={handleSaveAs}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="Save presentation as…"
       >
-        Save As
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16">
+          <!-- back disk -->
+          <g transform="translate(-14,-14) scale(0.89)">
+            <path d="M216,83.31V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z"/>
+            <path d="M80,216V152a8,8,0,0,1,8-8h80a8,8,0,0,1,8,8v64"/>
+            <line x1="152" y1="72" x2="96" y2="72"/>
+          </g>
+          <!-- front disk -->
+          <g transform="translate(14,14) scale(0.89)">
+            <path d="M216,83.31V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z" fill="#f3f4f6"/>
+            <path d="M80,216V152a8,8,0,0,1,8-8h80a8,8,0,0,1,8,8v64"/>
+            <line x1="152" y1="72" x2="96" y2="72"/>
+          </g>
+        </svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Save As</span>
       </button>
+
+      <div class="h-8 w-px bg-gray-300 mx-1"></div>
+
+      <!-- Group 2: Edit -->
       <button
         onclick={performUndo}
         disabled={!canUndo}
         title="Undo (Cmd/Ctrl+Z)"
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        Undo
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M232,112a64.07,64.07,0,0,1-64,64H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48a8,8,0,0,1,11.32,11.32L51.31,160H168a48,48,0,0,0,0-96H80a8,8,0,0,1,0-16h88A64.07,64.07,0,0,1,232,112Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Undo</span>
       </button>
       <button
         onclick={performRedo}
         disabled={!canRedo}
         title="Redo (Cmd/Ctrl+Shift+Z)"
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        Redo
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,173.66l-48,48a8,8,0,0,1-11.32-11.32L204.69,176H88A64,64,0,0,1,88,48h88a8,8,0,0,1,0,16H88a48,48,0,0,0,0,96H204.69l-34.35-34.34a8,8,0,0,1,11.32-11.32l48,48A8,8,0,0,1,229.66,173.66Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Redo</span>
       </button>
-      <div class="flex items-center mr-2 w-28">
+
+      <!-- Save status indicator -->
+      <div class="flex items-center ml-1 mr-1 w-24">
         {#if saveStatus === 'idle' && lastSavedAt !== null}
           <span class="flex items-center gap-1 text-xs text-gray-400">
-            <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-              <polyline points="7 3 7 8 15 8"/>
-            </svg>
+            <!-- Phosphor FloppyDisk -->
+            <svg class="w-3 h-3 shrink-0" viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/></svg>
             {formatRelativeTime(lastSavedAt)}
           </span>
         {:else if saveStatus === 'pending'}
           <span class="flex items-center gap-1 text-xs text-gray-400">
-            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8">
-              <circle cx="4" cy="4" r="3" />
-            </svg>
+            <!-- Phosphor Circle -->
+            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/></svg>
             Unsaved
           </span>
         {:else if saveStatus === 'saving'}
           <span class="flex items-center gap-1 text-xs text-blue-500">
-            <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke-linecap="round"/>
-            </svg>
+            <!-- Phosphor ArrowsClockwise (spin) -->
+            <svg class="w-3 h-3 animate-spin" viewBox="0 0 256 256" fill="currentColor"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.69L195.64,79A80,80,0,1,0,207.6,193a8,8,0,1,1,11,11.53A96,96,0,1,1,187.07,67.21L204,84.28V56a8,8,0,0,1,16,0Z"/></svg>
             Saving...
           </span>
         {:else if saveStatus === 'saved'}
           <span class="flex items-center gap-1 text-xs text-green-600">
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
+            <!-- Phosphor CheckCircle -->
+            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg>
             Saved
           </span>
         {:else if saveStatus === 'error'}
           <span class="flex items-center gap-1 text-xs text-red-500" title="Auto-save failed">
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
+            <!-- Phosphor WarningCircle -->
+            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M236,128A108,108,0,1,1,128,20,108.12,108.12,0,0,1,236,128Zm-16,0a92,92,0,1,0-92,92A92.1,92.1,0,0,0,220,128Zm-92,36a12,12,0,1,0,12,12A12,12,0,0,0,128,164Zm-8-92v56a8,8,0,0,0,16,0V72a8,8,0,0,0-16,0Z"/></svg>
             Save failed
           </span>
         {/if}
       </div>
       {#if appState.isTempFile}
         <span
-          class="flex items-center gap-1 px-2 py-0.5 mr-2 text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md"
+          class="flex items-center gap-1 px-2 py-0.5 mr-1 text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md"
           title="This presentation hasn't been saved to a file yet. Click 'Save' to choose a location."
         >
-          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          Temp file
+          <!-- Phosphor Warning -->
+          <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M236.8,188.09,149.35,36.22a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09Zm-13.86,15.71a8.5,8.5,0,0,1-7.49,4.2H40.55a8.5,8.5,0,0,1-7.49-4.2,7.59,7.59,0,0,1,0-7.72L120.51,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.94,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>
+          Unsaved
         </span>
       {/if}
-      <div class="h-6 w-px bg-gray-300 mx-2"></div>
+
+      <div class="h-8 w-px bg-gray-300 mx-1"></div>
+
+      <!-- Group 3: Present -->
       <button
         onclick={appState.isPresentingMode ? exitPresentationMode : enterPresentationMode}
-        class="px-3 py-1 mr-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-md hover:bg-indigo-700"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title={appState.isPresentingMode ? 'Stop presentation' : 'Start presentation (F5)'}
       >
-        {appState.isPresentingMode ? 'Stop' : 'Present'}
+        {#if appState.isPresentingMode}
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z"/></svg>
+          <span class="text-[10px] font-medium leading-none text-gray-500">Stop</span>
+        {:else}
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>
+          <span class="text-[10px] font-medium leading-none text-gray-500">Play</span>
+        {/if}
       </button>
       <button
         onclick={openDebugWindow}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Open debug window (Cmd/Ctrl+Shift+D)"
       >
-        Debug
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Debug</span>
       </button>
-      <div class="h-6 w-px bg-gray-300 mx-2"></div>
-      <button
-        onclick={addRectangle}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
-      >
-        Add Shape
-      </button>
+
+      <div class="h-8 w-px bg-gray-300 mx-1"></div>
+
+      <!-- Group 4: Insert -->
       <button
         onclick={addText}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="Add text"
       >
-        Add Text
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M112,40a8,8,0,0,0-8,8V64H24A16,16,0,0,0,8,80v96a16,16,0,0,0,16,16h80v16a8,8,0,0,0,16,0V48A8,8,0,0,0,112,40ZM24,176V80h80v96ZM248,80v96a16,16,0,0,1-16,16H144a8,8,0,0,1,0-16h88V80H144a8,8,0,0,1,0-16h88A16,16,0,0,1,248,80ZM88,112a8,8,0,0,1-8,8H72v24a8,8,0,0,1-16,0V120H48a8,8,0,0,1,0-16H80A8,8,0,0,1,88,112Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Text</span>
+      </button>
+      <button
+        onclick={addRectangle}
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="Add shape"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Shape</span>
       </button>
       <button
         onclick={addImage}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        title="Add image"
       >
-        Add Image
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"/></svg>
+        <span class="text-[10px] font-medium leading-none text-gray-500">Media</span>
       </button>
-      <button
-        onclick={() => activeSidePanel = activeSidePanel === 'layers' ? 'properties' : 'layers'}
-        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none"
-        class:bg-indigo-100={activeSidePanel === 'layers'}
-        class:border-indigo-400={activeSidePanel === 'layers'}
-        class:text-indigo-700={activeSidePanel === 'layers'}
-        class:bg-white={activeSidePanel !== 'layers'}
-        class:border-gray-300={activeSidePanel !== 'layers'}
-        class:text-gray-700={activeSidePanel !== 'layers'}
-        title="Toggle Layers panel"
-      >
-        Layers
-      </button>
-      <button
-        onclick={() => activeSidePanel = activeSidePanel === 'animate' ? 'properties' : 'animate'}
-        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none"
-        class:bg-indigo-100={activeSidePanel === 'animate'}
-        class:border-indigo-400={activeSidePanel === 'animate'}
-        class:text-indigo-700={activeSidePanel === 'animate'}
-        class:bg-white={activeSidePanel !== 'animate'}
-        class:border-gray-300={activeSidePanel !== 'animate'}
-        class:text-gray-700={activeSidePanel !== 'animate'}
-        title="Toggle Animations panel"
-      >
-        Animate
-      </button>
-      {#if showRichTextControls}
-        <div class="h-6 w-px bg-gray-300 mx-2"></div>
-        <button
-          onclick={toggleBold}
-          class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md border border-gray-300 mr-1"
-          class:bg-indigo-200={isSelectionBold}
-          class:text-white={isSelectionBold}
-          >B
-        </button>
-        <button
-          onclick={toggleItalic}
-          class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md border border-gray-300 mr-1"
-          class:bg-indigo-200={isSelectionItalic}
-          class:text-white={isSelectionItalic}
-          >I
-        </button>
-        <button
-          onclick={toggleUnderline}
-          class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md border border-gray-300 mr-1"
-          class:bg-indigo-200={isSelectionUnderlined}
-          class:text-white={isSelectionUnderlined}
-          >U
-        </button>
-        <input
-          type="number"
-          bind:value={selectionFontSize}
-          onchange={changeFontSize}
-          onkeydown={(e) => e.stopPropagation()}
-          min="1"
-          max="500"
-          class="w-16 h-8 px-2 text-sm border border-gray-300 rounded-md mr-1"
-          placeholder="Size"
-        />
-        <!-- Custom font dropdown with previews -->
-        <div bind:this={fontDropdownRef} class="relative mr-1">
-          <button
-            onclick={toggleFontDropdown}
-            onkeydown={(e) => e.stopPropagation()}
-            class="h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center min-w-[120px] relative"
-            style={selectionFontFamily !== 'Multiple'
-              ? `font-family: ${escapeCssFontFamily(selectionFontFamily)}`
-              : ''}
-          >
-            <span
-              class="truncate"
-              class:italic={selectionFontFamily === 'Multiple'}
-              class:text-gray-500={selectionFontFamily === 'Multiple'}
-            >
-              {selectionFontFamily}
-            </span>
-            <svg
-              class="w-4 h-4 absolute right-1 pointer-events-none"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              ></path>
-            </svg>
-          </button>
 
-          {#if fontDropdownOpen}
-            <div
-              class="absolute z-50 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg"
-              onkeydown={(e) => e.stopPropagation()}
-              style="will-change: scroll-position; contain: layout style paint;"
-            >
-              <!-- Search input -->
-              <div class="sticky top-0 bg-white p-2 border-b border-gray-200 z-10">
-                <input
-                  type="text"
-                  bind:value={fontSearchQuery}
-                  placeholder="Search fonts..."
-                  class="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white"
-                  onkeydown={(e) => e.stopPropagation()}
-                />
-              </div>
+      <!-- Panel toggles — pushed to the far right -->
+      <div class="ml-auto flex items-center pr-2">
+        <div class="h-8 w-px bg-gray-300 mx-2"></div>
+        <button
+          onclick={() => activeSidePanel = 'properties'}
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class:bg-gray-200={activeSidePanel === 'properties'}
+          class:text-gray-700={activeSidePanel === 'properties'}
+          class:text-gray-600={activeSidePanel !== 'properties'}
+          class:hover:bg-gray-200={activeSidePanel !== 'properties'}
+          title="Properties panel"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M230.64,25.36a32,32,0,0,0-45.26,0q-.21.21-.42.45L131.55,88.22,121,77.64a24,24,0,0,0-33.95,0l-76.69,76.7a8,8,0,0,0,0,11.31l80,80a8,8,0,0,0,11.31,0L178.36,169a24,24,0,0,0,0-33.95l-10.58-10.57L230.19,71c.15-.14.31-.28.45-.43A32,32,0,0,0,230.64,25.36ZM96,228.69,79.32,212l22.34-22.35a8,8,0,0,0-11.31-11.31L68,200.68,55.32,188l22.34-22.35a8,8,0,0,0-11.31-11.31L44,176.68,27.31,160,72,115.31,140.69,184ZM219.52,59.1l-68.71,58.81a8,8,0,0,0-.46,11.74L167,146.34a8,8,0,0,1,0,11.31l-15,15L83.32,104l15-15a8,8,0,0,1,11.31,0l16.69,16.69a8,8,0,0,0,11.74-.46L196.9,36.48A16,16,0,0,1,219.52,59.1Z"/></svg>
+          <span class="text-[10px] font-medium leading-none text-gray-500">Properties</span>
+        </button>
+        <button
+          onclick={() => activeSidePanel = 'layers'}
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class:bg-gray-200={activeSidePanel === 'layers'}
+          class:text-gray-700={activeSidePanel === 'layers'}
+          class:text-gray-600={activeSidePanel !== 'layers'}
+          class:hover:bg-gray-200={activeSidePanel !== 'layers'}
+          title="Layers panel"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>
+          <span class="text-[10px] font-medium leading-none text-gray-500">Layers</span>
+        </button>
+        <button
+          onclick={() => activeSidePanel = 'animate'}
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class:bg-gray-200={activeSidePanel === 'animate'}
+          class:text-gray-700={activeSidePanel === 'animate'}
+          class:text-gray-600={activeSidePanel !== 'animate'}
+          class:hover:bg-gray-200={activeSidePanel !== 'animate'}
+          title="Animate panel"
+        >
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round">
+            <circle cx="96" cy="128" r="72" stroke-width="16" stroke-dasharray="0.1 27"/>
+            <circle cx="160" cy="128" r="72" stroke-width="16"/>
+          </svg>
+          <span class="text-[10px] font-medium leading-none text-gray-500">Animate</span>
+        </button>
+      </div>
 
-              <!-- Font list -->
-              <div class="py-1">
-                {#each getFilteredFonts() as font}
-                  <button
-                    onclick={() => selectFontFromDropdown(font)}
-                    onmouseenter={() => queueFontForLoading(font)}
-                    class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
-                    class:bg-blue-100={font === selectionFontFamily}
-                    style="font-family: {escapeCssFontFamily(font)}; contain: layout style;"
-                  >
-                    {font}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
-        <input
-          type="color"
-          bind:value={selectionFillColor}
-          oninput={() => applyStyleToSelection({ fill: selectionFillColor })}
-          class="w-8 h-8 p-0 border-none bg-transparent"
-        />
-      {/if}
     </div>
     <div class="flex flex-1 overflow-hidden">
       <div role="list" class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
@@ -3999,18 +3927,20 @@
           </div>
         </div>
       </div>
-      {#if activeSidePanel === 'layers'}
+      <!-- Unified side panel with tab bar -->
+      <div
+        class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
+        style="width: {stackPanelWidth}px;"
+      >
+        <!-- Resize handle on the left edge -->
         <div
-          class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
-          style="width: {stackPanelWidth}px;"
-        >
-          <!-- Resize handle on the left edge -->
-          <div
-            class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
-            onmousedown={startStackPanelResize}
-            role="separator"
-            aria-label="Resize panel"
-          ></div>
+          class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
+          onmousedown={startStackPanelResize}
+          role="separator"
+          aria-label="Resize panel"
+        ></div>
+        <!-- Panel content -->
+        {#if activeSidePanel === 'layers'}
           <!--
             onLayerChange is only called by the drag-to-reorder path in StackPanel.
             The button paths (onBringToFront etc.) call layerBringToFront/layerMoveUp/
@@ -4035,19 +3965,7 @@
             onMoveDown={layerMoveDown}
             onSendToBack={layerSendToBack}
           />
-        </div>
-      {/if}
-      {#if activeSidePanel === 'animate'}
-        <div
-          class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
-          style="width: {stackPanelWidth}px;"
-        >
-          <div
-            class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
-            onmousedown={startStackPanelResize}
-            role="separator"
-            aria-label="Resize panel"
-          ></div>
+        {:else if activeSidePanel === 'animate'}
           <AnimationOrderPanel
             onBeforeChange={pushCheckpoint}
             onAfterChange={() => {
@@ -4057,76 +3975,89 @@
             }}
             onRemoveStep={handleRemoveAnimationStep}
           />
-        </div>
-      {/if}
-      {#if activeSidePanel === 'properties'}
-      <div class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0" style="width: {stackPanelWidth}px;">
-        <div
-          class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
-          onmousedown={startStackPanelResize}
-          role="separator"
-          aria-label="Resize panel"
-        ></div>
-      <PropertiesPanel
-        onPropertyChange={handlePropertyChange}
-        onBeforePropertyChange={pushCheckpoint}
-        onAnimationChange={handleAnimationChange}
-        onSlideBackgroundChange={async (bg) => {
-          if (appState.currentSlide) {
-            if (!bgCheckpointPushed) {
-              pushCheckpoint()
-              bgCheckpointPushed = true
-            }
-            const plain: SlideBackground = JSON.parse(JSON.stringify(bg))
-            appState.currentSlide.background = plain
-            await applySlideBackground(plain)
-            fabCanvas!.renderAll()
-            scheduleSave()
-          }
-        }}
-        onSetAsDefault={async (bg) => {
-          if (!appState.currentFilePath) return
-          // JSON round-trip strips any Svelte 5 reactive Proxy before IPC/storage
-          const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
-          defaultSlideBackground = plain ?? undefined
-          await window.api.db.setSetting(
-            appState.currentFilePath,
-            'default_background',
-            plain ? JSON.stringify(plain) : null
-          )
-        }}
-        onApplyToAll={async (bg) => {
-          if (!appState.currentFilePath || !appState.currentSlide) return
-          // Snapshot every slide before the DB write so each slide's undo history
-          // has a restore point. Non-current slides must be fetched from the DB first.
-          const filePath = appState.currentFilePath
-          await Promise.all(appState.slideIds.map(async (id) => {
-            if (id === appState.currentSlide?.id) {
-              pushCheckpoint()
-            } else {
-              const slide = await window.api.db.getSlide(filePath, id)
-              if (slide) pushCheckpointForSlide(slide)
-            }
-          }))
-          const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
-          try {
-            await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)
-          } catch (err) {
-            console.error('applyBackgroundToAll failed:', err)
-            return
-          }
-          if (!appState.currentSlide) return
-          appState.currentSlide.background = plain ?? undefined
-          await applySlideBackground(plain ?? undefined)
-          fabCanvas?.renderAll()
-          scheduleThumbnailCapture()
-          scheduleSave()
-          // Regenerate thumbnails for all other slides in the background
-          regenerateAllThumbnails(plain ?? undefined).catch(console.error)
-        }}
-      />
+        {:else}
+          <PropertiesPanel
+            onPropertyChange={handlePropertyChange}
+            onBeforePropertyChange={pushCheckpoint}
+            onAnimationChange={handleAnimationChange}
+            richText={{
+              isBold: isSelectionBold,
+              isItalic: isSelectionItalic,
+              isUnderlined: isSelectionUnderlined,
+              fontSize: selectionFontSize,
+              fontFamily: selectionFontFamily,
+              fillColor: selectionFillColor,
+              fontDropdownOpen,
+              fontSearchQuery,
+              availableFonts,
+              toggleBold,
+              toggleItalic,
+              toggleUnderline,
+              changeFontSize,
+              applyStyle: applyStyleToSelection,
+              toggleFontDropdown,
+              selectFont: selectFontFromDropdown,
+              previewFont: queueFontForLoading,
+              escapeFont: escapeCssFontFamily,
+              closeFontDropdown: () => { fontDropdownOpen = false },
+              setFontSearchQuery: (q) => { fontSearchQuery = q }
+            }}
+            onSlideBackgroundChange={async (bg) => {
+              if (appState.currentSlide) {
+                if (!bgCheckpointPushed) {
+                  pushCheckpoint()
+                  bgCheckpointPushed = true
+                }
+                const plain: SlideBackground = JSON.parse(JSON.stringify(bg))
+                appState.currentSlide.background = plain
+                await applySlideBackground(plain)
+                fabCanvas!.renderAll()
+                scheduleSave()
+              }
+            }}
+            onSetAsDefault={async (bg) => {
+              if (!appState.currentFilePath) return
+              // JSON round-trip strips any Svelte 5 reactive Proxy before IPC/storage
+              const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
+              defaultSlideBackground = plain ?? undefined
+              await window.api.db.setSetting(
+                appState.currentFilePath,
+                'default_background',
+                plain ? JSON.stringify(plain) : null
+              )
+            }}
+            onApplyToAll={async (bg) => {
+              if (!appState.currentFilePath || !appState.currentSlide) return
+              // Snapshot every slide before the DB write so each slide's undo history
+              // has a restore point. Non-current slides must be fetched from the DB first.
+              const filePath = appState.currentFilePath
+              await Promise.all(appState.slideIds.map(async (id) => {
+                if (id === appState.currentSlide?.id) {
+                  pushCheckpoint()
+                } else {
+                  const slide = await window.api.db.getSlide(filePath, id)
+                  if (slide) pushCheckpointForSlide(slide)
+                }
+              }))
+              const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
+              try {
+                await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)
+              } catch (err) {
+                console.error('applyBackgroundToAll failed:', err)
+                return
+              }
+              if (!appState.currentSlide) return
+              appState.currentSlide.background = plain ?? undefined
+              await applySlideBackground(plain ?? undefined)
+              fabCanvas?.renderAll()
+              scheduleThumbnailCapture()
+              scheduleSave()
+              // Regenerate thumbnails for all other slides in the background
+              regenerateAllThumbnails(plain ?? undefined).catch(console.error)
+            }}
+          />
+        {/if}
       </div>
-      {/if}
     </div>
   </div>
 {:else}
