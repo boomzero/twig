@@ -558,6 +558,18 @@
     }, 500)
   }
 
+  /**
+   * Background changes can force a canvas rebuild. Sync every live Fabric object
+   * back into slide state first so platform-specific event ordering cannot leave
+   * recent transforms or text edits behind in the canvas only.
+   */
+  function syncLiveCanvasState(): void {
+    if (!fabCanvas || !appState.currentSlide) return
+    ;(fabCanvas.getObjects() as TwigFabricObject[]).forEach((obj) => {
+      updateStateFromObject(obj)
+    })
+  }
+
   // Remove any existing move-path overlay before rebuilding it for the latest
   // selection or slide state.
   function clearMovePathOverlay(): void {
@@ -990,9 +1002,7 @@
 
     // If a text object is actively being edited, sync its current content to
     // state before saving (normally this only happens on deselection via object:modified)
-    if (activeTextObject?.id) {
-      updateStateFromObject(activeTextObject as TwigFabricObject)
-    }
+    syncLiveCanvasState()
 
     await performSave(true) // Re-throw errors for caller to handle
   }
@@ -4069,6 +4079,7 @@
         onAnimationChange={handleAnimationChange}
         onSlideBackgroundChange={async (bg) => {
           if (appState.currentSlide) {
+            syncLiveCanvasState()
             if (!bgCheckpointPushed) {
               pushCheckpoint()
               bgCheckpointPushed = true
@@ -4077,6 +4088,7 @@
             appState.currentSlide.background = plain
             await applySlideBackground(plain)
             fabCanvas!.renderAll()
+            scheduleThumbnailCapture()
             scheduleSave()
           }
         }}
@@ -4093,6 +4105,7 @@
         }}
         onApplyToAll={async (bg) => {
           if (!appState.currentFilePath || !appState.currentSlide) return
+          syncLiveCanvasState()
           // Snapshot every slide before the DB write so each slide's undo history
           // has a restore point. Non-current slides must be fetched from the DB first.
           const filePath = appState.currentFilePath
