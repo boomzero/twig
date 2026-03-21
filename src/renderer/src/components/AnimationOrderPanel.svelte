@@ -100,6 +100,7 @@
   function onDragEnd(): void {
     dragSourceIndex = null
     dragOverIndex = null
+    snapshotPushed = false
   }
 </script>
 

@@ -325,19 +325,31 @@ interface ElementRow {
  * @returns The slide object with all its elements, or null if not found
  */
 export function getSlide(db: Database, slideId: string): Slide | null {
-  // First, check if the slide exists
-  const slideRow = db.prepare('SELECT id, slide_order, background, animation_order FROM slides WHERE id = ?').get(slideId) as
-    | { id: string; background?: string | null; animation_order?: string | null }
-    | undefined
+  // First, check if the slide exists.
+  // Fall back to a query without animation_order if the column doesn't exist yet
+  // (e.g. the ALTER TABLE migration was skipped on a locked or legacy database).
+  let slideRow: { id: string; background?: string | null; animation_order?: string | null } | undefined
+  try {
+    slideRow = db.prepare('SELECT id, slide_order, background, animation_order FROM slides WHERE id = ?').get(slideId) as typeof slideRow
+  } catch {
+    slideRow = db.prepare('SELECT id, slide_order, background FROM slides WHERE id = ?').get(slideId) as typeof slideRow
+  }
   if (!slideRow) {
     return null
   }
 
-  // Load all elements belonging to this slide, ordered by z_index
-  const elementStmt = db.prepare(
-    'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
-  )
-  const elementRows = elementStmt.all(slideId) as ElementRow[]
+  // Load all elements belonging to this slide, ordered by z_index.
+  // Fall back without the animations column if the migration hasn't run yet.
+  let elementRows: ElementRow[]
+  try {
+    elementRows = db.prepare(
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+    ).all(slideId) as ElementRow[]
+  } catch {
+    elementRows = db.prepare(
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+    ).all(slideId) as ElementRow[]
+  }
 
   const elements: TwigElement[] = elementRows.map((el) => {
     let parsedAnimations: ElementAnimations | undefined
