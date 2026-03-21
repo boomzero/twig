@@ -9,3 +9,19 @@ export function getElementLabel(el: TwigElement): string {
   if (el.type === 'image') return `Image: ${el.filename ?? 'image'}`
   return 'Shape'
 }
+
+/**
+ * Computes the final insertion index for a drag-and-drop reorder operation.
+ *
+ * After removing the dragged item at `fromIndex`, the target index shifts if
+ * the dragged item was before the target. `position` then offsets by one more
+ * for 'after' drops. Used in StackPanel and AnimationOrderPanel.
+ */
+export function computeDropInsertIndex(
+  fromIndex: number,
+  toIndex: number,
+  position: 'before' | 'after'
+): number {
+  const adjusted = fromIndex < toIndex ? toIndex - 1 : toIndex
+  return position === 'after' ? adjusted + 1 : adjusted
+}

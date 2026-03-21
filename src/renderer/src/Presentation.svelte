@@ -9,7 +9,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient, util } from 'fabric'
-  import type { TwigElement, Slide, SlideBackground } from './lib/types'
+  import type { TwigElement, Slide, SlideBackground, AnimationStep } from './lib/types'
+  import { isStepConfiguredForElement } from './lib/animationUtils'
   import { normalizeFontBytes } from './lib/fontUtils'
 
   export interface PresentationState {
@@ -48,9 +49,14 @@
   // Guards stale async image loads within renderSlide (incremented on each render).
   let renderGeneration = 0
   // Animation state
-  const fabObjById = new Map<string, FabricObject>()  // elementId → fabric object
+  const fabObjById = new Map<string, FabricObject>()   // elementId → fabric object
+  const elementById = new Map<string, TwigElement>()   // elementId → slide element (rebuilt per render)
+  const failedElementIds = new Set<string>()           // image elements that failed to load
   let animProgress = 0    // steps consumed on current slide; reset on every slide entry
   let animating = false   // guard against concurrent animations
+  // Remembers one advance request that arrived while the next animated image
+  // step was still loading, so the slide doesn't appear frozen.
+  let pendingAdvanceAfterImageLoad = false
   // Tracks which fonts have been injected in this window so we don't repeat work.
   let loadedFontKeys = new Set<string>()
   let fontsLoadedForPath: string | null = null
@@ -192,14 +198,18 @@
     // render can detect that the slide has since changed and bail out.
     const generation = ++renderGeneration
 
-    presentationCanvas.getObjects().forEach(obj => presentationCanvas!.remove(obj))
+    presentationCanvas.remove(...presentationCanvas.getObjects())
     fabObjById.clear()
+    elementById.clear()
+    failedElementIds.clear()
     animProgress = 0
     animating = false
+    pendingAdvanceAfterImageLoad = false
     lastRenderedSlideId = slide.id
     applyPresentationBackground(slide.background, generation).catch(console.error)
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
+    for (const el of slide.elements) elementById.set(el.id, el)
 
     sorted.forEach((element: TwigElement) => {
       if (element.type === 'image') return
@@ -259,55 +269,64 @@
           })
           presentationCanvas.add(img)
           fabObjById.set(element.id, img)
-          applyInitialAnimationState(slide)
+          applyAnimationStateToObject(slide, element, img)
           presentationCanvas.renderAll()
+          continuePendingAdvance(slide, generation)
         })
-        .catch((err) => console.error('Failed to load image in presentation:', err))
+        .catch((err) => {
+          if (renderGeneration !== generation) return
+          failedElementIds.add(element.id)
+          console.error('Failed to load image in presentation:', err)
+          continuePendingAdvance(slide, generation)
+        })
     })
 
     presentationCanvas.renderAll()
     applyInitialAnimationState(slide)
   }
 
+  function applyAnimationStateToObject(slide: Slide, el: TwigElement, fabObj: FabricObject): void {
+    const order = slide.animationOrder
+    const completedSteps = order.slice(0, animProgress)
+    const buildInDone = completedSteps.some(
+      (step) => step.elementId === el.id && step.category === 'buildIn'
+    )
+    const buildOutDone = completedSteps.some(
+      (step) => step.elementId === el.id && step.category === 'buildOut'
+    )
+    const hasBuildInStep = order.some((step) => step.elementId === el.id && step.category === 'buildIn')
+    const hasBuildOutStep = order.some((step) => step.elementId === el.id && step.category === 'buildOut')
+
+    let opacity = 1
+    if (hasBuildInStep && !buildInDone) opacity = 0
+    if (hasBuildOutStep && buildOutDone) opacity = 0
+
+    let left = el.x
+    let top = el.y
+    for (const step of completedSteps) {
+      if (step.elementId !== el.id || step.category !== 'action' || !step.actionId) continue
+      const action = el.animations?.actions?.find((candidate) => candidate.id === step.actionId)
+      if (action?.type === 'move') {
+        left = action.toX
+        top = action.toY
+      }
+    }
+
+    fabObj.set({ opacity, left, top })
+    fabObj.setCoords()
+  }
+
   function applyInitialAnimationState(slide: Slide): void {
     if (!presentationCanvas) return
-    const order = slide.animationOrder
-    const triggered = new Set(order.slice(0, animProgress).map((s) => `${s.elementId}::${s.category}`))
-
     for (const el of slide.elements) {
       const fabObj = fabObjById.get(el.id)
       if (!fabObj) continue
-      const anim = el.animations ?? {}
-      const hasBuildInStep = order.some((s) => s.elementId === el.id && s.category === 'buildIn')
-
-      if (anim.buildIn && hasBuildInStep) {
-        const inDone  = triggered.has(`${el.id}::buildIn`)
-        const outDone = triggered.has(`${el.id}::buildOut`)
-        fabObj.set({ opacity: (inDone && !outDone) ? 1 : 0 })
-      }
-
-      // Start from the slide's authored coordinates before replaying any
-      // completed move actions.
-      fabObj.set({ left: el.x, top: el.y })
-
-      // Apply position of the last completed action for this element
-      let lastX: number | undefined
-      let lastY: number | undefined
-      for (const step of order.slice(0, animProgress)) {
-        if (step.elementId === el.id && step.category === 'action' && step.actionId) {
-          const found = anim.actions?.find((a) => a.id === step.actionId)
-          if (found?.type === 'move') { lastX = found.toX; lastY = found.toY }
-        }
-      }
-      if (lastX !== undefined && lastY !== undefined) {
-        fabObj.set({ left: lastX, top: lastY })
-        fabObj.setCoords()
-      }
+      applyAnimationStateToObject(slide, el, fabObj)
     }
     presentationCanvas.renderAll()
   }
 
-  async function runAnimation(fabObj: FabricObject, el: TwigElement, category: string, actionId?: string): Promise<void> {
+  async function runAnimation(fabObj: FabricObject, el: TwigElement, category: AnimationStep['category'], actionId?: string): Promise<void> {
     const anim = el.animations!
     const canvas = presentationCanvas!
     return new Promise<void>((resolve) => {
@@ -359,25 +378,36 @@
     })
   }
 
+  function continuePendingAdvance(slide: Slide, generation: number): void {
+    if (!pendingAdvanceAfterImageLoad || renderGeneration !== generation || animating) return
+    pendingAdvanceAfterImageLoad = false
+    executeNextAnimation(slide).catch(console.error)
+  }
+
   async function executeNextAnimation(slide: Slide): Promise<void> {
     if (animating) return
     const order = slide.animationOrder
 
-    for (; animProgress < order.length; animProgress++) {
+    while (animProgress < order.length) {
       const step = order[animProgress]
-      const el = slide.elements.find((e) => e.id === step.elementId)
+      const el = elementById.get(step.elementId)
+      if (!el || !isStepConfiguredForElement(el, step)) { animProgress++; continue }
+
       const fabObj = fabObjById.get(step.elementId)
-      if (el && fabObj) {
-        animating = true
-        try {
-          await runAnimation(fabObj, el, step.category, step.actionId)
-          animProgress++
-        } finally {
-          animating = false
-        }
+      if (!fabObj) {
+        if (failedElementIds.has(step.elementId)) { animProgress++; continue }
+        pendingAdvanceAfterImageLoad = true
         return
       }
-      // Skip invalid step, continue loop
+
+      animating = true
+      try {
+        await runAnimation(fabObj, el, step.category, step.actionId)
+      } finally {
+        animating = false
+      }
+      animProgress++
+      return
     }
 
     // All steps consumed — go to next slide
@@ -451,6 +481,7 @@
       case 'PageUp':
         event.preventDefault()
         if (animating || !loadedSlide) return
+        pendingAdvanceAfterImageLoad = false
         if (animProgress > 0) {
           animProgress = 0
           applyInitialAnimationState(loadedSlide)

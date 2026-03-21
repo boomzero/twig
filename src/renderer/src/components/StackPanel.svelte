@@ -18,7 +18,7 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
   import type { TwigElement } from '../lib/state.svelte'
-  import { getElementLabel } from '../lib/elementUtils'
+  import { getElementLabel, computeDropInsertIndex } from '../lib/elementUtils'
 
   const {
     onBeforeLayerChange,
@@ -117,10 +117,9 @@
     dragOverId = null
     if (!dragSourceId || dragSourceId === targetId) return
     const fromIdx = sortedElements.findIndex((e) => e.id === dragSourceId)
-    let toIdx = sortedElements.findIndex((e) => e.id === targetId)
+    const toIdx = sortedElements.findIndex((e) => e.id === targetId)
     if (fromIdx < 0 || toIdx < 0) return
-    if (pos === 'after') toIdx = Math.min(toIdx + 1, sortedElements.length - 1)
-    reorderElements(fromIdx, toIdx)
+    reorderElements(fromIdx, computeDropInsertIndex(fromIdx, toIdx, pos))
     dragSourceId = null
   }
 

@@ -4050,7 +4050,11 @@
           ></div>
           <AnimationOrderPanel
             onBeforeChange={pushCheckpoint}
-            onAfterChange={() => { scheduleSave(); scheduleThumbnailCapture() }}
+            onAfterChange={() => {
+              renderMovePathOverlay()
+              scheduleSave()
+              scheduleThumbnailCapture()
+            }}
             onRemoveStep={handleRemoveAnimationStep}
           />
         </div>

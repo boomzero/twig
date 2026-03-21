@@ -11,7 +11,7 @@
   import type { AnimationStep } from '../lib/types'
   import type { TwigElement } from '../lib/state.svelte'
   import { isValidAnimationOrder, getAnimationStepKey } from '../lib/animationUtils'
-  import { getElementLabel } from '../lib/elementUtils'
+  import { getElementLabel, computeDropInsertIndex } from '../lib/elementUtils'
 
   const {
     onBeforeChange,
@@ -93,10 +93,7 @@
     if (from === null || from === targetIndex) return
     const newOrder = [...order]
     const [moved] = newOrder.splice(from, 1)
-    // Adjust target index after removal, then apply position offset
-    const adjustedTarget = from < targetIndex ? targetIndex - 1 : targetIndex
-    const insertAt = pos === 'after' ? adjustedTarget + 1 : adjustedTarget
-    newOrder.splice(insertAt, 0, moved)
+    newOrder.splice(computeDropInsertIndex(from, targetIndex, pos), 0, moved)
     applyOrderChange(newOrder)
   }
 

@@ -1,4 +1,16 @@
-import type { Slide, AnimationStep } from './types'
+import type { TwigElement, Slide, AnimationStep } from './types'
+
+/**
+ * Returns true if the element has the animation config referenced by the step.
+ * Used by both normalizeAnimationOrder (pruning) and executeNextAnimation (skip check).
+ */
+export function isStepConfiguredForElement(el: TwigElement, step: AnimationStep): boolean {
+  if (!el.animations) return false
+  if (step.category === 'action') {
+    return !!step.actionId && !!el.animations.actions?.some((a) => a.id === step.actionId)
+  }
+  return !!el.animations[step.category]
+}
 
 /**
  * Prunes animationOrder steps whose elementId no longer exists in slide.elements,
@@ -9,12 +21,8 @@ export function normalizeAnimationOrder(slide: Slide): AnimationStep[] {
   const elementMap = new Map(slide.elements.map((e) => [e.id, e]))
   return slide.animationOrder.filter((step) => {
     const el = elementMap.get(step.elementId)
-    if (!el?.animations) return false
-    if (step.category === 'action') {
-      if (!step.actionId) return false
-      return !!el.animations.actions?.some((a) => a.id === step.actionId)
-    }
-    return !!el.animations[step.category]
+    if (!el) return false
+    return isStepConfiguredForElement(el, step)
   })
 }
 
