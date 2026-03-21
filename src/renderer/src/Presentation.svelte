@@ -286,6 +286,10 @@
         fabObj.set({ opacity: (inDone && !outDone) ? 1 : 0 })
       }
 
+      // Start from the slide's authored coordinates before replaying any
+      // completed move actions.
+      fabObj.set({ left: el.x, top: el.y })
+
       // Apply position of the last completed action for this element
       let lastX: number | undefined
       let lastY: number | undefined

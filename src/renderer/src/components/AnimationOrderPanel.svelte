@@ -24,8 +24,60 @@
   // One-shot checkpoint guard — push once per drag session, reset on pointerup
   let snapshotPushed = false
 
+  /**
+   * Validates that the per-element ordering invariant holds after a drag reorder:
+   *   buildIn → (actions, in any order) → buildOut
+   *
+   * Two-pass approach: the first pass collects which categories each element has
+   * (needed because a step's element may appear later in the list), then the
+   * second pass enforces the ordering. Returns false on the first violation found.
+   */
+  function isValidAnimationOrder(steps: AnimationStep[]): boolean {
+    // Pass 1: collect which terminal categories each element has configured.
+    const elementMeta = new Map<string, { hasBuildIn: boolean, hasBuildOut: boolean }>()
+    for (const step of steps) {
+      const meta = elementMeta.get(step.elementId) ?? { hasBuildIn: false, hasBuildOut: false }
+      if (step.category === 'buildIn') meta.hasBuildIn = true
+      if (step.category === 'buildOut') meta.hasBuildOut = true
+      elementMeta.set(step.elementId, meta)
+    }
+
+    // Pass 2: walk steps in order, tracking what has been seen per element.
+    const seenByElement = new Map<string, { buildIn: boolean, buildOut: boolean, action: boolean }>()
+    for (const step of steps) {
+      const meta = elementMeta.get(step.elementId) ?? { hasBuildIn: false, hasBuildOut: false }
+      const seen = seenByElement.get(step.elementId) ?? { buildIn: false, buildOut: false, action: false }
+
+      if (step.category === 'buildIn') {
+        if (seen.action || seen.buildOut) return false
+        seen.buildIn = true
+      } else if (step.category === 'action') {
+        if ((meta.hasBuildIn && !seen.buildIn) || seen.buildOut) return false
+        seen.action = true
+      } else {
+        if ((meta.hasBuildIn && !seen.buildIn) || seen.buildOut) return false
+        seen.buildOut = true
+      }
+
+      seenByElement.set(step.elementId, seen)
+    }
+
+    return true
+  }
+
+  /**
+   * Stable {#each} key for an animation step. Action steps need actionId included
+   * because one element can have multiple moves — elementId::action alone collides.
+   */
+  function getStepKey(step: AnimationStep): string {
+    return step.category === 'action'
+      ? `${step.elementId}::action::${step.actionId ?? 'missing'}`
+      : `${step.elementId}::${step.category}`
+  }
+
   function applyOrderChange(newOrder: AnimationStep[]): void {
     if (!appState.currentSlide) return
+    if (!isValidAnimationOrder(newOrder)) return
     if (!snapshotPushed) {
       onBeforeChange?.()
       snapshotPushed = true
@@ -128,7 +180,7 @@
         No animations. Select an element and add animations in the Properties panel.
       </p>
     {:else}
-      {#each order as step, i (step.elementId + '::' + step.category)}
+      {#each order as step, i (getStepKey(step))}
         {@const el = appState.currentSlide?.elements.find((e) => e.id === step.elementId)}
         {@const badge = getCategoryBadge(step.category)}
         {@const isDragSource = dragSourceIndex === i}
