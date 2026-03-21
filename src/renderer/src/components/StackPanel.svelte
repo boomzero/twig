@@ -18,6 +18,7 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
   import type { TwigElement } from '../lib/state.svelte'
+  import { getElementLabel } from '../lib/elementUtils'
 
   const {
     onBeforeLayerChange,
@@ -43,17 +44,6 @@
       ? [...appState.currentSlide.elements].sort((a, b) => b.zIndex - a.zIndex)
       : []
   )
-
-  function getLabel(el: TwigElement): string {
-    if (el.type === 'text') {
-      const preview = el.text?.slice(0, 20) ?? ''
-      return `Text: ${preview}${(el.text?.length ?? 0) > 20 ? '…' : ''}`
-    }
-    if (el.type === 'image') {
-      return `Image: ${el.filename ?? 'image'}`
-    }
-    return 'Shape'
-  }
 
   function getIcon(el: TwigElement): string {
     if (el.type === 'text') return 'T'
@@ -213,9 +203,9 @@
             class="flex-1 text-xs truncate"
             class:text-indigo-700={appState.selectedObjectId === el.id}
             class:font-medium={appState.selectedObjectId === el.id}
-            title={getLabel(el)}
+            title={getElementLabel(el)}
           >
-            {getLabel(el)}
+            {getElementLabel(el)}
           </span>
 
           <!-- Reorder buttons -->

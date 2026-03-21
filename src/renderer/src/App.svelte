@@ -26,7 +26,7 @@
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { TwigElement, SelectionState } from './lib/state.svelte'
   import type { SlideBackground, ElementAnimations, AnimationStep, ActionAnimation } from './lib/types'
-  import { normalizeAnimationOrder } from './lib/animationUtils'
+  import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
@@ -74,7 +74,6 @@
   let movePathCheckpointPushed = false
   let suppressMovePathSelectionClear = false
   let expandedMovePathElementId = $state<string | null>(null)
-  let canvasStageEl: HTMLDivElement | null = null
   let movePathIndicatorUi = $state({ visible: false, left: 0, top: 0 })
 
   // Active side panel — only one can be open at a time
@@ -545,7 +544,7 @@
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
     if (hadOverlay) {
       setMovePathOverlayVisible(true)
-      fabCanvas.renderAll()
+      fabCanvas.requestRenderAll()
     }
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
@@ -574,7 +573,7 @@
     movePathDragState = null
     movePathCheckpointPushed = false
     suppressMovePathSelectionClear = false
-    movePathIndicatorUi = { visible: false, left: 0, top: 0 }
+    if (movePathIndicatorUi.visible) movePathIndicatorUi = { visible: false, left: 0, top: 0 }
   }
 
   function setMovePathOverlayVisible(visible: boolean): void {
@@ -632,79 +631,60 @@
     movePathIndicatorUi = { left, top, visible }
   }
 
+  // Shared fabric options for all ghost overlay objects.
+  const GHOST_OVERLAY_OPTIONS = {
+    opacity: 0.6,
+    selectable: true,
+    evented: true,
+    hoverCursor: 'move',
+    moveCursor: 'move',
+    hasControls: false,
+    hasBorders: false,
+    padding: 8
+  } as const
+
+  function stampGhostOverlay(ghost: FabricObject, actionId: string): MovePathOverlayFabricObject {
+    const typed = ghost as MovePathOverlayFabricObject
+    typed.overlayRole = 'move-path-ghost'
+    typed.actionId = actionId
+    return typed
+  }
+
   function createMovePathGhostObject(
     element: TwigElement,
     sourceObject: TwigFabricObject | undefined,
     action: ActionAnimation
   ): MovePathOverlayFabricObject | null {
+    const pos = { left: action.toX, top: action.toY, angle: element.angle }
+
     if (element.type === 'rect') {
-      const ghost = new Rect({
-        left: action.toX,
-        top: action.toY,
+      return stampGhostOverlay(new Rect({
+        ...pos,
         width: element.width,
         height: element.height,
-        angle: element.angle,
         fill: element.fill,
-        opacity: 0.6,
-        selectable: true,
-        evented: true,
-        hoverCursor: 'move',
-        moveCursor: 'move',
-        hasControls: false,
-        hasBorders: false,
-        padding: 8
-      }) as MovePathOverlayFabricObject
-      ghost.overlayRole = 'move-path-ghost'
-      ghost.actionId = action.id
-      return ghost
+        ...GHOST_OVERLAY_OPTIONS
+      }), action.id)
     }
 
     if (element.type === 'text') {
-      const ghost = new Textbox(element.text || '', {
-        left: action.toX,
-        top: action.toY,
+      return stampGhostOverlay(new Textbox(element.text || '', {
+        ...pos,
         width: element.width,
-        angle: element.angle,
         fill: element.fill,
         fontFamily: element.fontFamily,
         fontSize: element.fontSize,
         styles: element.styles ? cleanStylesObject(element.styles) : {},
         lockScalingY: true,
         editable: false,
-        opacity: 0.6,
-        selectable: true,
-        evented: true,
-        hoverCursor: 'move',
-        moveCursor: 'move',
-        hasControls: false,
-        hasBorders: false,
-        padding: 8
-      }) as MovePathOverlayFabricObject
-      ghost.overlayRole = 'move-path-ghost'
-      ghost.actionId = action.id
-      return ghost
+        ...GHOST_OVERLAY_OPTIONS
+      }), action.id)
     }
 
     if (element.type === 'image' && sourceObject instanceof FabricImage) {
       const ghost = new FabricImage(sourceObject.getElement())
-      ghost.set({
-        left: action.toX,
-        top: action.toY,
-        angle: element.angle,
-        scaleX: sourceObject.scaleX,
-        scaleY: sourceObject.scaleY,
-        opacity: 0.6,
-        selectable: true,
-        evented: true,
-        hoverCursor: 'move',
-        moveCursor: 'move',
-        hasControls: false,
-        hasBorders: false,
-        padding: 8
-      })
-      ;(ghost as MovePathOverlayFabricObject).overlayRole = 'move-path-ghost'
-      ;(ghost as MovePathOverlayFabricObject).actionId = action.id
-      return ghost as MovePathOverlayFabricObject
+      ghost.set({ ...pos, scaleX: sourceObject.scaleX, scaleY: sourceObject.scaleY, ...GHOST_OVERLAY_OPTIONS })
+      return stampGhostOverlay(ghost, action.id)
     }
 
     return null
@@ -762,30 +742,28 @@
 
   // During drag we mutate the overlay in place instead of rebuilding the whole
   // canvas, which keeps the interaction responsive.
-  function syncMovePathOverlay(element: TwigElement, action: ActionAnimation): void {
-    const sourceObject = fabCanvas?.getObjects().find(
-      (obj) => (obj as TwigFabricObject).id === element.id
-    ) as TwigFabricObject | undefined
-    const indicatorPos = getMovePathIndicatorPosition(element, sourceObject)
-
-    movePathLine?.set({ x1: element.x, y1: element.y, x2: action.toX, y2: action.toY })
-    movePathSourceMarker?.set({ left: element.x, top: element.y })
-    movePathGhostObject?.set({ left: action.toX, top: action.toY })
-    movePathLine?.setCoords()
-    movePathSourceMarker?.setCoords()
-    movePathGhostObject?.setCoords()
-    setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
-    fabCanvas?.renderAll()
-  }
-
-  function syncMovePathOverlayPreview(startX: number, startY: number, endX: number, endY: number): void {
+  function applyMovePathCoords(startX: number, startY: number, endX: number, endY: number): void {
     movePathLine?.set({ x1: startX, y1: startY, x2: endX, y2: endY })
     movePathSourceMarker?.set({ left: startX, top: startY })
     movePathGhostObject?.set({ left: endX, top: endY })
     movePathLine?.setCoords()
     movePathSourceMarker?.setCoords()
     movePathGhostObject?.setCoords()
+  }
+
+  function syncMovePathOverlay(element: TwigElement, action: ActionAnimation): void {
+    const sourceObject = fabCanvas?.getObjects().find(
+      (obj) => (obj as TwigFabricObject).id === element.id
+    ) as TwigFabricObject | undefined
+    const indicatorPos = getMovePathIndicatorPosition(element, sourceObject)
+    applyMovePathCoords(element.x, element.y, action.toX, action.toY)
+    setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
     fabCanvas?.renderAll()
+  }
+
+  function syncMovePathOverlayPreview(startX: number, startY: number, endX: number, endY: number): void {
+    applyMovePathCoords(startX, startY, endX, endY)
+    // Caller is responsible for renderAll — avoids double render in handleObjectMoving.
   }
 
   function restoreSelectedCanvasObject(): void {
@@ -809,32 +787,29 @@
     renderMovePathOverlay()
   }
 
-  function updateMoveActionTarget(elementId: string, actionId: string, toX: number, toY: number): void {
+  function setMoveActionTarget(
+    elementId: string,
+    actionId: string,
+    toX: number,
+    toY: number,
+    persist: boolean
+  ): void {
     const slide = appState.currentSlide
     if (!slide) return
 
     const element = slide.elements.find((candidate) => candidate.id === elementId)
-    const action = element?.animations?.actions?.find((candidate) => candidate.id === actionId && candidate.type === 'move')
+    const action = element?.animations?.actions?.find(
+      (candidate) => candidate.id === actionId && candidate.type === 'move'
+    )
     if (!element || !action) return
 
     action.toX = Math.round(toX)
     action.toY = Math.round(toY)
     syncMovePathOverlay(element, action)
-    scheduleSave()
-    scheduleThumbnailCapture()
-  }
-
-  function previewMoveActionTarget(elementId: string, actionId: string, toX: number, toY: number): void {
-    const slide = appState.currentSlide
-    if (!slide) return
-
-    const element = slide.elements.find((candidate) => candidate.id === elementId)
-    const action = element?.animations?.actions?.find((candidate) => candidate.id === actionId && candidate.type === 'move')
-    if (!element || !action) return
-
-    action.toX = Math.round(toX)
-    action.toY = Math.round(toY)
-    syncMovePathOverlay(element, action)
+    if (persist) {
+      scheduleSave()
+      scheduleThumbnailCapture()
+    }
   }
 
   // Fabric may briefly clear or move selection when the ghost drag finishes.
@@ -888,24 +863,14 @@
   function handleMovePathWindowMouseMove(event: MouseEvent): void {
     if (!movePathDragState || !fabCanvas) return
     const point = fabCanvas.getScenePoint(event)
-    updateMoveActionTarget(
-      movePathDragState.elementId,
-      movePathDragState.actionId,
-      point.x,
-      point.y
-    )
+    setMoveActionTarget(movePathDragState.elementId, movePathDragState.actionId, point.x, point.y, false)
     restoreSelectedCanvasObject()
   }
 
   function handleMovePathWindowMouseUp(event: MouseEvent): void {
     if (movePathDragState && fabCanvas) {
       const point = fabCanvas.getScenePoint(event)
-      updateMoveActionTarget(
-        movePathDragState.elementId,
-        movePathDragState.actionId,
-        point.x,
-        point.y
-      )
+      setMoveActionTarget(movePathDragState.elementId, movePathDragState.actionId, point.x, point.y, true)
     }
     detachMovePathWindowListeners()
     movePathDragState = null
@@ -920,11 +885,12 @@
 
     const overlayTarget = target as MovePathOverlayFabricObject
     if (overlayTarget.overlayRole === 'move-path-ghost' && movePathDragState) {
-      previewMoveActionTarget(
+      setMoveActionTarget(
         movePathDragState.elementId,
         movePathDragState.actionId,
         overlayTarget.left ?? 0,
-        overlayTarget.top ?? 0
+        overlayTarget.top ?? 0,
+        false
       )
       return
     }
@@ -1655,11 +1621,12 @@
     const overlayTarget = target as MovePathOverlayFabricObject
     if (overlayTarget.overlayRole === 'move-path-ghost' && movePathDragState) {
       const draggedElementId = movePathDragState.elementId
-      updateMoveActionTarget(
+      setMoveActionTarget(
         draggedElementId,
         movePathDragState.actionId,
         overlayTarget.left ?? 0,
-        overlayTarget.top ?? 0
+        overlayTarget.top ?? 0,
+        true
       )
       appState.selectedObjectId = draggedElementId
       expandedMovePathElementId = draggedElementId
@@ -1751,41 +1718,6 @@
   // ============================================================================
   // Animation Handlers
   // ============================================================================
-
-  function insertAnimationStep(order: AnimationStep[], step: AnimationStep): AnimationStep[] {
-    // Keep a predictable per-element timeline: buildIn -> actions -> buildOut.
-    const sameElementIndexes = order
-      .map((existing, index) => ({ existing, index }))
-      .filter(({ existing }) => existing.elementId === step.elementId)
-
-    if (sameElementIndexes.length === 0) {
-      return [...order, step]
-    }
-
-    if (step.category === 'buildIn') {
-      const insertAt = sameElementIndexes[0].index
-      return [...order.slice(0, insertAt), step, ...order.slice(insertAt)]
-    }
-
-    if (step.category === 'action') {
-      const firstBuildOut = sameElementIndexes.find(({ existing }) => existing.category === 'buildOut')
-      if (firstBuildOut) {
-        const insertAt = firstBuildOut.index
-        return [...order.slice(0, insertAt), step, ...order.slice(insertAt)]
-      }
-
-      const lastCompatible = [...sameElementIndexes]
-        .reverse()
-        .find(({ existing }) => existing.category === 'buildIn' || existing.category === 'action')
-      if (lastCompatible) {
-        const insertAt = lastCompatible.index + 1
-        return [...order.slice(0, insertAt), step, ...order.slice(insertAt)]
-      }
-    }
-
-    const insertAt = sameElementIndexes[sameElementIndexes.length - 1].index + 1
-    return [...order.slice(0, insertAt), step, ...order.slice(insertAt)]
-  }
 
   function handleAnimationChange(elementId: string, animations: ElementAnimations): void {
     const el = appState.currentSlide?.elements.find((e) => e.id === elementId)
@@ -4042,7 +3974,7 @@
       </div>
       <div class="flex-1 p-4 bg-gray-200">
         <div class="flex items-center justify-center h-full overflow-auto">
-          <div class="bg-white shadow-lg relative" bind:this={canvasStageEl}>
+          <div class="bg-white shadow-lg relative">
             <canvas bind:this={canvasEl} width="960" height="540"></canvas>
             {#if movePathIndicatorUi.visible}
               <button
