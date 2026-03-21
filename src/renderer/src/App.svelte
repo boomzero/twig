@@ -25,7 +25,8 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { TwigElement, SelectionState } from './lib/state.svelte'
-  import type { SlideBackground } from './lib/types'
+  import type { SlideBackground, ElementAnimations, AnimationStep, ActionAnimation } from './lib/types'
+  import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
     Canvas,
@@ -33,6 +34,7 @@
     type FabricObject,
     Textbox,
     Rect,
+    Line,
     FabricImage,
     ActiveSelection,
     util,
@@ -42,6 +44,7 @@
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import StackPanel from './components/StackPanel.svelte'
+  import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import { PressedKeys } from 'runed'
 
   // ============================================================================
@@ -58,10 +61,25 @@
   let activeTextObject: Textbox | null = null
   let lastTextSelectionRange: { start: number; end: number } | null = null
   let suppressSelectionTracking = false
+  // Editor-only overlay objects for the Keynote-style move-path affordance.
+  // These never persist to slide state; they just visualize and edit one move action.
+  type MovePathOverlayFabricObject = FabricObject & {
+    overlayRole?: 'move-path-ghost'
+    actionId?: string
+  }
+  let movePathLine: Line | null = null
+  let movePathSourceMarker: Rect | null = null
+  let movePathGhostObject: MovePathOverlayFabricObject | null = null
+  let movePathDragState: { elementId: string; actionId: string } | null = null
+  let movePathCheckpointPushed = false
+  let suppressMovePathSelectionClear = false
+  let expandedMovePathElementId = $state<string | null>(null)
+  let movePathIndicatorUi = $state({ visible: false, left: 0, top: 0 })
 
-  // Layers panel visibility and width
-  let showStackPanel = $state(false)
-  let stackPanelWidth = $state(240)
+  // Active side panel — only one can be open at a time
+  type SidePanel = 'properties' | 'layers' | 'animate'
+  let activeSidePanel = $state<SidePanel>('properties')
+  let stackPanelWidth = $state(256)
   // Default background applied to newly created slides in this presentation
   let defaultSlideBackground = $state<SlideBackground | undefined>(undefined)
   // Incremented each time regenerateAllThumbnails() is called; lets a superseded
@@ -181,7 +199,7 @@
   const imageAssets = new Map<string, string>()
 
   type ElementSnapshot = Omit<TwigElement, 'src'>
-  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined }
+  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined, animationOrder: AnimationStep[] }
   // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
   type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
   type SlideHistory = { undo: HistoryEntry[], redo: HistoryEntry[] }
@@ -358,14 +376,16 @@
       elements: appState.currentSlide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
       background: appState.currentSlide.background
         ? JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground
-        : undefined
+        : undefined,
+      animationOrder: JSON.parse(JSON.stringify(appState.currentSlide.animationOrder))
     }
   }
 
   function pushCheckpointForSlide(slide: Slide): void {
     const snapshot: SlideSnapshot = {
       elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
-      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined
+      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined,
+      animationOrder: JSON.parse(JSON.stringify(slide.animationOrder ?? []))
     }
     const serialized = JSON.stringify(snapshot)
     const h = getSlideHistory(slide.id)
@@ -404,6 +424,10 @@
     appState.currentSlide.background = snapshot.background
       ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
       : undefined
+    appState.currentSlide.animationOrder = normalizeAnimationOrder({
+      ...appState.currentSlide,
+      animationOrder: JSON.parse(JSON.stringify(snapshot.animationOrder ?? []))
+    })
     appState.selectedObjectId = null
     fabCanvas?.discardActiveObject()
     // The $effect watching appState.currentSlide triggers renderCanvasFromState() automatically
@@ -511,7 +535,17 @@
 
   async function captureAndStoreThumbnail(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
+    // Keep editor affordances out of slide thumbnails.
+    const hadOverlay = !!(movePathLine || movePathSourceMarker || movePathGhostObject)
+    if (hadOverlay) {
+      setMovePathOverlayVisible(false)
+      fabCanvas.renderAll()
+    }
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
+    if (hadOverlay) {
+      setMovePathOverlayVisible(true)
+      fabCanvas.requestRenderAll()
+    }
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
@@ -522,6 +556,362 @@
       thumbnailTimeoutId = null
       captureAndStoreThumbnail().catch(console.error)
     }, 500)
+  }
+
+  // Remove any existing move-path overlay before rebuilding it for the latest
+  // selection or slide state.
+  function clearMovePathOverlay(): void {
+    detachMovePathWindowListeners()
+    if (fabCanvas) {
+      if (movePathLine) fabCanvas.remove(movePathLine)
+      if (movePathSourceMarker) fabCanvas.remove(movePathSourceMarker)
+      if (movePathGhostObject) fabCanvas.remove(movePathGhostObject)
+    }
+    movePathLine = null
+    movePathSourceMarker = null
+    movePathGhostObject = null
+    movePathDragState = null
+    movePathCheckpointPushed = false
+    suppressMovePathSelectionClear = false
+    if (movePathIndicatorUi.visible) movePathIndicatorUi = { visible: false, left: 0, top: 0 }
+  }
+
+  function setMovePathOverlayVisible(visible: boolean): void {
+    movePathLine?.set({ visible })
+    movePathSourceMarker?.set({ visible })
+    movePathGhostObject?.set({ visible })
+    movePathIndicatorUi = { ...movePathIndicatorUi, visible }
+  }
+
+  // First pass: expose a single editable move action for the selected element.
+  // If the element has multiple moves, prefer the first one that appears in the
+  // slide timeline so the overlay matches presentation order.
+  function getEditableMoveActionForSelection():
+    | { element: TwigElement; action: ActionAnimation }
+    | null {
+    return getEditableMoveActionForElement(appState.selectedObjectId)
+  }
+
+  function getEditableMoveActionForElement(elementId: string | null | undefined):
+    | { element: TwigElement; action: ActionAnimation }
+    | null {
+    const slide = appState.currentSlide
+    if (!slide || !elementId) return null
+
+    const element = slide.elements.find((el) => el.id === elementId)
+    const actions = element?.animations?.actions?.filter((action) => action.type === 'move') ?? []
+    if (!element || actions.length === 0) return null
+
+    const orderedActionId = slide.animationOrder.find(
+      (step) => step.elementId === elementId && step.category === 'action' && step.actionId
+    )?.actionId
+
+    const action = actions.find((candidate) => candidate.id === orderedActionId) ?? actions[0]
+    return action ? { element, action } : null
+  }
+
+  function getMovePathIndicatorPosition(
+    element: TwigElement,
+    sourceObject?: TwigFabricObject | null
+  ): { x: number; y: number } {
+    if (sourceObject) {
+      const rect = sourceObject.getBoundingRect()
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height
+      }
+    }
+    return {
+      x: element.x,
+      y: element.y + element.height / 2
+    }
+  }
+
+  function setMovePathIndicatorPosition(left: number, top: number, visible: boolean = true): void {
+    movePathIndicatorUi = { left, top, visible }
+  }
+
+  // Shared fabric options for all ghost overlay objects.
+  const GHOST_OVERLAY_OPTIONS = {
+    opacity: 0.6,
+    selectable: true,
+    evented: true,
+    hoverCursor: 'move',
+    moveCursor: 'move',
+    hasControls: false,
+    hasBorders: false,
+    padding: 8
+  } as const
+
+  function stampGhostOverlay(ghost: FabricObject, actionId: string): MovePathOverlayFabricObject {
+    const typed = ghost as MovePathOverlayFabricObject
+    typed.overlayRole = 'move-path-ghost'
+    typed.actionId = actionId
+    return typed
+  }
+
+  function createMovePathGhostObject(
+    element: TwigElement,
+    sourceObject: TwigFabricObject | undefined,
+    action: ActionAnimation
+  ): MovePathOverlayFabricObject | null {
+    const pos = { left: action.toX, top: action.toY, angle: element.angle }
+
+    if (element.type === 'rect') {
+      return stampGhostOverlay(new Rect({
+        ...pos,
+        width: element.width,
+        height: element.height,
+        fill: element.fill,
+        ...GHOST_OVERLAY_OPTIONS
+      }), action.id)
+    }
+
+    if (element.type === 'text') {
+      return stampGhostOverlay(new Textbox(element.text || '', {
+        ...pos,
+        width: element.width,
+        fill: element.fill,
+        fontFamily: element.fontFamily,
+        fontSize: element.fontSize,
+        styles: element.styles ? cleanStylesObject(element.styles) : {},
+        lockScalingY: true,
+        editable: false,
+        ...GHOST_OVERLAY_OPTIONS
+      }), action.id)
+    }
+
+    if (element.type === 'image' && sourceObject instanceof FabricImage) {
+      const ghost = new FabricImage(sourceObject.getElement())
+      ghost.set({ ...pos, scaleX: sourceObject.scaleX, scaleY: sourceObject.scaleY, ...GHOST_OVERLAY_OPTIONS })
+      return stampGhostOverlay(ghost, action.id)
+    }
+
+    return null
+  }
+
+  // Keynote-style first pass:
+  // 1. Show a collapsed red indicator below the selected object when it has a move.
+  // 2. Expand to line + source marker + draggable ghost destination after clicking it.
+  function renderMovePathOverlay(): void {
+    clearMovePathOverlay()
+    if (!fabCanvas) return
+
+    const editable = getEditableMoveActionForSelection()
+    if (!editable) {
+      fabCanvas.requestRenderAll()
+      return
+    }
+
+    const { element, action } = editable
+    const sourceObject = fabCanvas.getObjects().find(
+      (obj) => (obj as TwigFabricObject).id === element.id
+    ) as TwigFabricObject | undefined
+    const indicatorPos = getMovePathIndicatorPosition(element, sourceObject)
+    setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
+
+    if (expandedMovePathElementId !== element.id) {
+      fabCanvas.requestRenderAll()
+      return
+    }
+
+    movePathLine = new Line([element.x, element.y, action.toX, action.toY], {
+      stroke: '#ef4444',
+      strokeWidth: 2,
+      selectable: false,
+      evented: false
+    })
+    movePathSourceMarker = new Rect({
+      left: element.x,
+      top: element.y,
+      width: 10,
+      height: 10,
+      fill: '#ffffff',
+      stroke: '#ef4444',
+      strokeWidth: 2,
+      selectable: false,
+      evented: false
+    })
+    movePathGhostObject = createMovePathGhostObject(element, sourceObject, action)
+
+    fabCanvas.add(movePathLine)
+    fabCanvas.add(movePathSourceMarker)
+    if (movePathGhostObject) fabCanvas.add(movePathGhostObject)
+    fabCanvas.requestRenderAll()
+  }
+
+  // During drag we mutate the overlay in place instead of rebuilding the whole
+  // canvas, which keeps the interaction responsive.
+  function applyMovePathCoords(startX: number, startY: number, endX: number, endY: number): void {
+    movePathLine?.set({ x1: startX, y1: startY, x2: endX, y2: endY })
+    movePathSourceMarker?.set({ left: startX, top: startY })
+    movePathGhostObject?.set({ left: endX, top: endY })
+    movePathLine?.setCoords()
+    movePathSourceMarker?.setCoords()
+    movePathGhostObject?.setCoords()
+  }
+
+  function syncMovePathOverlay(element: TwigElement, action: ActionAnimation): void {
+    const sourceObject = fabCanvas?.getObjects().find(
+      (obj) => (obj as TwigFabricObject).id === element.id
+    ) as TwigFabricObject | undefined
+    const indicatorPos = getMovePathIndicatorPosition(element, sourceObject)
+    applyMovePathCoords(element.x, element.y, action.toX, action.toY)
+    setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
+    fabCanvas?.renderAll()
+  }
+
+  function syncMovePathOverlayPreview(startX: number, startY: number, endX: number, endY: number): void {
+    applyMovePathCoords(startX, startY, endX, endY)
+    // Caller is responsible for renderAll — avoids double render in handleObjectMoving.
+  }
+
+  function restoreSelectedCanvasObject(): void {
+    if (!fabCanvas || !appState.selectedObjectId) return
+    const selectedObject = fabCanvas.getObjects().find(
+      (obj) => (obj as TwigFabricObject).id === appState.selectedObjectId
+    )
+    if (selectedObject && fabCanvas.getActiveObject() !== selectedObject) {
+      fabCanvas.setActiveObject(selectedObject)
+      fabCanvas.renderAll()
+    }
+  }
+
+  function toggleExpandedMovePath(event: MouseEvent): void {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!appState.selectedObjectId) return
+    expandedMovePathElementId =
+      expandedMovePathElementId === appState.selectedObjectId ? null : appState.selectedObjectId
+    restoreSelectedCanvasObject()
+    renderMovePathOverlay()
+  }
+
+  function setMoveActionTarget(
+    elementId: string,
+    actionId: string,
+    toX: number,
+    toY: number,
+    persist: boolean
+  ): void {
+    const slide = appState.currentSlide
+    if (!slide) return
+
+    const element = slide.elements.find((candidate) => candidate.id === elementId)
+    const action = element?.animations?.actions?.find(
+      (candidate) => candidate.id === actionId && candidate.type === 'move'
+    )
+    if (!element || !action) return
+
+    action.toX = Math.round(toX)
+    action.toY = Math.round(toY)
+    syncMovePathOverlay(element, action)
+    if (persist) {
+      scheduleSave()
+      scheduleThumbnailCapture()
+    }
+  }
+
+  // Fabric may briefly clear or move selection when the ghost drag finishes.
+  // Hold onto the real object selection through that handoff, then release it
+  // on the next tick once Fabric has finished its event cycle.
+  function preserveSelectionAfterGhostDrag(elementId: string): void {
+    appState.selectedObjectId = elementId
+    expandedMovePathElementId = elementId
+    suppressMovePathSelectionClear = true
+    restoreSelectedCanvasObject()
+    setTimeout(() => {
+      appState.selectedObjectId = elementId
+      expandedMovePathElementId = elementId
+      suppressMovePathSelectionClear = false
+      restoreSelectedCanvasObject()
+      renderMovePathOverlay()
+    }, 0)
+  }
+
+  function detachMovePathWindowListeners(): void {
+    window.removeEventListener('mousemove', handleMovePathWindowMouseMove)
+    window.removeEventListener('mouseup', handleMovePathWindowMouseUp)
+  }
+
+  function handleCanvasMouseDownBefore(event: { target?: FabricObject; e: MouseEvent }): void {
+    const target = event.target as MovePathOverlayFabricObject | undefined
+    if (!target?.overlayRole || !target.actionId || !appState.selectedObjectId) return
+
+    if (target.overlayRole === 'move-path-ghost') {
+      suppressMovePathSelectionClear = true
+      movePathDragState = { elementId: appState.selectedObjectId, actionId: target.actionId }
+      if (!movePathCheckpointPushed) {
+        pushCheckpoint()
+        movePathCheckpointPushed = true
+      }
+      // Attach window-level listeners only for out-of-canvas drag tracking.
+      // We listen on the canvas element's mouseleave to attach them lazily —
+      // that way they don't fire while fabric.js is handling the drag normally,
+      // avoiding conflicts with object:moving / syncMovePathOverlay.
+      const canvasEl = fabCanvas?.getElement()
+      const attachOnLeave = (): void => {
+        window.addEventListener('mousemove', handleMovePathWindowMouseMove)
+        window.addEventListener('mouseup', handleMovePathWindowMouseUp)
+        canvasEl?.removeEventListener('mouseleave', attachOnLeave)
+      }
+      canvasEl?.addEventListener('mouseleave', attachOnLeave, { once: true })
+      return
+    }
+  }
+
+  function handleMovePathWindowMouseMove(event: MouseEvent): void {
+    if (!movePathDragState || !fabCanvas) return
+    const point = fabCanvas.getScenePoint(event)
+    setMoveActionTarget(movePathDragState.elementId, movePathDragState.actionId, point.x, point.y, false)
+    restoreSelectedCanvasObject()
+  }
+
+  function handleMovePathWindowMouseUp(event: MouseEvent): void {
+    if (movePathDragState && fabCanvas) {
+      const point = fabCanvas.getScenePoint(event)
+      setMoveActionTarget(movePathDragState.elementId, movePathDragState.actionId, point.x, point.y, true)
+    }
+    detachMovePathWindowListeners()
+    movePathDragState = null
+    movePathCheckpointPushed = false
+    suppressMovePathSelectionClear = false
+    restoreSelectedCanvasObject()
+  }
+
+  function handleObjectMoving(event: { target?: TwigFabricObject | ActiveSelection }): void {
+    const target = event.target
+    if (!target || target.type === 'activeselection') return
+
+    const overlayTarget = target as MovePathOverlayFabricObject
+    if (overlayTarget.overlayRole === 'move-path-ghost' && movePathDragState) {
+      setMoveActionTarget(
+        movePathDragState.elementId,
+        movePathDragState.actionId,
+        overlayTarget.left ?? 0,
+        overlayTarget.top ?? 0,
+        false
+      )
+      return
+    }
+
+    const editable = getEditableMoveActionForElement((target as TwigFabricObject).id)
+    if (!editable) return
+
+    const indicatorPos = getMovePathIndicatorPosition(editable.element, target as TwigFabricObject)
+    setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
+
+    if (expandedMovePathElementId !== editable.element.id) {
+      fabCanvas?.renderAll()
+      return
+    }
+
+    const liveX = target.left ?? editable.element.x
+    const liveY = target.top ?? editable.element.y
+    // Keep the authored move destination fixed; only the source point should
+    // follow the object while it is being dragged on the slide.
+    syncMovePathOverlayPreview(liveX, liveY, editable.action.toX, editable.action.toY)
+    fabCanvas?.renderAll()
   }
 
   /**
@@ -823,6 +1213,7 @@
       // This ensures a fresh canvas is created when a new slide loads
       // (The UI is destroyed when currentSlide is null, so we need to dispose the old canvas)
       if (fabCanvas) {
+        clearMovePathOverlay()
         fabCanvas.dispose()
         fabCanvas = undefined
       }
@@ -873,6 +1264,7 @@
     // This handles cases where the DOM element was recreated but fabCanvas still exists
     if (!fabCanvas || fabCanvas.getElement() !== canvasEl) {
       if (fabCanvas) {
+        clearMovePathOverlay()
         fabCanvas.dispose()
       }
       fabCanvas = new Canvas(canvasEl)
@@ -1030,12 +1422,14 @@
 
     // Remove old event listeners to prevent duplicate handlers
     fabCanvas.off('object:modified', handleObjectModified)
+    fabCanvas.off('object:moving', handleObjectMoving)
     fabCanvas.off('text:changed', handleTextChanged)
     fabCanvas.off('text:editing:entered', pushCheckpoint)
     fabCanvas.off('selection:created', handleSelection)
     fabCanvas.off('selection:updated', handleSelection)
     fabCanvas.off('selection:cleared', handleSelectionCleared)
     fabCanvas.off('contextmenu', handleContextMenu)
+    fabCanvas.off('mouse:down:before', handleCanvasMouseDownBefore)
 
     // Read elements synchronously (before any await) so Svelte 5 tracks the
     // array within the $effect's reactive context. Accessing elements after an
@@ -1164,15 +1558,18 @@
 
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)
+    fabCanvas.on('object:moving', handleObjectMoving)
     fabCanvas.on('text:changed', handleTextChanged)
     fabCanvas.on('text:editing:entered', pushCheckpoint)
     fabCanvas.on('selection:created', handleSelection)
     fabCanvas.on('selection:updated', handleSelection)
     fabCanvas.on('selection:cleared', handleSelectionCleared)
     fabCanvas.on('contextmenu', handleContextMenu)
+    fabCanvas.on('mouse:down:before', handleCanvasMouseDownBefore)
 
     if (imageLoads.length === 0) {
       applyPendingSelection()
+      renderMovePathOverlay()
       captureAndStoreThumbnail().catch(console.error)
       return Promise.resolve()
     }
@@ -1192,6 +1589,7 @@
       }
       fabCanvas.renderAll()
       applyPendingSelection()
+      renderMovePathOverlay()
       captureAndStoreThumbnail().catch(console.error)
     })
   }
@@ -1220,6 +1618,24 @@
     const target = event.target
     if (!target) return
 
+    const overlayTarget = target as MovePathOverlayFabricObject
+    if (overlayTarget.overlayRole === 'move-path-ghost' && movePathDragState) {
+      const draggedElementId = movePathDragState.elementId
+      setMoveActionTarget(
+        draggedElementId,
+        movePathDragState.actionId,
+        overlayTarget.left ?? 0,
+        overlayTarget.top ?? 0,
+        true
+      )
+      appState.selectedObjectId = draggedElementId
+      expandedMovePathElementId = draggedElementId
+      movePathDragState = null
+      movePathCheckpointPushed = false
+      preserveSelectionAfterGhostDrag(draggedElementId)
+      return
+    }
+
     // Capture state BEFORE updateStateFromObject mutates it — this is the pre-drag snapshot
     pushCheckpoint()
 
@@ -1235,6 +1651,7 @@
 
     // Trigger auto-save directly — the $effect doesn't subscribe to deep element
     // property changes, so we must call scheduleSave() explicitly here.
+    renderMovePathOverlay()
     scheduleSave()
     scheduleThumbnailCapture()
   }
@@ -1294,7 +1711,69 @@
       obj.setCoords()
       fabCanvas?.renderAll()
     }
+    renderMovePathOverlay()
     scheduleSave()
+  }
+
+  // ============================================================================
+  // Animation Handlers
+  // ============================================================================
+
+  function handleAnimationChange(elementId: string, animations: ElementAnimations): void {
+    const el = appState.currentSlide?.elements.find((e) => e.id === elementId)
+    if (!el || !appState.currentSlide) return
+
+    const prev = el.animations ?? {}
+    el.animations = Object.keys(animations).length > 0 ? animations : undefined
+
+    let order = [...appState.currentSlide.animationOrder]
+    for (const cat of ['buildIn', 'buildOut'] as const) {
+      const wasSet = !!(prev as ElementAnimations)[cat]
+      const isSet  = !!(animations as ElementAnimations)[cat]
+      if (!wasSet && isSet) {
+        order = insertAnimationStep(order, { elementId, category: cat })
+      }
+    }
+
+    const prevActionIds = new Set((prev.actions ?? []).map((a) => a.id))
+    for (const action of (animations.actions ?? [])) {
+      if (!prevActionIds.has(action.id)) {
+        order = insertAnimationStep(order, { elementId, category: 'action', actionId: action.id })
+      }
+    }
+
+    // Prune steps for removed categories
+    appState.currentSlide.animationOrder = normalizeAnimationOrder({
+      ...appState.currentSlide, animationOrder: order
+    })
+
+    renderMovePathOverlay()
+    scheduleSave()
+    scheduleThumbnailCapture()
+  }
+
+  function handleRemoveAnimationStep(step: AnimationStep): void {
+    if (!appState.currentSlide) return
+    pushCheckpoint()
+
+    const el = appState.currentSlide.elements.find((e) => e.id === step.elementId)
+    if (el?.animations) {
+      const updated = { ...el.animations }
+      if (step.category === 'action' && step.actionId) {
+        const remaining = (updated.actions ?? []).filter((a) => a.id !== step.actionId)
+        if (remaining.length > 0) updated.actions = remaining
+        else delete updated.actions
+      } else {
+        delete updated[step.category as 'buildIn' | 'buildOut']
+      }
+      el.animations = Object.keys(updated).length > 0 ? updated : undefined
+    }
+
+    appState.currentSlide.animationOrder = normalizeAnimationOrder(appState.currentSlide)
+
+    renderMovePathOverlay()
+    scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   // ============================================================================
@@ -1306,10 +1785,25 @@
    * Updates app state and manages rich text editor visibility.
    */
   function handleSelection(event: { selected?: TwigFabricObject[] }): void {
+    const selection = event.selected?.[0] as MovePathOverlayFabricObject | undefined
+    if (selection?.overlayRole === 'move-path-ghost') {
+      return
+    }
+    if (selection?.overlayRole) {
+      restoreSelectedCanvasObject()
+      return
+    }
+
+    const previousSelectedId = appState.selectedObjectId
+
     if (event.selected && event.selected.length === 1) {
       appState.selectedObjectId = event.selected[0].id || null
     } else {
       appState.selectedObjectId = null
+    }
+
+    if (appState.selectedObjectId !== previousSelectedId) {
+      expandedMovePathElementId = null
     }
 
     // Sync previous text object state before switching - object:modified doesn't always fire
@@ -1322,10 +1816,10 @@
     // Remove old text selection change listener
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
 
-    const selection = event.selected?.[0]
-    if (selection instanceof Textbox) {
+    const selectedObject = event.selected?.[0]
+    if (selectedObject instanceof Textbox) {
       // Text object selected - enable rich text controls
-      activeTextObject = selection
+      activeTextObject = selectedObject
       showRichTextControls = true
 
       // Update formatting button states based on the selected text object
@@ -1349,12 +1843,21 @@
       isSelectionUnderlined = false
       wasEditing = false
     }
+    renderMovePathOverlay()
   }
 
   /**
    * Handles selection cleared event - resets selection state.
    */
   function handleSelectionCleared(): void {
+    if (movePathDragState) {
+      return
+    }
+    if (suppressMovePathSelectionClear) {
+      restoreSelectedCanvasObject()
+      return
+    }
+
     // Sync state before clearing - object:modified doesn't always fire reliably
     if (activeTextObject) {
       updateStateFromObject(activeTextObject as TwigFabricObject)
@@ -1363,6 +1866,7 @@
     }
     activeTextObject?.off('selection:changed', handleTextSelectionChange)
     appState.selectedObjectId = null
+    expandedMovePathElementId = null
     activeTextObject = null
     showRichTextControls = false
     isSelectionBold = false
@@ -1373,6 +1877,8 @@
     wasEditing = false
     lastTextSelectionRange = null
     suppressSelectionTracking = false
+    clearMovePathOverlay()
+    fabCanvas?.requestRenderAll()
   }
 
   function handleTextChanged(event: { target?: TwigFabricObject }): void {
@@ -2679,6 +3185,8 @@
       appState.currentSlide.elements = appState.currentSlide.elements.filter(
         (el) => !idsToDelete.includes(el.id)
       )
+      // Prune animation steps for deleted elements
+      appState.currentSlide.animationOrder = normalizeAnimationOrder(appState.currentSlide)
       // Clear the canvas selection
       fabCanvas.discardActiveObject()
       scheduleSave()
@@ -2888,7 +3396,8 @@
         // Clamp so repeated pastes don't walk elements off canvas
         const x = Math.min(el.x + offset, CANVAS_W - 1)
         const y = Math.min(el.y + offset, CANVAS_H - 1)
-        return { ...el, id: newId, x, y, zIndex: baseZ + i }
+        // Pasted elements start with no animation config (new IDs, no stale steps)
+        return { ...el, id: newId, x, y, zIndex: baseZ + i, animations: undefined }
       })
 
       pushCheckpoint()
@@ -3260,34 +3769,47 @@
       <div class="h-6 w-px bg-gray-300 mx-2"></div>
       <button
         onclick={addRectangle}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
       >
         Add Shape
       </button>
       <button
         onclick={addText}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
       >
         Add Text
       </button>
       <button
         onclick={addImage}
-        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        class="px-3 py-1 mr-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
       >
         Add Image
       </button>
       <button
-        onclick={() => (showStackPanel = !showStackPanel)}
-        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        class:bg-indigo-100={showStackPanel}
-        class:border-indigo-400={showStackPanel}
-        class:text-indigo-700={showStackPanel}
-        class:bg-white={!showStackPanel}
-        class:border-gray-300={!showStackPanel}
-        class:text-gray-700={!showStackPanel}
+        onclick={() => activeSidePanel = activeSidePanel === 'layers' ? 'properties' : 'layers'}
+        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none"
+        class:bg-indigo-100={activeSidePanel === 'layers'}
+        class:border-indigo-400={activeSidePanel === 'layers'}
+        class:text-indigo-700={activeSidePanel === 'layers'}
+        class:bg-white={activeSidePanel !== 'layers'}
+        class:border-gray-300={activeSidePanel !== 'layers'}
+        class:text-gray-700={activeSidePanel !== 'layers'}
         title="Toggle Layers panel"
       >
         Layers
+      </button>
+      <button
+        onclick={() => activeSidePanel = activeSidePanel === 'animate' ? 'properties' : 'animate'}
+        class="px-3 py-1 mr-2 text-sm font-medium border rounded-md focus:outline-none"
+        class:bg-indigo-100={activeSidePanel === 'animate'}
+        class:border-indigo-400={activeSidePanel === 'animate'}
+        class:text-indigo-700={activeSidePanel === 'animate'}
+        class:bg-white={activeSidePanel !== 'animate'}
+        class:border-gray-300={activeSidePanel !== 'animate'}
+        class:text-gray-700={activeSidePanel !== 'animate'}
+        title="Toggle Animations panel"
+      >
+        Animate
       </button>
       {#if showRichTextControls}
         <div class="h-6 w-px bg-gray-300 mx-2"></div>
@@ -3452,12 +3974,32 @@
       </div>
       <div class="flex-1 p-4 bg-gray-200">
         <div class="flex items-center justify-center h-full overflow-auto">
-          <div class="bg-white shadow-lg">
+          <div class="bg-white shadow-lg relative">
             <canvas bind:this={canvasEl} width="960" height="540"></canvas>
+            {#if movePathIndicatorUi.visible}
+              <button
+                class="absolute z-20 w-5 h-5 border-2 border-white shadow-sm flex items-center justify-center"
+                style="left: {movePathIndicatorUi.left}px; top: {movePathIndicatorUi.top}px; transform: translate(-50%, -50%) rotate(45deg); background: #e86b3a;"
+                onmousedown={(event) => { event.preventDefault(); event.stopPropagation() }}
+                onclick={toggleExpandedMovePath}
+                aria-label="Toggle move path editor"
+                title="Toggle move path editor"
+              >
+                {#if expandedMovePathElementId === appState.selectedObjectId}
+                  <svg viewBox="0 0 16.4746 1.76758" width="9" height="2" style="transform: rotate(-45deg);" fill="white" aria-hidden="true">
+                    <path d="M0.869141 1.76758L15.2441 1.76758C15.7129 1.76758 16.1133 1.36719 16.1133 0.888672C16.1133 0.410156 15.7129 0.0195312 15.2441 0.0195312L0.869141 0.0195312C0.400391 0.0195312 0 0.410156 0 0.888672C0 1.36719 0.400391 1.76758 0.869141 1.76758Z"/>
+                  </svg>
+                {:else}
+                  <svg viewBox="0 0 16.4746 16.123" width="9" height="9" style="transform: rotate(-45deg);" fill="white" aria-hidden="true">
+                    <path d="M8.93555 15.2441L8.93555 0.869141C8.93555 0.400391 8.53516 0 8.05664 0C7.57812 0 7.1875 0.400391 7.1875 0.869141L7.1875 15.2441C7.1875 15.7129 7.57812 16.1133 8.05664 16.1133C8.53516 16.1133 8.93555 15.7129 8.93555 15.2441ZM0.869141 8.92578L15.2441 8.92578C15.7129 8.92578 16.1133 8.53516 16.1133 8.05664C16.1133 7.57812 15.7129 7.17773 15.2441 7.17773L0.869141 7.17773C0.400391 7.17773 0 7.57812 0 8.05664C0 8.53516 0.400391 8.92578 0.869141 8.92578Z"/>
+                  </svg>
+                {/if}
+              </button>
+            {/if}
           </div>
         </div>
       </div>
-      {#if showStackPanel}
+      {#if activeSidePanel === 'layers'}
         <div
           class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
           style="width: {stackPanelWidth}px;"
@@ -3467,7 +4009,7 @@
             class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
             onmousedown={startStackPanelResize}
             role="separator"
-            aria-label="Resize layers panel"
+            aria-label="Resize panel"
           ></div>
           <!--
             onLayerChange is only called by the drag-to-reorder path in StackPanel.
@@ -3495,9 +4037,40 @@
           />
         </div>
       {/if}
+      {#if activeSidePanel === 'animate'}
+        <div
+          class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
+          style="width: {stackPanelWidth}px;"
+        >
+          <div
+            class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
+            onmousedown={startStackPanelResize}
+            role="separator"
+            aria-label="Resize panel"
+          ></div>
+          <AnimationOrderPanel
+            onBeforeChange={pushCheckpoint}
+            onAfterChange={() => {
+              renderMovePathOverlay()
+              scheduleSave()
+              scheduleThumbnailCapture()
+            }}
+            onRemoveStep={handleRemoveAnimationStep}
+          />
+        </div>
+      {/if}
+      {#if activeSidePanel === 'properties'}
+      <div class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0" style="width: {stackPanelWidth}px;">
+        <div
+          class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
+          onmousedown={startStackPanelResize}
+          role="separator"
+          aria-label="Resize panel"
+        ></div>
       <PropertiesPanel
         onPropertyChange={handlePropertyChange}
         onBeforePropertyChange={pushCheckpoint}
+        onAnimationChange={handleAnimationChange}
         onSlideBackgroundChange={async (bg) => {
           if (appState.currentSlide) {
             if (!bgCheckpointPushed) {
@@ -3552,6 +4125,8 @@
           regenerateAllThumbnails(plain ?? undefined).catch(console.error)
         }}
       />
+      </div>
+      {/if}
     </div>
   </div>
 {:else}
