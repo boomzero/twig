@@ -15,13 +15,37 @@
   import { appState } from '../lib/state.svelte'
   import type { SlideBackground, ElementAnimations } from '../lib/types'
 
+  type RichText = {
+    isBold: boolean
+    isItalic: boolean
+    isUnderlined: boolean
+    fontSize: number
+    fontFamily: string
+    fillColor: string
+    fontDropdownOpen: boolean
+    fontSearchQuery: string
+    availableFonts: string[]
+    toggleBold: () => void
+    toggleItalic: () => void
+    toggleUnderline: () => void
+    changeFontSize: (e: Event) => void
+    applyStyle: (style: Record<string, string | number | boolean>) => void
+    toggleFontDropdown: () => void
+    selectFont: (family: string) => Promise<void>
+    previewFont: (family: string) => void
+    escapeFont: (family: string) => string
+    closeFontDropdown: () => void
+    setFontSearchQuery: (q: string) => void
+  }
+
   const {
     onPropertyChange,
     onBeforePropertyChange,
     onSlideBackgroundChange,
     onSetAsDefault,
     onApplyToAll,
-    onAnimationChange
+    onAnimationChange,
+    richText
   }: {
     onPropertyChange?: () => void
     onBeforePropertyChange?: () => void
@@ -29,7 +53,21 @@
     onSetAsDefault?: (bg: SlideBackground | null) => void
     onApplyToAll?: (bg: SlideBackground | null) => void
     onAnimationChange?: (elementId: string, animations: ElementAnimations) => void
+    richText?: RichText
   } = $props()
+
+  // Font dropdown click-outside handling (ref lives here since dropdown renders here)
+  let fontDropdownRef: HTMLDivElement | null = $state(null)
+  $effect(() => {
+    if (!richText?.fontDropdownOpen) return
+    function onMousedown(e: MouseEvent): void {
+      if (fontDropdownRef && !fontDropdownRef.contains(e.target as Node)) {
+        richText?.closeFontDropdown()
+      }
+    }
+    document.addEventListener('mousedown', onMousedown)
+    return () => document.removeEventListener('mousedown', onMousedown)
+  })
 
   // One-shot checkpoint guard: push a history checkpoint on the first real value
   // change per focus session, not on focus itself (which would clear redo even
@@ -125,6 +163,105 @@
   {#if selectedObject}
     <!-- Property controls for the selected object -->
     <div class="space-y-3">
+      {#if selectedObject.type === 'text' && richText}
+        <!-- Text formatting controls -->
+        <div class="pb-3 border-b border-gray-200">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Text</p>
+          <!-- B / I / U row -->
+          <div class="flex gap-1 mb-2">
+            <button
+              onclick={richText.toggleBold}
+              class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md focus:outline-none"
+              class:bg-gray-200={richText.isBold}
+              class:text-gray-700={richText.isBold}
+              class:text-gray-600={!richText.isBold}
+              class:hover:bg-gray-100={!richText.isBold}
+            >B</button>
+            <button
+              onclick={richText.toggleItalic}
+              class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md focus:outline-none"
+              class:bg-gray-200={richText.isItalic}
+              class:text-gray-700={richText.isItalic}
+              class:text-gray-600={!richText.isItalic}
+              class:hover:bg-gray-100={!richText.isItalic}
+            >I</button>
+            <button
+              onclick={richText.toggleUnderline}
+              class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md focus:outline-none"
+              class:bg-gray-200={richText.isUnderlined}
+              class:text-gray-700={richText.isUnderlined}
+              class:text-gray-600={!richText.isUnderlined}
+              class:hover:bg-gray-100={!richText.isUnderlined}
+            >U</button>
+            <input
+              type="number"
+              value={richText.fontSize}
+              onchange={richText.changeFontSize}
+              onkeydown={(e) => e.stopPropagation()}
+              min="1"
+              max="500"
+              class="flex-1 h-8 px-2 text-sm border border-gray-300 rounded-md"
+              placeholder="Size"
+            />
+            <input
+              type="color"
+              value={richText.fillColor}
+              oninput={(e) => richText?.applyStyle({ fill: (e.target as HTMLInputElement).value })}
+              class="w-8 h-8 p-0 border-none bg-transparent cursor-pointer"
+              title="Text color"
+            />
+          </div>
+          <!-- Font family dropdown -->
+          <div bind:this={fontDropdownRef} class="relative">
+            <button
+              onclick={richText.toggleFontDropdown}
+              onkeydown={(e) => e.stopPropagation()}
+              class="w-full h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center relative"
+              style={richText.fontFamily !== 'Multiple'
+                ? `font-family: ${richText.escapeFont(richText.fontFamily)}`
+                : ''}
+            >
+              <span
+                class="truncate"
+                class:italic={richText.fontFamily === 'Multiple'}
+                class:text-gray-500={richText.fontFamily === 'Multiple'}
+              >{richText.fontFamily}</span>
+              <svg class="w-4 h-4 absolute right-1 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            {#if richText.fontDropdownOpen}
+              <div
+                class="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg"
+                onkeydown={(e) => e.stopPropagation()}
+                style="will-change: scroll-position; contain: layout style paint;"
+              >
+                <div class="sticky top-0 bg-white p-2 border-b border-gray-200 z-10">
+                  <input
+                    type="text"
+                    value={richText.fontSearchQuery}
+                    oninput={(e) => richText?.setFontSearchQuery((e.target as HTMLInputElement).value)}
+                    placeholder="Search fonts..."
+                    class="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white"
+                    onkeydown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div class="py-1">
+                  {#each richText.availableFonts.filter(f => !richText?.fontSearchQuery || f.toLowerCase().includes(richText.fontSearchQuery.toLowerCase())) as font}
+                    <button
+                      onclick={() => richText?.selectFont(font)}
+                      onmouseenter={() => richText?.previewFont(font)}
+                      class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
+                      class:bg-blue-100={font === richText.fontFamily}
+                      style="font-family: {richText.escapeFont(font)}; contain: layout style;"
+                    >{font}</button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
       <div>
         <label for="x" class="block text-sm font-medium text-gray-600">X Position</label>
         <input
