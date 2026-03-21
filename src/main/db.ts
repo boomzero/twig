@@ -471,28 +471,57 @@ function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string
  * On conflict all mutable fields are updated EXCEPT src. Image src is a base64
  * data URI (potentially megabytes) that never changes after first import —
  * skipping it on updates avoids re-writing large blobs on every autosave.
+ *
+ * Falls back to a 16-column statement (without animations) if the column
+ * doesn't exist yet — same best-effort approach as the migration.
+ * Callers always pass 17 values; the wrapper drops the last one if needed.
  */
-function prepareElementUpsert(db: Database) {
-  return db.prepare(`
-    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      slide_id = excluded.slide_id,
-      type = excluded.type,
-      x = excluded.x,
-      y = excluded.y,
-      width = excluded.width,
-      height = excluded.height,
-      angle = excluded.angle,
-      fill = excluded.fill,
-      text = excluded.text,
-      fontSize = excluded.fontSize,
-      fontFamily = excluded.fontFamily,
-      styles = excluded.styles,
-      filename = excluded.filename,
-      z_index = excluded.z_index,
-      animations = excluded.animations
-  `)
+function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        slide_id = excluded.slide_id,
+        type = excluded.type,
+        x = excluded.x,
+        y = excluded.y,
+        width = excluded.width,
+        height = excluded.height,
+        angle = excluded.angle,
+        fill = excluded.fill,
+        text = excluded.text,
+        fontSize = excluded.fontSize,
+        fontFamily = excluded.fontFamily,
+        styles = excluded.styles,
+        filename = excluded.filename,
+        z_index = excluded.z_index,
+        animations = excluded.animations
+    `)
+    return (...args) => stmt.run(...args)
+  } catch {
+    const stmt = db.prepare(`
+      INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        slide_id = excluded.slide_id,
+        type = excluded.type,
+        x = excluded.x,
+        y = excluded.y,
+        width = excluded.width,
+        height = excluded.height,
+        angle = excluded.angle,
+        fill = excluded.fill,
+        text = excluded.text,
+        fontSize = excluded.fontSize,
+        fontFamily = excluded.fontFamily,
+        styles = excluded.styles,
+        filename = excluded.filename,
+        z_index = excluded.z_index
+    `)
+    // Drop the trailing animationsJson arg callers always provide
+    return (...args) => stmt.run(...args.slice(0, 16))
+  }
 }
 
 /**
@@ -508,10 +537,41 @@ function prepareElementUpsert(db: Database) {
  * @param db - The SQLite database connection
  * @param slide - The slide object to save (with all its elements)
  */
+/**
+ * Returns helpers for reading/writing the animation_order column on slides,
+ * falling back to no-ops if the column doesn't exist on this database yet.
+ */
+function prepareSlideAnimationOrder(db: Database): {
+  insertSlide: (id: string, order: number, background: string | null, animationOrder: string) => void
+  updateSlide: (background: string | null, animationOrder: string, id: string) => void
+  updateSlideWithOrder: (order: number, background: string | null, animationOrder: string, id: string) => void
+} {
+  try {
+    const ins = db.prepare('INSERT INTO slides (id, slide_order, background, animation_order) VALUES (?, ?, ?, ?)')
+    const upd = db.prepare('UPDATE slides SET background = ?, animation_order = ? WHERE id = ?')
+    const updOrd = db.prepare('UPDATE slides SET slide_order = ?, background = ?, animation_order = ? WHERE id = ?')
+    return {
+      insertSlide: (id, order, background, animationOrder) => ins.run(id, order, background, animationOrder),
+      updateSlide: (background, animationOrder, id) => upd.run(background, animationOrder, id),
+      updateSlideWithOrder: (order, background, animationOrder, id) => updOrd.run(order, background, animationOrder, id),
+    }
+  } catch {
+    const ins = db.prepare('INSERT INTO slides (id, slide_order, background) VALUES (?, ?, ?)')
+    const upd = db.prepare('UPDATE slides SET background = ? WHERE id = ?')
+    const updOrd = db.prepare('UPDATE slides SET slide_order = ?, background = ? WHERE id = ?')
+    return {
+      insertSlide: (id, order, background, _animationOrder) => ins.run(id, order, background),
+      updateSlide: (background, _animationOrder, id) => upd.run(background, id),
+      updateSlideWithOrder: (order, background, _animationOrder, id) => updOrd.run(order, background, id),
+    }
+  }
+}
+
 export function saveSlide(db: Database, slide: Slide): void {
   // Prepare outside the transaction so better-sqlite3 doesn't re-parse the SQL
   // on every autosave invocation (saveAllSlides already does this correctly).
   const elementUpsert = prepareElementUpsert(db)
+  const slideOps = prepareSlideAnimationOrder(db)
 
   const transaction = db.transaction((s: Slide) => {
     // Ensure the slide record exists
@@ -526,19 +586,12 @@ export function saveSlide(db: Database, slide: Slide): void {
         max: number | null
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
-      db.prepare('INSERT INTO slides (id, slide_order, background, animation_order) VALUES (?, ?, ?, ?)').run(
-        s.id, newOrder, s.background ? JSON.stringify(s.background) : null,
-        JSON.stringify(s.animationOrder ?? [])
-      )
+      slideOps.insertSlide(s.id, newOrder, s.background ? JSON.stringify(s.background) : null, JSON.stringify(s.animationOrder ?? []))
     }
 
     // Always sync background and animation_order (handles both new and existing slides)
     if (slideInfo) {
-      db.prepare('UPDATE slides SET background = ?, animation_order = ? WHERE id = ?').run(
-        s.background ? JSON.stringify(s.background) : null,
-        JSON.stringify(s.animationOrder ?? []),
-        s.id
-      )
+      slideOps.updateSlide(s.background ? JSON.stringify(s.background) : null, JSON.stringify(s.animationOrder ?? []), s.id)
     }
 
     s.elements.forEach((el) => {
@@ -559,7 +612,7 @@ export function saveSlide(db: Database, slide: Slide): void {
         } catch { animationsJson = null }
       }
 
-      elementUpsert.run(
+      elementUpsert(
         el.id,
         s.id,
         el.type,
@@ -634,11 +687,11 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
     slideIds.add(slide.id)
   }
 
+  const elementUpsert = prepareElementUpsert(db)
+  const slideOps = prepareSlideAnimationOrder(db)
+
   const transaction = db.transaction((slidesToSave: Slide[]) => {
     let hasNewSlides = false
-
-    // Prepared once and reused across all slides via the shared helper.
-    const elementUpsert = prepareElementUpsert(db)
 
     for (let index = 0; index < slidesToSave.length; index++) {
       const slide = slidesToSave[index]
@@ -647,16 +700,10 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         | undefined
 
       if (slideInfo) {
-        db.prepare('UPDATE slides SET slide_order = ?, background = ?, animation_order = ? WHERE id = ?').run(
-          index, slide.background ? JSON.stringify(slide.background) : null,
-          JSON.stringify(slide.animationOrder ?? []), slide.id
-        )
+        slideOps.updateSlideWithOrder(index, slide.background ? JSON.stringify(slide.background) : null, JSON.stringify(slide.animationOrder ?? []), slide.id)
       } else {
         hasNewSlides = true
-        db.prepare('INSERT INTO slides (id, slide_order, background, animation_order) VALUES (?, ?, ?, ?)').run(
-          slide.id, index, slide.background ? JSON.stringify(slide.background) : null,
-          JSON.stringify(slide.animationOrder ?? [])
-        )
+        slideOps.insertSlide(slide.id, index, slide.background ? JSON.stringify(slide.background) : null, JSON.stringify(slide.animationOrder ?? []))
       }
 
       slide.elements.forEach((el) => {
@@ -677,7 +724,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           } catch { animationsJson = null }
         }
 
-        elementUpsert.run(
+        elementUpsert(
           el.id,
           slide.id,
           el.type,
