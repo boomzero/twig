@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0-rc.3] - 2026-03-22
+
+### Fixed
+
+- Grant `contents: write` permission so CI can create GitHub releases
+
 ## [1.0.0-rc.2] - 2026-03-22
 
 ### Fixed
