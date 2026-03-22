@@ -474,7 +474,11 @@ The prefix before `_` is used during paste to preserve element type in the regen
 
 ## 8. Fonts table
 
-Embed custom fonts so the presentation renders correctly on any machine. System fonts (Arial, Helvetica, Georgia, Times New Roman, Courier New, etc.) do not need to be embedded.
+All fonts must be embedded in the `fonts` table so presentations render correctly on any machine — **except web-safe fonts**, which are guaranteed to be available everywhere and are intentionally skipped by the editor. The web-safe fonts exempt from embedding are:
+
+`Arial`, `Helvetica`, `Times New Roman`, `Times`, `Courier New`, `Courier`, `Verdana`, `Georgia`, `Palatino`, `Garamond`, `Bookman`, `Comic Sans MS`, `Trebuchet MS`, `Impact`
+
+Any `fontFamily` value not on this list must have a corresponding row in the `fonts` table.
 
 ```
 fonts.variant format: "<weight>-<style>"
@@ -682,7 +686,7 @@ Use this list to validate a `.tb` file before opening it in twig.
 - [ ] **Every `AnimationStep.elementId`** in `animation_order` refers to an element on that slide
 - [ ] **Every `AnimationStep` with `category = "action"`** has an `actionId` that matches an `id` in that element's `animations.actions`
 - [ ] **Image elements have `src`** set to a valid base64 data URI
-- [ ] **Custom fonts are embedded** in the `fonts` table if any element uses a non-system `fontFamily`
+- [ ] **Non-web-safe fonts are embedded** in the `fonts` table — every `fontFamily` not in the web-safe list above must have a matching row in `fonts`
 - [ ] **`font.variant`** matches the weight/style pattern `"<weight>-<style>"` (e.g. `"normal-normal"`)
 - [ ] **`z_index` values are non-negative integers**; at least 0 on every element
 - [ ] **Element coordinates** are within `[0, 959] × [0, 539]` (not required, but out-of-bounds elements will be partially off-canvas)
