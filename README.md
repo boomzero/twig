@@ -3,12 +3,13 @@
 
 **twig** &nbsp;·&nbsp; a presentation editor that looks the same everywhere
 
-[![Version](https://img.shields.io/badge/version-1.0.0--rc.2-8b5cf6?style=flat-square)](https://github.com/boomzero/twig/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0--rc.8-8b5cf6?style=flat-square)](https://github.com/boomzero/twig/releases)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555?style=flat-square)](#installation)
 
 </div>
 <img src="resources/demo.png" alt="twig demo" /><br/><br/>
+<img src="resources/demo2.png" alt="twig demo" /><br/><br/>
 
 ---
 
@@ -54,6 +55,14 @@ npm run build:mac    # package for macOS
 npm run build:win    # package for Windows
 npm run build:linux  # package for Linux
 ```
+
+---
+
+## Generating presentations with AI
+
+Because `.tb` files are plain SQLite databases with a simple, well-defined schema, AI agents can generate complete presentations directly — no GUI required.
+
+The full format is documented in [TWIG_SPEC.md](TWIG_SPEC.md), including all element types, coordinate system, JSON column formats, animation structure, and a ready-to-run Python example. Point an AI at that file and ask it to produce a `.tb` for you.
 
 ---
 

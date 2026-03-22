@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0-rc.8] - 2026-03-22
+
+### Fixed
+
+- Remove white background from app icon
+
 ## [1.0.0-rc.7] - 2026-03-22
 
 ### Fixed

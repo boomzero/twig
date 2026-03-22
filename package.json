@@ -1,6 +1,6 @@
 {
   "name": "twig",
-  "version": "1.0.0-rc.7",
+  "version": "1.0.0-rc.8",
   "description": "A presentation editor built with Electron, Svelte, and fabric.js",
   "main": "./out/main/index.js",
   "author": "boomzero",
