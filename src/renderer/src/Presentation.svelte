@@ -226,10 +226,7 @@
     // presenter advances again while images are still loading, the correct outgoing
     // transition is already in place for the next handleSlideChange call.
     lastSlideTransition = slide.transition
-    // Only capture and show an overlay if a real transition will play — skipping this
-    // for 'none' prevents the old slide from appearing frozen while image assets load.
-    const willTransition = !isFirstRender && !!outgoingTransition && outgoingTransition.type !== 'none'
-    const fromSnap = willTransition ? captureSlide() : null
+    const fromSnap = !isFirstRender ? captureSlide() : null
     if (fromSnap) {
       transitionOverlayStyle = ''
       transitionOverlaySrc = fromSnap
@@ -241,7 +238,7 @@
     if (myGeneration !== transitionGeneration) return
 
     const t = outgoingTransition
-    if (!fromSnap || !t) {
+    if (!fromSnap || !t || t.type === 'none') {
       transitionOverlaySrc = null
       transitionOverlayStyle = ''
       transitioning = false
