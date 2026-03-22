@@ -105,6 +105,15 @@ export interface FontData {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** Serialize an optional value to a JSON string, or null if undefined. */
+function serializeJson<T>(value: T | undefined): string | null {
+  return value !== undefined ? JSON.stringify(value) : null
+}
+
+// ============================================================================
 // Database Schema Management
 // ============================================================================
 
@@ -429,12 +438,12 @@ export function saveSlide(db: Database, slide: Slide): void {
         max: number | null
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
-      slideOps.insertSlide(s.id, newOrder, s.background ? JSON.stringify(s.background) : null, JSON.stringify(s.animationOrder ?? []), s.transition ? JSON.stringify(s.transition) : null)
+      slideOps.insertSlide(s.id, newOrder, serializeJson(s.background), JSON.stringify(s.animationOrder ?? []), serializeJson(s.transition))
     }
 
     // Always sync background, animation_order, and transition (handles both new and existing slides)
     if (slideInfo) {
-      slideOps.updateSlide(s.background ? JSON.stringify(s.background) : null, JSON.stringify(s.animationOrder ?? []), s.transition ? JSON.stringify(s.transition) : null, s.id)
+      slideOps.updateSlide(serializeJson(s.background), JSON.stringify(s.animationOrder ?? []), serializeJson(s.transition), s.id)
     }
 
     s.elements.forEach((el) => {
@@ -543,10 +552,10 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         | undefined
 
       if (slideInfo) {
-        slideOps.updateSlideWithOrder(index, slide.background ? JSON.stringify(slide.background) : null, JSON.stringify(slide.animationOrder ?? []), slide.transition ? JSON.stringify(slide.transition) : null, slide.id)
+        slideOps.updateSlideWithOrder(index, serializeJson(slide.background), JSON.stringify(slide.animationOrder ?? []), serializeJson(slide.transition), slide.id)
       } else {
         hasNewSlides = true
-        slideOps.insertSlide(slide.id, index, slide.background ? JSON.stringify(slide.background) : null, JSON.stringify(slide.animationOrder ?? []), slide.transition ? JSON.stringify(slide.transition) : null)
+        slideOps.insertSlide(slide.id, index, serializeJson(slide.background), JSON.stringify(slide.animationOrder ?? []), serializeJson(slide.transition))
       }
 
       slide.elements.forEach((el) => {

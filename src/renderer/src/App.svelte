@@ -167,6 +167,9 @@
   // Cache of decoded image elements keyed by src (base64 data URI).
   // Allows synchronous FabricImage construction on re-renders, preventing flicker.
   const imageElementCache = new Map<string, HTMLImageElement>()
+  // Tracks which slide IDs have been fully prefetched, so repeated renderCanvasFromState
+  // calls (per keystroke/drag) don't re-issue IPC round-trips for already-fetched slides.
+  const prefetchedSlideIds = new Set<string>()
 
   /**
    * Auto-save debounce delay in milliseconds.
@@ -368,6 +371,7 @@
   async function prefetchSlideImages(slideId: string): Promise<void> {
     const filePath = appState.currentFilePath
     if (!filePath) return
+    if (prefetchedSlideIds.has(slideId)) return
     try {
       const slide = await window.api.db.getSlide(filePath, slideId)
       if (!slide) return
@@ -389,6 +393,7 @@
         }
       }
       await Promise.all(loads)
+      prefetchedSlideIds.add(slideId)
     } catch {
       // Best-effort prefetch; ignore errors
     }
@@ -606,27 +611,19 @@
     }
   }
 
-  function captureCanvasSnapshot(quality = 0.85): string | null {
+  function captureCanvasSnapshot(quality = 0.85, multiplier = 1): string | null {
     if (!fabCanvas) return null
     const hadOverlay = !!(movePathLine || movePathSourceMarker || movePathGhostObject)
     if (hadOverlay) { setMovePathOverlayVisible(false); fabCanvas.renderAll() }
-    const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality })
+    const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality, multiplier })
     if (hadOverlay) { setMovePathOverlayVisible(true); fabCanvas.requestRenderAll() }
     return dataUrl
   }
 
   async function captureAndStoreThumbnail(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
-    const hadOverlay = !!(movePathLine || movePathSourceMarker || movePathGhostObject)
-    if (hadOverlay) {
-      setMovePathOverlayVisible(false)
-      fabCanvas.renderAll()
-    }
-    const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
-    if (hadOverlay) {
-      setMovePathOverlayVisible(true)
-      fabCanvas.requestRenderAll()
-    }
+    const dataUrl = captureCanvasSnapshot(0.7, 0.2)
+    if (!dataUrl) return
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
@@ -2275,6 +2272,7 @@
         appState.currentSlide = null
         appState.currentSlideIndex = -1
         imageElementCache.clear()
+        prefetchedSlideIds.clear()
 
         // Close any existing database connection
         if (appState.currentFilePath) {
@@ -2363,6 +2361,7 @@
 
         clearAllHistory()
         imageElementCache.clear()
+        prefetchedSlideIds.clear()
         await loadPresentation(filePath)
         setSaveStatus('saved')
         prefetchAllSlideImages().catch(() => {})
