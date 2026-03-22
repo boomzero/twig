@@ -85,6 +85,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+
       - name: Remove canvas (not needed in Electron)
         run: rm -rf node_modules/canvas
 
