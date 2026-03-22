@@ -8,8 +8,8 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555?style=flat-square)](#installation)
 
 </div>
-<img src="resources/demo.png" alt="twig demo" /><br/>
-<img src="resources/demo2.png" alt="twig demo" /><br/>
+<img src="resources/demo.png" alt="twig demo" />
+<img src="resources/demo2.png" alt="twig demo" />
 
 ---
 
