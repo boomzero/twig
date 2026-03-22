@@ -8,8 +8,6 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555?style=flat-square)](#installation)
 
 </div>
-<img src="resources/demo.png" alt="twig demo" />
-<img src="resources/demo2.png" alt="twig demo" />
 
 ---
 
@@ -20,6 +18,11 @@ twig is built around one goal: **what you see on your machine is what your audie
 Presentations are stored as `.tb` files — plain SQLite databases. No cloud required, no subscriptions, no lock-in.
 
 ---
+
+## Demos
+
+<img src="resources/demo.png" alt="twig demo" />
+<img src="resources/demo2.png" alt="twig demo" />
 
 ## Status
 
