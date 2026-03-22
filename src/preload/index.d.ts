@@ -153,6 +153,13 @@ declare global {
         requestState: () => void
         onStateRequest: (callback: () => void) => () => void
       }
+      app: {
+        getFileToOpen: () => Promise<string | null>
+        onOpenFile: (callback: (filePath: string) => void) => () => void
+        checkForUpdates: () => Promise<'checking' | 'up-to-date' | 'error'>
+        installUpdate: () => Promise<void>
+        onUpdateDownloaded: (callback: (version: string) => void) => () => void
+      }
       lifecycle: {
         onBeforeClose: (callback: () => void) => () => void
         flushComplete: () => void

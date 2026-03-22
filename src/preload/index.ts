@@ -223,6 +223,22 @@ const api = {
       return (): void => {
         ipcRenderer.removeListener('app:open-file', handler)
       }
+    },
+
+    /** Trigger a manual update check. Returns 'checking' | 'up-to-date' | 'error'. */
+    checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+
+    /** Quit and install a downloaded update. */
+    installUpdate: () => ipcRenderer.invoke('app:install-update'),
+
+    /** Listen for update-downloaded events (version string). */
+    onUpdateDownloaded: (callback: (version: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, version: string): void =>
+        callback(version)
+      ipcRenderer.on('app:update-downloaded', handler)
+      return (): void => {
+        ipcRenderer.removeListener('app:update-downloaded', handler)
+      }
     }
   },
 

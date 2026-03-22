@@ -273,6 +273,7 @@
   let slideTransitionOverlaySrc = $state<string | null>(null)
 
   // Copy/paste state
+  let updateAvailableVersion = $state<string | null>(null)
   let pasteCount = 0 // resets on each copy; increments each paste
   let lastCopiedPayload = '' // detects cross-window clipboard changes to reset pasteCount
   let pendingSelectionIds: string[] = [] // consumed by renderCanvasFromState after render
@@ -1320,6 +1321,7 @@
   let unsubscribePresentationClosed: (() => void) | undefined
   let unsubscribePresentationReady: (() => void) | undefined
   let unsubscribeOpenFile: (() => void) | undefined
+  let unsubscribeUpdateDownloaded: (() => void) | undefined
 
   // Reset background and transition checkpoint gates on pointer release so the next drag
   // session gets its own undo entry.
@@ -1389,6 +1391,11 @@
       sendPresentationState()
     })
 
+    // Listen for update-downloaded events from the main process
+    unsubscribeUpdateDownloaded = window.api?.app?.onUpdateDownloaded((version) => {
+      updateAvailableVersion = version
+    })
+
     // Listen for window close event - flush pending saves before closing
     unsubscribeBeforeClose = window.api?.lifecycle?.onBeforeClose(async () => {
       await flushPendingSave()
@@ -1426,6 +1433,7 @@
     unsubscribePresentationClosed?.()
     unsubscribePresentationReady?.()
     unsubscribeOpenFile?.()
+    unsubscribeUpdateDownloaded?.()
 
     // Unregister flush save callback
     unregisterFlushSave()
@@ -4544,6 +4552,22 @@
         </button>
       </div>
     </div>
+    {#if updateAvailableVersion}
+      <div class="flex items-center justify-center gap-3 px-4 py-1.5 bg-violet-600 text-white text-xs">
+        <span>twig {updateAvailableVersion} is ready to install</span>
+        <button
+          onclick={() => window.api?.app?.installUpdate()}
+          class="px-2.5 py-0.5 rounded bg-white text-violet-700 font-medium hover:bg-violet-50"
+        >
+          Restart & Update
+        </button>
+        <button
+          onclick={() => (updateAvailableVersion = null)}
+          class="ml-1 opacity-70 hover:opacity-100"
+          title="Dismiss"
+        >✕</button>
+      </div>
+    {/if}
     <div class="flex flex-1 overflow-hidden">
       <div
         role="list"

@@ -9,6 +9,7 @@
  */
 
 import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -1648,6 +1649,47 @@ app.whenReady().then(() => {
     )
     mainWindow?.webContents.send('presentation:window-ready')
   })
+
+  // --------------------------------------------------------------------------
+  // Auto-updater
+  // --------------------------------------------------------------------------
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  /** Notify the main window that a new version is downloaded and ready. */
+  function notifyUpdateReady(version: string): void {
+    const mainWindow = BrowserWindow.getAllWindows().find(
+      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+    )
+    mainWindow?.webContents.send('app:update-downloaded', version)
+  }
+
+  autoUpdater.on('update-downloaded', (info) => {
+    notifyUpdateReady(info.version)
+  })
+
+  /** Manual or programmatic update check. Returns a status string. */
+  ipcMain.handle('app:check-for-updates', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      if (!result) return 'up-to-date'
+      // If the downloaded version matches the available version, it's already ready
+      return 'checking'
+    } catch {
+      return 'error'
+    }
+  })
+
+  /** Quit and install the downloaded update. */
+  ipcMain.handle('app:install-update', () => {
+    autoUpdater.quitAndInstall()
+  })
+
+  // Silent background check on startup (errors are silently ignored)
+  if (!is.dev) {
+    autoUpdater.checkForUpdates().catch(() => {})
+  }
 })
 
 // ============================================================================
