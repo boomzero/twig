@@ -46,6 +46,7 @@ linux:
     - deb
   maintainer: boomzero
   category: Utility
+  icon: build/icons/png
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
