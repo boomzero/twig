@@ -36,7 +36,7 @@ Grab the latest build from [Releases](https://github.com/boomzero/twig/releases)
 |----------|------|
 | macOS | `.dmg` |
 | Windows | `.exe` / `.msi` |
-| Linux | `.AppImage` / `.deb` / `.snap` |
+| Linux | `.AppImage` / `.deb` |
 
 ---
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0-rc.6] - 2026-03-22
+
+### Fixed
+
+- Drop snap target (requires Snap Store credentials); ship AppImage and deb only
+
 ## [1.0.0-rc.5] - 2026-03-22
 
 ### Fixed

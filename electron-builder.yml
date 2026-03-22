@@ -42,7 +42,6 @@ dmg:
 linux:
   target:
     - AppImage
-    - snap
     - deb
   maintainer: boomzero
   category: Utility
