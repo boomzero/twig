@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0-rc.7] - 2026-03-22
+
+### Fixed
+
+- Publish releases as drafts so all platform artifacts upload before going live
+
 ## [1.0.0-rc.6] - 2026-03-22
 
 ### Fixed
