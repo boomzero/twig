@@ -1439,6 +1439,18 @@
     unregisterFlushSave()
   })
 
+  /** Keep the window title in sync with the open file. */
+  $effect(() => {
+    const filePath = appState.currentFilePath
+    const isTemp = appState.isTempFile
+    if (!filePath || isTemp) {
+      document.title = 'twig'
+    } else {
+      const name = filePath.split('/').pop()?.replace(/\.tb$/, '') ?? 'twig'
+      document.title = `${name} — twig`
+    }
+  })
+
   /**
    * Reactive effect that broadcasts state changes to the debug window.
    * Runs whenever any tracked state changes.
