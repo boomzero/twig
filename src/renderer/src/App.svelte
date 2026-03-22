@@ -43,6 +43,9 @@
     Textbox,
     Rect,
     Line,
+    Ellipse,
+    Triangle,
+    Polygon,
     FabricImage,
     ActiveSelection,
     util,
@@ -54,6 +57,48 @@
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import { PressedKeys } from 'runed'
+
+  // ============================================================================
+  // Shape Geometry Helpers
+  // ============================================================================
+
+  // Arrow: 7-point right-pointing polygon, exactly fits a 200×100 bounding box.
+  const ARROW_CANONICAL_W = 200
+  const ARROW_CANONICAL_H = 100
+  function makeArrowPoints(): Array<{ x: number; y: number }> {
+    return [
+      { x: 0, y: 30 },
+      { x: 120, y: 30 },
+      { x: 120, y: 0 },
+      { x: 200, y: 50 },
+      { x: 120, y: 100 },
+      { x: 120, y: 70 },
+      { x: 0, y: 70 }
+    ]
+  }
+
+  // Star: 5-point star with outer radius 100 and inner radius 42.
+  // Raw points are normalized to an exact 200×200 bounding box so that
+  // STAR_CANONICAL_W/H are always precisely 200 — no approximation drift.
+  const STAR_CANONICAL_W = 200
+  const STAR_CANONICAL_H = 200
+  function makeStarPoints(): Array<{ x: number; y: number }> {
+    const raw = Array.from({ length: 10 }, (_, i) => {
+      const angle = (i * 36 - 90) * (Math.PI / 180)
+      const r = i % 2 === 0 ? 100 : 42
+      return { x: r * Math.cos(angle), y: r * Math.sin(angle) }
+    })
+    const minX = Math.min(...raw.map((p) => p.x))
+    const maxX = Math.max(...raw.map((p) => p.x))
+    const minY = Math.min(...raw.map((p) => p.y))
+    const maxY = Math.max(...raw.map((p) => p.y))
+    const bboxW = maxX - minX
+    const bboxH = maxY - minY
+    return raw.map((p) => ({
+      x: (p.x - minX - bboxW / 2) * (200 / bboxW),
+      y: (p.y - minY - bboxH / 2) * (200 / bboxH)
+    }))
+  }
 
   // ============================================================================
   // Component State
@@ -132,6 +177,7 @@
   // Custom font dropdown state
   let fontDropdownOpen = $state(false)
   let fontSearchQuery = $state('')
+  let showShapePicker = $state(false)
   let fontLoadingQueue: Set<string> = new SvelteSet<string>()
   let isLoadingFonts = false
 
@@ -791,6 +837,58 @@
       )
     }
 
+    if (element.type === 'ellipse') {
+      return stampGhostOverlay(
+        new Ellipse({
+          ...pos,
+          rx: element.width / 2,
+          ry: element.height / 2,
+          fill: element.fill,
+          ...GHOST_OVERLAY_OPTIONS
+        }),
+        action.id
+      )
+    }
+
+    if (element.type === 'triangle') {
+      return stampGhostOverlay(
+        new Triangle({
+          ...pos,
+          width: element.width,
+          height: element.height,
+          fill: element.fill,
+          ...GHOST_OVERLAY_OPTIONS
+        }),
+        action.id
+      )
+    }
+
+    if (element.type === 'star') {
+      return stampGhostOverlay(
+        new Polygon(makeStarPoints(), {
+          ...pos,
+          fill: element.fill,
+          scaleX: element.width / STAR_CANONICAL_W,
+          scaleY: element.height / STAR_CANONICAL_H,
+          ...GHOST_OVERLAY_OPTIONS
+        }),
+        action.id
+      )
+    }
+
+    if (element.type === 'arrow') {
+      return stampGhostOverlay(
+        new Polygon(makeArrowPoints(), {
+          ...pos,
+          fill: element.fill,
+          scaleX: element.width / ARROW_CANONICAL_W,
+          scaleY: element.height / ARROW_CANONICAL_H,
+          ...GHOST_OVERLAY_OPTIONS
+        }),
+        action.id
+      )
+    }
+
     if (element.type === 'text') {
       return stampGhostOverlay(
         new Textbox(element.text || '', {
@@ -1101,6 +1199,50 @@
                 height: el.height,
                 angle: el.angle,
                 fill: el.fill
+              })
+            )
+          } else if (el.type === 'ellipse') {
+            tempCanvas.add(
+              new Ellipse({
+                left: el.x,
+                top: el.y,
+                rx: el.width / 2,
+                ry: el.height / 2,
+                angle: el.angle,
+                fill: el.fill
+              })
+            )
+          } else if (el.type === 'triangle') {
+            tempCanvas.add(
+              new Triangle({
+                left: el.x,
+                top: el.y,
+                width: el.width,
+                height: el.height,
+                angle: el.angle,
+                fill: el.fill
+              })
+            )
+          } else if (el.type === 'star') {
+            tempCanvas.add(
+              new Polygon(makeStarPoints(), {
+                left: el.x,
+                top: el.y,
+                angle: el.angle,
+                fill: el.fill,
+                scaleX: el.width / STAR_CANONICAL_W,
+                scaleY: el.height / STAR_CANONICAL_H
+              })
+            )
+          } else if (el.type === 'arrow') {
+            tempCanvas.add(
+              new Polygon(makeArrowPoints(), {
+                left: el.x,
+                top: el.y,
+                angle: el.angle,
+                fill: el.fill,
+                scaleX: el.width / ARROW_CANONICAL_W,
+                scaleY: el.height / ARROW_CANONICAL_H
               })
             )
           } else if (el.type === 'text') {
@@ -1634,6 +1776,46 @@
           fill: element.fill,
           id: element.id
         })
+      } else if (element.type === 'ellipse') {
+        fabObj = new Ellipse({
+          left: element.x,
+          top: element.y,
+          rx: element.width / 2,
+          ry: element.height / 2,
+          angle: element.angle,
+          fill: element.fill,
+          id: element.id
+        })
+      } else if (element.type === 'triangle') {
+        fabObj = new Triangle({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          angle: element.angle,
+          fill: element.fill,
+          id: element.id
+        })
+      } else if (element.type === 'star') {
+        fabObj = new Polygon(makeStarPoints(), {
+          left: element.x,
+          top: element.y,
+          angle: element.angle,
+          fill: element.fill,
+          id: element.id,
+          scaleX: element.width / STAR_CANONICAL_W,
+          scaleY: element.height / STAR_CANONICAL_H
+        })
+      } else if (element.type === 'arrow') {
+        fabObj = new Polygon(makeArrowPoints(), {
+          left: element.x,
+          top: element.y,
+          angle: element.angle,
+          fill: element.fill,
+          id: element.id,
+          scaleX: element.width / ARROW_CANONICAL_W,
+          scaleY: element.height / ARROW_CANONICAL_H
+        })
       } else if (element.type === 'text') {
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
         fabObj = new Textbox(element.text || 'Hello', {
@@ -1887,19 +2069,50 @@
       ?.getObjects()
       .find((o) => (o as TwigFabricObject).id === appState.selectedObjectId)
     if (el && obj) {
-      // State stores effective (scaled) dimensions: width = obj.width * scaleX.
-      // Reset scale to 1 and set the raw dimensions so the visual size matches
-      // the state value without double-applying any residual scale factor.
-      obj.set({
-        left: el.x,
-        top: el.y,
-        angle: el.angle,
-        fill: el.fill,
-        scaleX: 1,
-        scaleY: 1,
-        width: el.width,
-        height: el.height
-      })
+      // Shape-type-specific sync: ellipse uses rx/ry; polygons use scaleX/scaleY
+      // against their canonical bounding box; rect/triangle use raw width/height.
+      if (el.type === 'ellipse' && obj instanceof Ellipse) {
+        obj.set({
+          left: el.x,
+          top: el.y,
+          angle: el.angle,
+          fill: el.fill,
+          rx: el.width / 2,
+          ry: el.height / 2,
+          scaleX: 1,
+          scaleY: 1
+        })
+      } else if (el.type === 'star') {
+        obj.set({
+          left: el.x,
+          top: el.y,
+          angle: el.angle,
+          fill: el.fill,
+          scaleX: el.width / STAR_CANONICAL_W,
+          scaleY: el.height / STAR_CANONICAL_H
+        })
+      } else if (el.type === 'arrow') {
+        obj.set({
+          left: el.x,
+          top: el.y,
+          angle: el.angle,
+          fill: el.fill,
+          scaleX: el.width / ARROW_CANONICAL_W,
+          scaleY: el.height / ARROW_CANONICAL_H
+        })
+      } else {
+        // rect, triangle: state stores effective dimensions; reset scale to 1.
+        obj.set({
+          left: el.x,
+          top: el.y,
+          angle: el.angle,
+          fill: el.fill,
+          scaleX: 1,
+          scaleY: 1,
+          width: el.width,
+          height: el.height
+        })
+      }
       obj.setCoords()
       fabCanvas?.renderAll()
     }
@@ -3067,6 +3280,78 @@
     scheduleSave()
   }
 
+  function addEllipse(): void {
+    if (!appState.currentSlide) return
+    pushCheckpoint()
+    const el: TwigElement = {
+      type: 'ellipse',
+      id: `ellipse_${uuid_v4()}`,
+      x: 100,
+      y: 100,
+      width: 150,
+      height: 150,
+      angle: 0,
+      fill: '#FF6F61',
+      zIndex: nextZIndex()
+    }
+    appState.currentSlide.elements.push(el)
+    scheduleSave()
+  }
+
+  function addTriangle(): void {
+    if (!appState.currentSlide) return
+    pushCheckpoint()
+    const el: TwigElement = {
+      type: 'triangle',
+      id: `triangle_${uuid_v4()}`,
+      x: 100,
+      y: 100,
+      width: 150,
+      height: 130,
+      angle: 0,
+      fill: '#FF6F61',
+      zIndex: nextZIndex()
+    }
+    appState.currentSlide.elements.push(el)
+    scheduleSave()
+  }
+
+  function addStar(): void {
+    if (!appState.currentSlide) return
+    pushCheckpoint()
+    const el: TwigElement = {
+      type: 'star',
+      id: `star_${uuid_v4()}`,
+      x: 100,
+      y: 100,
+      width: 150,
+      height: 150,
+      angle: 0,
+      fill: '#FF6F61',
+      zIndex: nextZIndex()
+    }
+    appState.currentSlide.elements.push(el)
+    scheduleSave()
+  }
+
+  function addArrow(): void {
+    if (!appState.currentSlide) return
+    pushCheckpoint()
+    const el: TwigElement = {
+      type: 'arrow',
+      id: `arrow_${uuid_v4()}`,
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 100,
+      angle: 0,
+      fill: '#FF6F61',
+      zIndex: nextZIndex()
+    }
+    appState.currentSlide.elements.push(el)
+    scheduleSave()
+  }
+
   /**
    * Opens an image file dialog and adds the selected image to the current slide.
    * The image is loaded as a base64 data URI and stored in the slide data.
@@ -3572,7 +3857,16 @@
         const e = el as Record<string, unknown>
         const type = e.type
         if (typeof e.id !== 'string') return false
-        if (type !== 'rect' && type !== 'text' && type !== 'image') return false
+        if (
+          type !== 'rect' &&
+          type !== 'ellipse' &&
+          type !== 'triangle' &&
+          type !== 'star' &&
+          type !== 'arrow' &&
+          type !== 'text' &&
+          type !== 'image'
+        )
+          return false
         if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
         if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
         if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
@@ -4121,18 +4415,64 @@
         >
         <span class="text-[10px] font-medium leading-none text-gray-500">Text</span>
       </button>
-      <button
-        onclick={addRectangle}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Add shape"
-      >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
-          ><path
-            d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"
-          /></svg
+      <div class="relative">
+        <button
+          onclick={() => (showShapePicker = !showShapePicker)}
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+          class:bg-gray-200={showShapePicker}
+          title="Add shape"
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Shape</span>
-      </button>
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"
+            /></svg
+          >
+          <span class="text-[10px] font-medium leading-none text-gray-500">Shape</span>
+        </button>
+        {#if showShapePicker}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-1 flex flex-col gap-0.5 min-w-[120px]"
+            onmouseleave={() => (showShapePicker = false)}
+          >
+            <button
+              onclick={() => { addRectangle(); showShapePicker = false }}
+              class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
+            >
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6" width="20" height="12" rx="1"/></svg>
+              Rectangle
+            </button>
+            <button
+              onclick={() => { addEllipse(); showShapePicker = false }}
+              class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
+            >
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><ellipse cx="12" cy="12" rx="10" ry="7"/></svg>
+              Ellipse
+            </button>
+            <button
+              onclick={() => { addTriangle(); showShapePicker = false }}
+              class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
+            >
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,3 22,21 2,21"/></svg>
+              Triangle
+            </button>
+            <button
+              onclick={() => { addStar(); showShapePicker = false }}
+              class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
+            >
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+              Star
+            </button>
+            <button
+              onclick={() => { addArrow(); showShapePicker = false }}
+              class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
+            >
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="2,9 14,9 14,5 22,12 14,19 14,15 2,15"/></svg>
+              Arrow
+            </button>
+          </div>
+        {/if}
+      </div>
       <button
         onclick={addImage}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"

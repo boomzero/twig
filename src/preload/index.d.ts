@@ -55,7 +55,7 @@ export interface DebugState {
   currentSlide: {
     id: string
     elements: Array<{
-      type: 'rect' | 'text' | 'image'
+      type: 'rect' | 'ellipse' | 'triangle' | 'star' | 'arrow' | 'text' | 'image'
       id: string
       x: number
       y: number

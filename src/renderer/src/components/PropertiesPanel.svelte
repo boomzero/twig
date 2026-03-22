@@ -329,7 +329,7 @@
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
-      {#if selectedObject.type === 'rect'}
+      {#if selectedObject.type === 'rect' || selectedObject.type === 'ellipse' || selectedObject.type === 'triangle' || selectedObject.type === 'star' || selectedObject.type === 'arrow'}
         <div>
           <label for="fill" class="block text-sm font-medium text-gray-600">Fill Color</label>
           <input

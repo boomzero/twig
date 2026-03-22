@@ -100,7 +100,7 @@ All IPC calls are asynchronous and return Promises.
 
 ### Svelte 5 Runes
 
-This project uses Svelte 5's runes syntax. See `svelte-docs-for-llms.md` for full documentation. Common patterns:
+This project uses Svelte 5's runes syntax. See https://svelte.dev/llms-full.txt for full documentation. Common patterns:
 
 - `$state()`: Reactive state
 - `$effect()`: Side effects that run when dependencies change

@@ -9,7 +9,18 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
-  import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient, util } from 'fabric'
+  import {
+    Canvas,
+    Textbox,
+    Rect,
+    Ellipse,
+    Triangle,
+    Polygon,
+    FabricImage,
+    type FabricObject,
+    Gradient,
+    util
+  } from 'fabric'
   import type {
     TwigElement,
     Slide,
@@ -27,6 +38,44 @@
     slideCount: number
     /** File path of the current presentation, needed for DB access and font loading. */
     filePath: string | null
+  }
+
+  // ============================================================================
+  // Shape Geometry Helpers (must stay in sync with App.svelte)
+  // ============================================================================
+
+  const ARROW_CANONICAL_W = 200
+  const ARROW_CANONICAL_H = 100
+  function makeArrowPoints(): Array<{ x: number; y: number }> {
+    return [
+      { x: 0, y: 30 },
+      { x: 120, y: 30 },
+      { x: 120, y: 0 },
+      { x: 200, y: 50 },
+      { x: 120, y: 100 },
+      { x: 120, y: 70 },
+      { x: 0, y: 70 }
+    ]
+  }
+
+  const STAR_CANONICAL_W = 200
+  const STAR_CANONICAL_H = 200
+  function makeStarPoints(): Array<{ x: number; y: number }> {
+    const raw = Array.from({ length: 10 }, (_, i) => {
+      const angle = (i * 36 - 90) * (Math.PI / 180)
+      const r = i % 2 === 0 ? 100 : 42
+      return { x: r * Math.cos(angle), y: r * Math.sin(angle) }
+    })
+    const minX = Math.min(...raw.map((p) => p.x))
+    const maxX = Math.max(...raw.map((p) => p.x))
+    const minY = Math.min(...raw.map((p) => p.y))
+    const maxY = Math.max(...raw.map((p) => p.y))
+    const bboxW = maxX - minX
+    const bboxH = maxY - minY
+    return raw.map((p) => ({
+      x: (p.x - minX - bboxW / 2) * (200 / bboxW),
+      y: (p.y - minY - bboxH / 2) * (200 / bboxH)
+    }))
   }
 
   // ============================================================================
@@ -311,6 +360,50 @@
           height: element.height,
           angle: element.angle,
           fill: element.fill,
+          selectable: false,
+          evented: false
+        })
+      } else if (element.type === 'ellipse') {
+        fabObj = new Ellipse({
+          left: element.x,
+          top: element.y,
+          rx: element.width / 2,
+          ry: element.height / 2,
+          angle: element.angle,
+          fill: element.fill,
+          selectable: false,
+          evented: false
+        })
+      } else if (element.type === 'triangle') {
+        fabObj = new Triangle({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          angle: element.angle,
+          fill: element.fill,
+          selectable: false,
+          evented: false
+        })
+      } else if (element.type === 'star') {
+        fabObj = new Polygon(makeStarPoints(), {
+          left: element.x,
+          top: element.y,
+          angle: element.angle,
+          fill: element.fill,
+          scaleX: element.width / STAR_CANONICAL_W,
+          scaleY: element.height / STAR_CANONICAL_H,
+          selectable: false,
+          evented: false
+        })
+      } else if (element.type === 'arrow') {
+        fabObj = new Polygon(makeArrowPoints(), {
+          left: element.x,
+          top: element.y,
+          angle: element.angle,
+          fill: element.fill,
+          scaleX: element.width / ARROW_CANONICAL_W,
+          scaleY: element.height / ARROW_CANONICAL_H,
           selectable: false,
           evented: false
         })

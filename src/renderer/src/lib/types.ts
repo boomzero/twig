@@ -11,7 +11,7 @@
  */
 export interface TwigElement {
   /** Type of element - rectangle shape, text, or image */
-  type: 'rect' | 'text' | 'image'
+  type: 'rect' | 'ellipse' | 'triangle' | 'star' | 'arrow' | 'text' | 'image'
 
   /** Unique identifier for this element */
   id: string
