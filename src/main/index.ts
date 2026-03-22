@@ -272,10 +272,7 @@ const RETRYABLE_FILE_ERROR_CODES = ['EBUSY', 'EPERM', 'EACCES']
  * @returns The result of the successful operation
  * @throws The last error if all retries fail
  */
-async function retryFileOperation<T>(
-  operation: () => T,
-  maxRetries: number = 5
-): Promise<T> {
+async function retryFileOperation<T>(operation: () => T, maxRetries: number = 5): Promise<T> {
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -298,7 +295,7 @@ async function retryFileOperation<T>(
         console.log(
           `File operation failed (${errCode}), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`
         )
-        await new Promise(resolve => setTimeout(resolve, delay))
+        await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
   }
@@ -334,9 +331,7 @@ function verifyDatabaseIntegrity(filePath: string, context: string): void {
 
     const firstResult = integrityResult[0] as { integrity_check?: string }
     if (!firstResult || firstResult.integrity_check !== 'ok') {
-      throw new Error(
-        `Integrity check failed: ${JSON.stringify(integrityResult)}`
-      )
+      throw new Error(`Integrity check failed: ${JSON.stringify(integrityResult)}`)
     }
   } finally {
     testDb.close()
@@ -364,7 +359,10 @@ function safeLog(message: string, level: 'log' | 'warn' | 'error' = 'log'): void
  * @param filePath - Absolute path to the .tb file
  * @param checkpointMode - WAL checkpoint mode: 'none' (no checkpoint), 'passive' (non-blocking), 'truncate' (full checkpoint)
  */
-function closeDbConnection(filePath: string, checkpointMode: 'none' | 'passive' | 'truncate' = 'none'): void {
+function closeDbConnection(
+  filePath: string,
+  checkpointMode: 'none' | 'passive' | 'truncate' = 'none'
+): void {
   if (connectionCache.has(filePath)) {
     try {
       const db = connectionCache.get(filePath)!
@@ -414,7 +412,10 @@ function withDbConnection<T>(filePath: string, fn: (db: Database.Database) => T)
       // Stale connection (file was moved/renamed while the connection was open).
       // Evict it and retry once with a fresh connection.
       closeDbConnection(filePath, 'none')
-      safeLog(`Retrying after stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`, 'warn')
+      safeLog(
+        `Retrying after stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`,
+        'warn'
+      )
       return fn(getDbConnection(filePath))
     }
     throw error
@@ -448,11 +449,7 @@ function getFontDirectories(): string[] {
 
   if (platform === 'darwin') {
     // macOS font directories
-    return [
-      '/System/Library/Fonts',
-      '/Library/Fonts',
-      join(homedir, 'Library', 'Fonts')
-    ]
+    return ['/System/Library/Fonts', '/Library/Fonts', join(homedir, 'Library', 'Fonts')]
   } else if (platform === 'win32') {
     // Windows font directories
     const windir = process.env.WINDIR || 'C:\\Windows'
@@ -556,7 +553,8 @@ function getSystemFonts(): SystemFont[] {
     } else {
       // Check if current font is "Regular" or "Normal" variant (preferred)
       const filename = basename(font.path).toLowerCase()
-      const isRegular = filename.includes('regular') || filename.includes('normal') || filename.includes('-rg.')
+      const isRegular =
+        filename.includes('regular') || filename.includes('normal') || filename.includes('-rg.')
 
       const existingFilename = basename(existing.path).toLowerCase()
       const existingIsRegular =
@@ -621,7 +619,7 @@ function createWindow(): void {
       let isResolved = false
 
       // Function to safely close the window
-      const performClose = () => {
+      const performClose = (): void => {
         if (isResolved) return // Already closed
         isResolved = true
 
@@ -650,7 +648,7 @@ function createWindow(): void {
       mainWindow.webContents.send('lifecycle:before-close')
 
       // Listen for flush complete (only from the main window)
-      const flushCompleteHandler = (_event: any) => {
+      const flushCompleteHandler = (_event: Electron.IpcMainEvent): void => {
         // Validate that the message came from the main window
         if (_event.sender !== mainWindow.webContents) {
           console.warn('Received lifecycle:flush-complete from non-main window, ignoring')
@@ -853,9 +851,7 @@ app.whenReady().then(() => {
     const { filePaths } = await dialog.showOpenDialog(window!, {
       title: 'Insert Image',
       properties: ['openFile'],
-      filters: [
-        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }
-      ]
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }]
     })
 
     if (!filePaths || filePaths.length === 0) {
@@ -893,7 +889,9 @@ app.whenReady().then(() => {
       }
     } catch (error) {
       console.error('Failed to read image file:', error)
-      throw new Error(`Failed to read image file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new Error(
+        `Failed to read image file: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
     }
   })
 
@@ -958,16 +956,19 @@ app.whenReady().then(() => {
   /**
    * Saves a thumbnail for a specific slide.
    */
-  ipcMain.handle('db:save-thumbnail', (_event, filePath: string, slideId: string, thumbnail: string): void => {
-    try {
-      validateFilePath(filePath)
-      validateSlideId(slideId)
-      withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail))
-    } catch (error) {
-      console.error('Error in db:save-thumbnail:', error)
-      throw error
+  ipcMain.handle(
+    'db:save-thumbnail',
+    (_event, filePath: string, slideId: string, thumbnail: string): void => {
+      try {
+        validateFilePath(filePath)
+        validateSlideId(slideId)
+        withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail))
+      } catch (error) {
+        console.error('Error in db:save-thumbnail:', error)
+        throw error
+      }
     }
-  })
+  )
 
   /**
    * Retrieves all stored thumbnails for a presentation.
@@ -992,25 +993,31 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('db:set-setting', (_event, filePath: string, key: string, value: string | null): void => {
-    try {
-      validateFilePath(filePath)
-      withDbConnection(filePath, (db) => dbService.setSetting(db, key, value))
-    } catch (error) {
-      console.error('Error in db:set-setting:', error)
-      throw error
+  ipcMain.handle(
+    'db:set-setting',
+    (_event, filePath: string, key: string, value: string | null): void => {
+      try {
+        validateFilePath(filePath)
+        withDbConnection(filePath, (db) => dbService.setSetting(db, key, value))
+      } catch (error) {
+        console.error('Error in db:set-setting:', error)
+        throw error
+      }
     }
-  })
+  )
 
-  ipcMain.handle('db:apply-background-to-all', (_event, filePath: string, background: dbService.SlideBackground | null): void => {
-    try {
-      validateFilePath(filePath)
-      withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background))
-    } catch (error) {
-      console.error('Error in db:apply-background-to-all:', error)
-      throw error
+  ipcMain.handle(
+    'db:apply-background-to-all',
+    (_event, filePath: string, background: dbService.SlideBackground | null): void => {
+      try {
+        validateFilePath(filePath)
+        withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background))
+      } catch (error) {
+        console.error('Error in db:apply-background-to-all:', error)
+        throw error
+      }
     }
-  })
+  )
 
   ipcMain.handle('db:delete-slide', (_event, filePath: string, slideId: string): void => {
     try {
@@ -1129,11 +1136,10 @@ app.whenReady().then(() => {
 
       // Ensure the path is inside TEMP_DIR (not just a prefix match)
       // Check if path starts with tempDir followed by a separator, or is exactly tempDir
-      const isInTempDir =
-        realPath === realTempDir || realPath.startsWith(realTempDir + sep)
+      const isInTempDir = realPath === realTempDir || realPath.startsWith(realTempDir + sep)
 
       return isInTempDir
-    } catch (error) {
+    } catch {
       // If file doesn't exist or path is invalid, it's not a temp file
       return false
     }
@@ -1177,106 +1183,50 @@ app.whenReady().then(() => {
    * Moves a temp database to a user-chosen location (Save operation).
    * Handles cross-device moves by falling back to copy+delete.
    */
-  ipcMain.handle('db:save-to-location', async (_event, sourcePath: string, destPath: string): Promise<string> => {
-    try {
-      validateFilePath(sourcePath)
-      validateFilePath(destPath)
+  ipcMain.handle(
+    'db:save-to-location',
+    async (_event, sourcePath: string, destPath: string): Promise<string> => {
+      try {
+        validateFilePath(sourcePath)
+        validateFilePath(destPath)
 
-      // Verify source file exists
-      if (!fs.existsSync(sourcePath)) {
-        throw new Error(`Source file does not exist: ${sourcePath}`)
-      }
+        // Verify source file exists
+        if (!fs.existsSync(sourcePath)) {
+          throw new Error(`Source file does not exist: ${sourcePath}`)
+        }
 
-      // Close connections to both paths and checkpoint WAL with full TRUNCATE
-      closeDbConnection(sourcePath, 'truncate')
-      closeDbConnection(destPath, 'truncate')
+        // Close connections to both paths and checkpoint WAL with full TRUNCATE
+        closeDbConnection(sourcePath, 'truncate')
+        closeDbConnection(destPath, 'truncate')
 
-      // Delete destination if it exists (with retry logic for file locks)
-      if (fs.existsSync(destPath)) {
+        // Delete destination if it exists (with retry logic for file locks)
+        if (fs.existsSync(destPath)) {
+          try {
+            await retryFileOperation(() => {
+              fs.unlinkSync(destPath)
+            })
+          } catch (unlinkError) {
+            const errCode = (unlinkError as NodeJS.ErrnoException).code
+            if (errCode === 'EBUSY' || errCode === 'EPERM') {
+              throw new Error(
+                `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
+              )
+            }
+            // ENOENT is fine, other errors we'll try to proceed
+            if (errCode !== 'ENOENT') {
+              console.warn('Failed to delete existing destination file:', unlinkError)
+            }
+          }
+        }
+
+        // Try to rename (move) the file (with retry logic)
         try {
           await retryFileOperation(() => {
-            fs.unlinkSync(destPath)
+            fs.renameSync(sourcePath, destPath)
           })
-        } catch (unlinkError) {
-          const errCode = (unlinkError as NodeJS.ErrnoException).code
-          if (errCode === 'EBUSY' || errCode === 'EPERM') {
-            throw new Error(
-              `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
-            )
-          }
-          // ENOENT is fine, other errors we'll try to proceed
-          if (errCode !== 'ENOENT') {
-            console.warn('Failed to delete existing destination file:', unlinkError)
-          }
-        }
-      }
-
-      // Try to rename (move) the file (with retry logic)
-      try {
-        await retryFileOperation(() => {
-          fs.renameSync(sourcePath, destPath)
-        })
-
-        // Clean up any orphaned WAL companion files at source path
-        // Even after TRUNCATE checkpoint, .tb-shm can persist
-        for (const suffix of ['-wal', '-shm']) {
-          const companionPath = sourcePath + suffix
-          try {
-            if (fs.existsSync(companionPath)) {
-              fs.unlinkSync(companionPath)
-            }
-          } catch {
-            // Non-fatal: orphaned companion files don't affect correctness
-          }
-        }
-      } catch (renameError) {
-        // If cross-device move (EXDEV), fall back to copy+delete
-        const errCode = (renameError as NodeJS.ErrnoException).code
-        if (errCode === 'EXDEV') {
-          console.log('Cross-device move detected, using copy+delete fallback')
-
-          // Verify source database integrity before copying
-          try {
-            verifyDatabaseIntegrity(sourcePath, 'before cross-device copy')
-          } catch (sourceVerifyError) {
-            throw new Error(
-              `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
-            )
-          }
-
-          // Copy with retry logic
-          await retryFileOperation(() => {
-            fs.copyFileSync(sourcePath, destPath)
-          })
-
-          // Verify destination database integrity before deleting source
-          try {
-            verifyDatabaseIntegrity(destPath, 'after cross-device copy')
-          } catch (verifyError) {
-            // Destination is corrupted, delete it and don't delete source
-            try {
-              fs.unlinkSync(destPath)
-            } catch {
-              // Ignore cleanup error
-            }
-            throw new Error(
-              `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
-            )
-          }
-
-          // Destination verified, safe to delete source (with retry)
-          await retryFileOperation(() => {
-            fs.unlinkSync(sourcePath)
-          })
-
-          // Verify source is actually deleted
-          if (fs.existsSync(sourcePath)) {
-            throw new Error(
-              'Source file still exists after move operation - this indicates a file system error'
-            )
-          }
 
           // Clean up any orphaned WAL companion files at source path
+          // Even after TRUNCATE checkpoint, .tb-shm can persist
           for (const suffix of ['-wal', '-shm']) {
             const companionPath = sourcePath + suffix
             try {
@@ -1287,116 +1237,178 @@ app.whenReady().then(() => {
               // Non-fatal: orphaned companion files don't affect correctness
             }
           }
-        } else {
-          throw renameError
+        } catch (renameError) {
+          // If cross-device move (EXDEV), fall back to copy+delete
+          const errCode = (renameError as NodeJS.ErrnoException).code
+          if (errCode === 'EXDEV') {
+            console.log('Cross-device move detected, using copy+delete fallback')
+
+            // Verify source database integrity before copying
+            try {
+              verifyDatabaseIntegrity(sourcePath, 'before cross-device copy')
+            } catch (sourceVerifyError) {
+              throw new Error(
+                `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
+              )
+            }
+
+            // Copy with retry logic
+            await retryFileOperation(() => {
+              fs.copyFileSync(sourcePath, destPath)
+            })
+
+            // Verify destination database integrity before deleting source
+            try {
+              verifyDatabaseIntegrity(destPath, 'after cross-device copy')
+            } catch (verifyError) {
+              // Destination is corrupted, delete it and don't delete source
+              try {
+                fs.unlinkSync(destPath)
+              } catch {
+                // Ignore cleanup error
+              }
+              throw new Error(
+                `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
+              )
+            }
+
+            // Destination verified, safe to delete source (with retry)
+            await retryFileOperation(() => {
+              fs.unlinkSync(sourcePath)
+            })
+
+            // Verify source is actually deleted
+            if (fs.existsSync(sourcePath)) {
+              throw new Error(
+                'Source file still exists after move operation - this indicates a file system error'
+              )
+            }
+
+            // Clean up any orphaned WAL companion files at source path
+            for (const suffix of ['-wal', '-shm']) {
+              const companionPath = sourcePath + suffix
+              try {
+                if (fs.existsSync(companionPath)) {
+                  fs.unlinkSync(companionPath)
+                }
+              } catch {
+                // Non-fatal: orphaned companion files don't affect correctness
+              }
+            }
+          } else {
+            throw renameError
+          }
         }
+
+        // Remove from temp files set
+        tempFilePaths.delete(sourcePath)
+
+        // Evict source path from connection cache to prevent memory leak
+        // The connection was already closed before the move operation
+        connectionCache.delete(sourcePath)
+
+        // Open connection at destination
+        getDbConnection(destPath)
+
+        safeLog(`Moved temp database from ${sourcePath} to ${destPath}`)
+        return destPath
+      } catch (error) {
+        console.error('Error in db:save-to-location:', error)
+        throw error
       }
-
-      // Remove from temp files set
-      tempFilePaths.delete(sourcePath)
-
-      // Evict source path from connection cache to prevent memory leak
-      // The connection was already closed before the move operation
-      connectionCache.delete(sourcePath)
-
-      // Open connection at destination
-      getDbConnection(destPath)
-
-      safeLog(`Moved temp database from ${sourcePath} to ${destPath}`)
-      return destPath
-    } catch (error) {
-      console.error('Error in db:save-to-location:', error)
-      throw error
     }
-  })
+  )
 
   /**
    * Copies a database to a new location (Save As from an already-saved file).
    */
-  ipcMain.handle('db:copy-to-location', async (_event, sourcePath: string, destPath: string): Promise<string> => {
-    try {
-      validateFilePath(sourcePath)
-      validateFilePath(destPath)
+  ipcMain.handle(
+    'db:copy-to-location',
+    async (_event, sourcePath: string, destPath: string): Promise<string> => {
+      try {
+        validateFilePath(sourcePath)
+        validateFilePath(destPath)
 
-      // Prevent data loss by checking if source and destination are the same path
-      // Use normalize to handle trailing slashes and relative path segments
-      const normalizedSourcePath = normalize(sourcePath)
-      const normalizedDestPath = normalize(destPath)
+        // Prevent data loss by checking if source and destination are the same path
+        // Use normalize to handle trailing slashes and relative path segments
+        const normalizedSourcePath = normalize(sourcePath)
+        const normalizedDestPath = normalize(destPath)
 
-      if (normalizedSourcePath === normalizedDestPath) {
-        throw new Error(
-          'Cannot save to the same file. Please choose a different filename or location.'
-        )
-      }
+        if (normalizedSourcePath === normalizedDestPath) {
+          throw new Error(
+            'Cannot save to the same file. Please choose a different filename or location.'
+          )
+        }
 
-      // Verify source file exists
-      if (!fs.existsSync(sourcePath)) {
-        throw new Error(`Source file does not exist: ${sourcePath}`)
-      }
+        // Verify source file exists
+        if (!fs.existsSync(sourcePath)) {
+          throw new Error(`Source file does not exist: ${sourcePath}`)
+        }
 
-      // Close connections and checkpoint WAL with full TRUNCATE
-      closeDbConnection(sourcePath, 'truncate')
-      closeDbConnection(destPath, 'truncate')
+        // Close connections and checkpoint WAL with full TRUNCATE
+        closeDbConnection(sourcePath, 'truncate')
+        closeDbConnection(destPath, 'truncate')
 
-      // Delete destination if it exists (with retry logic)
-      if (fs.existsSync(destPath)) {
+        // Delete destination if it exists (with retry logic)
+        if (fs.existsSync(destPath)) {
+          try {
+            await retryFileOperation(() => {
+              fs.unlinkSync(destPath)
+            })
+          } catch (unlinkError) {
+            const errCode = (unlinkError as NodeJS.ErrnoException).code
+            if (errCode === 'EBUSY' || errCode === 'EPERM') {
+              throw new Error(
+                `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
+              )
+            }
+            // ENOENT is fine, other errors we'll try to proceed
+            if (errCode !== 'ENOENT') {
+              console.warn('Failed to delete existing destination file:', unlinkError)
+            }
+          }
+        }
+
+        // Verify source database integrity before copying
         try {
-          await retryFileOperation(() => {
+          verifyDatabaseIntegrity(sourcePath, 'before Save As copy')
+        } catch (sourceVerifyError) {
+          throw new Error(
+            `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
+          )
+        }
+
+        // Copy the file (with retry logic)
+        await retryFileOperation(() => {
+          fs.copyFileSync(sourcePath, destPath)
+        })
+
+        // Verify destination database integrity
+        try {
+          verifyDatabaseIntegrity(destPath, 'after Save As copy')
+        } catch (verifyError) {
+          // Destination is corrupted, delete it and throw
+          try {
             fs.unlinkSync(destPath)
-          })
-        } catch (unlinkError) {
-          const errCode = (unlinkError as NodeJS.ErrnoException).code
-          if (errCode === 'EBUSY' || errCode === 'EPERM') {
-            throw new Error(
-              `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
-            )
+          } catch {
+            // Ignore cleanup error
           }
-          // ENOENT is fine, other errors we'll try to proceed
-          if (errCode !== 'ENOENT') {
-            console.warn('Failed to delete existing destination file:', unlinkError)
-          }
+          throw new Error(
+            `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
+          )
         }
+
+        // Open connection at destination
+        getDbConnection(destPath)
+
+        safeLog(`Copied database from ${sourcePath} to ${destPath}`)
+        return destPath
+      } catch (error) {
+        console.error('Error in db:copy-to-location:', error)
+        throw error
       }
-
-      // Verify source database integrity before copying
-      try {
-        verifyDatabaseIntegrity(sourcePath, 'before Save As copy')
-      } catch (sourceVerifyError) {
-        throw new Error(
-          `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
-        )
-      }
-
-      // Copy the file (with retry logic)
-      await retryFileOperation(() => {
-        fs.copyFileSync(sourcePath, destPath)
-      })
-
-      // Verify destination database integrity
-      try {
-        verifyDatabaseIntegrity(destPath, 'after Save As copy')
-      } catch (verifyError) {
-        // Destination is corrupted, delete it and throw
-        try {
-          fs.unlinkSync(destPath)
-        } catch {
-          // Ignore cleanup error
-        }
-        throw new Error(
-          `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
-        )
-      }
-
-      // Open connection at destination
-      getDbConnection(destPath)
-
-      safeLog(`Copied database from ${sourcePath} to ${destPath}`)
-      return destPath
-    } catch (error) {
-      console.error('Error in db:copy-to-location:', error)
-      throw error
     }
-  })
+  )
 
   // --------------------------------------------------------------------------
   // Font Operation Handlers
@@ -1420,7 +1432,13 @@ app.whenReady().then(() => {
    */
   ipcMain.handle(
     'fonts:embed-font',
-    (_event, filePath: string, fontPath: string, fontFamily: string, variant: string = 'normal-normal'): void => {
+    (
+      _event,
+      filePath: string,
+      fontPath: string,
+      fontFamily: string,
+      variant: string = 'normal-normal'
+    ): void => {
       try {
         validateFilePath(filePath)
 
@@ -1429,7 +1447,7 @@ app.whenReady().then(() => {
 
         // Determine format from file extension
         const ext = extname(fontPath).toLowerCase()
-        let format = ext.substring(1) // Remove dot
+        const format = ext.substring(1) // Remove dot
         if (!['ttf', 'otf', 'ttc', 'woff', 'woff2'].includes(format)) {
           throw new Error(`Unsupported font format: ${format}`)
         }
@@ -1475,7 +1493,12 @@ app.whenReady().then(() => {
    */
   ipcMain.handle(
     'fonts:get-font-data',
-    (_event, filePath: string, fontFamily: string, variant: string = 'normal-normal'): FontData | null => {
+    (
+      _event,
+      filePath: string,
+      fontFamily: string,
+      variant: string = 'normal-normal'
+    ): FontData | null => {
       try {
         validateFilePath(filePath)
         return withDbConnection(filePath, (db) => dbService.getFontData(db, fontFamily, variant))

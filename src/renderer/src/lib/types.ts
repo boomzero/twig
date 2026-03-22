@@ -60,12 +60,24 @@ export interface TwigElement {
   animations?: ElementAnimations
 }
 
-export interface BuildInAnimation  { type: 'appear' | 'fade-in';       duration: number }
-export interface BuildOutAnimation { type: 'disappear' | 'fade-out'; duration: number }
-export interface ActionAnimation   { id: string; type: 'move'; toX: number; toY: number; duration: number }
+export interface BuildInAnimation {
+  type: 'appear' | 'fade-in'
+  duration: number
+}
+export interface BuildOutAnimation {
+  type: 'disappear' | 'fade-out'
+  duration: number
+}
+export interface ActionAnimation {
+  id: string
+  type: 'move'
+  toX: number
+  toY: number
+  duration: number
+}
 export interface ElementAnimations {
-  buildIn?:  BuildInAnimation
-  actions?:  ActionAnimation[]
+  buildIn?: BuildInAnimation
+  actions?: ActionAnimation[]
   buildOut?: BuildOutAnimation
 }
 
@@ -82,12 +94,16 @@ export interface AnimationStep {
  */
 export type SlideBackground =
   | { type: 'solid'; color: string }
-  | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
+  | {
+      type: 'gradient'
+      angle: number
+      stops: [{ offset: 0; color: string }, { offset: 1; color: string }]
+    }
   | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
 
 export interface SlideTransition {
   type: 'none' | 'dissolve' | 'push'
-  duration: number  // seconds, e.g. 0.4
+  duration: number // seconds, e.g. 0.4
 }
 
 /**

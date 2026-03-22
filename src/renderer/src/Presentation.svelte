@@ -8,8 +8,15 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient, util } from 'fabric'
-  import type { TwigElement, Slide, SlideBackground, AnimationStep, SlideTransition } from './lib/types'
+  import type {
+    TwigElement,
+    Slide,
+    SlideBackground,
+    AnimationStep,
+    SlideTransition
+  } from './lib/types'
   import { isStepConfiguredForElement } from './lib/animationUtils'
   import { normalizeFontBytes } from './lib/fontUtils'
 
@@ -58,17 +65,17 @@
   let lastSlideIndex = 0
   let lastSlideTransition: SlideTransition | undefined = undefined
   // Animation state
-  const fabObjById = new Map<string, FabricObject>()   // elementId → fabric object
-  const elementById = new Map<string, TwigElement>()   // elementId → slide element (rebuilt per render)
-  const failedElementIds = new Set<string>()           // image elements that failed to load
-  let animProgress = 0    // steps consumed on current slide; reset on every slide entry
-  let animating = false   // guard against concurrent animations
+  const fabObjById = new SvelteMap<string, FabricObject>() // elementId → fabric object
+  const elementById = new SvelteMap<string, TwigElement>() // elementId → slide element (rebuilt per render)
+  const failedElementIds = new SvelteSet<string>() // image elements that failed to load
+  let animProgress = 0 // steps consumed on current slide; reset on every slide entry
+  let animating = false // guard against concurrent animations
   let transitioning = false
   // Remembers one advance request that arrived while the next animated image
   // step was still loading, so the slide doesn't appear frozen.
   let pendingAdvanceAfterImageLoad = false
   // Tracks which fonts have been injected in this window so we don't repeat work.
-  let loadedFontKeys = new Set<string>()
+  let loadedFontKeys = new SvelteSet<string>()
   let fontsLoadedForPath: string | null = null
   // Shared promise for the in-progress font load. Concurrent slide navigations
   // to the same file all await this same promise, so none of them render before
@@ -91,28 +98,30 @@
     // Listen for slide state updates from the main window.
     // Fonts and slide data are fetched in parallel; loadedSlide is only set once
     // BOTH are ready, so the render effect always has fonts available on first draw.
-    const unsubState = window.api.presentation.onStateChanged(async (newState: PresentationState) => {
-      currentState = newState
-      const { slideId, filePath } = newState
+    const unsubState = window.api.presentation.onStateChanged(
+      async (newState: PresentationState) => {
+        currentState = newState
+        const { slideId, filePath } = newState
 
-      if (!slideId || !filePath) {
-        loadedSlide = null
-        transitionOverlaySrc = null
-        transitionOverlayStyle = ''
-        transitioning = false
-        return
-      }
+        if (!slideId || !filePath) {
+          loadedSlide = null
+          transitionOverlaySrc = null
+          transitionOverlayStyle = ''
+          transitioning = false
+          return
+        }
 
-      const generation = ++fetchGeneration
-      if (filePath !== fontsLoadedForPath) {
-        fontLoadingPromise = loadEmbeddedFonts(filePath)
+        const generation = ++fetchGeneration
+        if (filePath !== fontsLoadedForPath) {
+          fontLoadingPromise = loadEmbeddedFonts(filePath)
+        }
+        const [slide] = await Promise.all([
+          window.api.db.getSlide(filePath, slideId),
+          fontLoadingPromise
+        ])
+        if (fetchGeneration === generation) loadedSlide = slide
       }
-      const [slide] = await Promise.all([
-        window.api.db.getSlide(filePath, slideId),
-        fontLoadingPromise
-      ])
-      if (fetchGeneration === generation) loadedSlide = slide
-    })
+    )
 
     // Signal main window that we're ready to receive state
     window.api.presentation.signalReady()
@@ -170,7 +179,8 @@
     generation: number
   ): Promise<void> {
     if (!presentationCanvas) return
-    const W = SLIDE_WIDTH, H = SLIDE_HEIGHT
+    const W = SLIDE_WIDTH,
+      H = SLIDE_HEIGHT
     presentationCanvas.backgroundImage = undefined
     if (!bg || bg.type === 'solid') {
       presentationCanvas.backgroundColor = bg?.color ?? '#ffffff'
@@ -196,9 +206,10 @@
         img.scaleX = W / (img.width || 1)
         img.scaleY = H / (img.height || 1)
       } else {
-        const scale = fit === 'contain'
-          ? Math.min(W / (img.width || 1), H / (img.height || 1))
-          : Math.max(W / (img.width || 1), H / (img.height || 1))
+        const scale =
+          fit === 'contain'
+            ? Math.min(W / (img.width || 1), H / (img.height || 1))
+            : Math.max(W / (img.width || 1), H / (img.height || 1))
         img.scaleX = scale
         img.scaleY = scale
       }
@@ -281,7 +292,9 @@
     animating = false
     pendingAdvanceAfterImageLoad = false
     lastRenderedSlideId = slide.id
-    const backgroundLoad = applyPresentationBackground(slide.background, generation).catch(console.error)
+    const backgroundLoad = applyPresentationBackground(slide.background, generation).catch(
+      console.error
+    )
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
     for (const el of slide.elements) elementById.set(el.id, el)
@@ -373,8 +386,12 @@
     const buildOutDone = completedSteps.some(
       (step) => step.elementId === el.id && step.category === 'buildOut'
     )
-    const hasBuildInStep = order.some((step) => step.elementId === el.id && step.category === 'buildIn')
-    const hasBuildOutStep = order.some((step) => step.elementId === el.id && step.category === 'buildOut')
+    const hasBuildInStep = order.some(
+      (step) => step.elementId === el.id && step.category === 'buildIn'
+    )
+    const hasBuildOutStep = order.some(
+      (step) => step.elementId === el.id && step.category === 'buildOut'
+    )
 
     let opacity = 1
     if (hasBuildInStep && !buildInDone) opacity = 0
@@ -405,7 +422,12 @@
     presentationCanvas.renderAll()
   }
 
-  async function runAnimation(fabObj: FabricObject, el: TwigElement, category: AnimationStep['category'], actionId?: string): Promise<void> {
+  async function runAnimation(
+    fabObj: FabricObject,
+    el: TwigElement,
+    category: AnimationStep['category'],
+    actionId?: string
+  ): Promise<void> {
     const anim = el.animations!
     const canvas = presentationCanvas!
     return new Promise<void>((resolve) => {
@@ -416,9 +438,14 @@
         resolve()
       } else if (category === 'buildIn' && anim.buildIn?.type === 'fade-in') {
         util.animate({
-          startValue: 0, endValue: 1, duration: anim.buildIn.duration,
+          startValue: 0,
+          endValue: 1,
+          duration: anim.buildIn.duration,
           easing: util.ease.easeInQuad,
-          onChange: (v: number) => { fabObj.set({ opacity: v }); canvas.renderAll() },
+          onChange: (v: number) => {
+            fabObj.set({ opacity: v })
+            canvas.renderAll()
+          },
           onComplete: resolve
         })
       } else if (category === 'buildOut' && anim.buildOut?.type === 'disappear') {
@@ -428,9 +455,14 @@
         resolve()
       } else if (category === 'buildOut' && anim.buildOut?.type === 'fade-out') {
         util.animate({
-          startValue: fabObj.opacity as number, endValue: 0, duration: anim.buildOut.duration,
+          startValue: fabObj.opacity as number,
+          endValue: 0,
+          duration: anim.buildOut.duration,
           easing: util.ease.easeOutQuad,
-          onChange: (v: number) => { fabObj.set({ opacity: v }); canvas.renderAll() },
+          onChange: (v: number) => {
+            fabObj.set({ opacity: v })
+            canvas.renderAll()
+          },
           onComplete: resolve
         })
       } else if (category === 'action') {
@@ -440,13 +472,18 @@
           const fromX = fabObj.left as number
           const fromY = fabObj.top as number
           util.animate({
-            startValue: 0, endValue: 1, duration,
+            startValue: 0,
+            endValue: 1,
+            duration,
             easing: util.ease.easeInOutCubic,
             onChange: (v: number) => {
               fabObj.set({ left: fromX + (toX - fromX) * v, top: fromY + (toY - fromY) * v })
               canvas.renderAll()
             },
-            onComplete: () => { fabObj.setCoords(); resolve() }
+            onComplete: () => {
+              fabObj.setCoords()
+              resolve()
+            }
           })
         } else {
           resolve()
@@ -470,11 +507,17 @@
     while (animProgress < order.length) {
       const step = order[animProgress]
       const el = elementById.get(step.elementId)
-      if (!el || !isStepConfiguredForElement(el, step)) { animProgress++; continue }
+      if (!el || !isStepConfiguredForElement(el, step)) {
+        animProgress++
+        continue
+      }
 
       const fabObj = fabObjById.get(step.elementId)
       if (!fabObj) {
-        if (failedElementIds.has(step.elementId)) { animProgress++; continue }
+        if (failedElementIds.has(step.elementId)) {
+          animProgress++
+          continue
+        }
         pendingAdvanceAfterImageLoad = true
         return
       }
@@ -505,17 +548,20 @@
     fontsLoadedForPath = filePath
     try {
       const embeddedFonts = await window.api.fonts.getEmbeddedFonts(filePath)
-      await Promise.all(embeddedFonts.map((font) =>
-        injectFont(font.fontFamily, font.fontData, font.variant)
-      ))
+      await Promise.all(
+        embeddedFonts.map((font) => injectFont(font.fontFamily, font.fontData, font.variant))
+      )
     } catch (err) {
       fontsLoadedForPath = null
       console.error('Failed to load embedded fonts in presentation window:', err)
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function injectFont(fontFamily: string, fontData: any, variant: string = 'normal-normal'): Promise<void> {
+  async function injectFont(
+    fontFamily: string,
+    fontData: unknown,
+    variant: string = 'normal-normal'
+  ): Promise<void> {
     const key = `${fontFamily}-${variant}`
     if (loadedFontKeys.has(key)) return
 
@@ -615,7 +661,10 @@
     right: 30px;
     color: rgba(255, 255, 255, 0.7);
     font-size: 18px;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
     font-weight: 500;
     background: rgba(0, 0, 0, 0.5);
     padding: 8px 16px;

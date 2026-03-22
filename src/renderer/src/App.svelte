@@ -21,11 +21,19 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { v4 as uuid_v4 } from 'uuid'
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { TwigElement, SelectionState } from './lib/state.svelte'
-  import type { SlideBackground, ElementAnimations, AnimationStep, ActionAnimation, SlideTransition } from './lib/types'
+  import type {
+    SlideBackground,
+    ElementAnimations,
+    AnimationStep,
+    ActionAnimation,
+    SlideTransition,
+    Slide
+  } from './lib/types'
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
@@ -107,7 +115,6 @@
   }
 
   // Rich text editor state
-  let showRichTextControls = $state(false)
   let isSelectionBold = $state(false)
   let isSelectionItalic = $state(false)
   let isSelectionUnderlined = $state(false)
@@ -120,12 +127,12 @@
   // Font management state
   let systemFonts: { family: string; path: string; format: string }[] = []
   let availableFonts = $state(['Arial', 'Helvetica', 'Times New Roman', 'Courier New']) // Default fallbacks
-  let loadedFonts = new Set<string>() // Track which fonts have been loaded via @font-face
+  let loadedFonts = new SvelteSet<string>() // Track which fonts have been loaded via @font-face
 
   // Custom font dropdown state
   let fontDropdownOpen = $state(false)
   let fontSearchQuery = $state('')
-  let fontLoadingQueue: Set<string> = new Set()
+  let fontLoadingQueue: Set<string> = new SvelteSet<string>()
   let isLoadingFonts = false
 
   // Keyboard shortcut handler
@@ -166,10 +173,10 @@
 
   // Cache of decoded image elements keyed by src (base64 data URI).
   // Allows synchronous FabricImage construction on re-renders, preventing flicker.
-  const imageElementCache = new Map<string, HTMLImageElement>()
+  const imageElementCache = new SvelteMap<string, HTMLImageElement>()
   // Tracks which slide IDs have been fully prefetched, so repeated renderCanvasFromState
   // calls (per keystroke/drag) don't re-issue IPC round-trips for already-fetched slides.
-  const prefetchedSlideIds = new Set<string>()
+  const prefetchedSlideIds = new SvelteSet<string>()
 
   /**
    * Auto-save debounce delay in milliseconds.
@@ -198,15 +205,20 @@
 
   // Image asset store: elementId → base64 data URI.
   // Snapshots omit src blobs; this map is used to re-attach them on restore.
-  const imageAssets = new Map<string, string>()
+  const imageAssets = new SvelteMap<string, string>()
 
   type ElementSnapshot = Omit<TwigElement, 'src'>
-  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined, animationOrder: AnimationStep[], transition: SlideTransition | undefined }
+  type SlideSnapshot = {
+    elements: ElementSnapshot[]
+    background: SlideBackground | undefined
+    animationOrder: AnimationStep[]
+    transition: SlideTransition | undefined
+  }
   // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
-  type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
-  type SlideHistory = { undo: HistoryEntry[], redo: HistoryEntry[] }
+  type HistoryEntry = { snapshot: SlideSnapshot; serialized: string }
+  type SlideHistory = { undo: HistoryEntry[]; redo: HistoryEntry[] }
 
-  const historyBySlideId = new Map<string, SlideHistory>()
+  const historyBySlideId = new SvelteMap<string, SlideHistory>()
   const MAX_UNDO_ENTRIES = 50
   let historyRevision = $state(0) // bumped on every history mutation to drive $derived
 
@@ -215,9 +227,9 @@
   let slideTransitionOverlaySrc = $state<string | null>(null)
 
   // Copy/paste state
-  let pasteCount = 0                      // resets on each copy; increments each paste
-  let lastCopiedPayload = ''              // detects cross-window clipboard changes to reset pasteCount
-  let pendingSelectionIds: string[] = []  // consumed by renderCanvasFromState after render
+  let pasteCount = 0 // resets on each copy; increments each paste
+  let lastCopiedPayload = '' // detects cross-window clipboard changes to reset pasteCount
+  let pendingSelectionIds: string[] = [] // consumed by renderCanvasFromState after render
 
   // Slide drag-to-reorder state
   let slideDragSourceId = $state<string | null>(null)
@@ -227,14 +239,18 @@
   // Reactive booleans for toolbar disabled state.
   // historyRevision is read to subscribe to stack mutations; appState.currentSlide?.id
   // is also tracked so canUndo/canRedo update immediately on slide switch.
-  const canUndo = $derived((() => {
-    void historyRevision
-    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
-  })())
-  const canRedo = $derived((() => {
-    void historyRevision
-    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
-  })())
+  const canUndo = $derived(
+    (() => {
+      void historyRevision
+      return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
+    })()
+  )
+  const canRedo = $derived(
+    (() => {
+      void historyRevision
+      return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
+    })()
+  )
 
   // Auto-save status indicator
   // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
@@ -267,7 +283,10 @@
     if (status === 'saved') {
       lastSavedAt = Date.now()
       // Stop the tick during the 2s green-flash; it will restart on idle entry
-      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
+      if (nowTickId) {
+        clearInterval(nowTickId)
+        nowTickId = null
+      }
       savedResetTimeoutId = setTimeout(() => {
         savedResetTimeoutId = null
         setSaveStatus('idle')
@@ -277,11 +296,16 @@
       // then tick every 10s to keep it fresh.
       now = Date.now()
       if (!nowTickId) {
-        nowTickId = setInterval(() => { now = Date.now() }, 10_000)
+        nowTickId = setInterval(() => {
+          now = Date.now()
+        }, 10_000)
       }
     } else {
       // pending / saving / error — relative timestamp not shown, stop the ticker
-      if (nowTickId) { clearInterval(nowTickId); nowTickId = null }
+      if (nowTickId) {
+        clearInterval(nowTickId)
+        nowTickId = null
+      }
     }
   }
 
@@ -444,23 +468,31 @@
   function takeSnapshot(): SlideSnapshot | null {
     if (!appState.currentSlide) return null
     return {
-      elements: appState.currentSlide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
+      elements: appState.currentSlide.elements.map(
+        (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
+      ),
       background: appState.currentSlide.background
-        ? JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground
+        ? (JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground)
         : undefined,
       animationOrder: JSON.parse(JSON.stringify(appState.currentSlide.animationOrder)),
       transition: appState.currentSlide.transition
-        ? JSON.parse(JSON.stringify(appState.currentSlide.transition)) as SlideTransition
+        ? (JSON.parse(JSON.stringify(appState.currentSlide.transition)) as SlideTransition)
         : undefined
     }
   }
 
   function pushCheckpointForSlide(slide: Slide): void {
     const snapshot: SlideSnapshot = {
-      elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
-      background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined,
+      elements: slide.elements.map(
+        (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
+      ),
+      background: slide.background
+        ? (JSON.parse(JSON.stringify(slide.background)) as SlideBackground)
+        : undefined,
       animationOrder: JSON.parse(JSON.stringify(slide.animationOrder ?? [])),
-      transition: slide.transition ? JSON.parse(JSON.stringify(slide.transition)) as SlideTransition : undefined
+      transition: slide.transition
+        ? (JSON.parse(JSON.stringify(slide.transition)) as SlideTransition)
+        : undefined
     }
     const serialized = JSON.stringify(snapshot)
     const h = getSlideHistory(slide.id)
@@ -497,14 +529,14 @@
       return { ...el } as TwigElement
     })
     appState.currentSlide.background = snapshot.background
-      ? JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground
+      ? (JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground)
       : undefined
     appState.currentSlide.animationOrder = normalizeAnimationOrder({
       ...appState.currentSlide,
       animationOrder: JSON.parse(JSON.stringify(snapshot.animationOrder ?? []))
     })
     appState.currentSlide.transition = snapshot.transition
-      ? JSON.parse(JSON.stringify(snapshot.transition)) as SlideTransition
+      ? (JSON.parse(JSON.stringify(snapshot.transition)) as SlideTransition)
       : undefined
     appState.selectedObjectId = null
     fabCanvas?.discardActiveObject()
@@ -570,7 +602,8 @@
   ): Promise<void> {
     const c = target ?? fabCanvas
     if (!c) return
-    const W = 960, H = 540
+    const W = 960,
+      H = 540
 
     // Always clear backgroundImage first; re-set if needed
     c.backgroundImage = undefined
@@ -598,9 +631,10 @@
         img.scaleX = W / (img.width || 1)
         img.scaleY = H / (img.height || 1)
       } else {
-        const scale = fit === 'contain'
-          ? Math.min(W / (img.width || 1), H / (img.height || 1))
-          : Math.max(W / (img.width || 1), H / (img.height || 1))
+        const scale =
+          fit === 'contain'
+            ? Math.min(W / (img.width || 1), H / (img.height || 1))
+            : Math.max(W / (img.width || 1), H / (img.height || 1))
         img.scaleX = scale
         img.scaleY = scale
       }
@@ -614,9 +648,15 @@
   function captureCanvasSnapshot(quality = 0.85, multiplier = 1): string | null {
     if (!fabCanvas) return null
     const hadOverlay = !!(movePathLine || movePathSourceMarker || movePathGhostObject)
-    if (hadOverlay) { setMovePathOverlayVisible(false); fabCanvas.renderAll() }
+    if (hadOverlay) {
+      setMovePathOverlayVisible(false)
+      fabCanvas.renderAll()
+    }
     const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality, multiplier })
-    if (hadOverlay) { setMovePathOverlayVisible(true); fabCanvas.requestRenderAll() }
+    if (hadOverlay) {
+      setMovePathOverlayVisible(true)
+      fabCanvas.requestRenderAll()
+    }
     return dataUrl
   }
 
@@ -625,7 +665,9 @@
     const dataUrl = captureCanvasSnapshot(0.7, 0.2)
     if (!dataUrl) return
     appState.thumbnails[appState.currentSlide.id] = dataUrl
-    window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
+    window.api.db
+      .saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl)
+      .catch(console.error)
   }
 
   function scheduleThumbnailCapture(): void {
@@ -664,15 +706,16 @@
   // First pass: expose a single editable move action for the selected element.
   // If the element has multiple moves, prefer the first one that appears in the
   // slide timeline so the overlay matches presentation order.
-  function getEditableMoveActionForSelection():
-    | { element: TwigElement; action: ActionAnimation }
-    | null {
+  function getEditableMoveActionForSelection(): {
+    element: TwigElement
+    action: ActionAnimation
+  } | null {
     return getEditableMoveActionForElement(appState.selectedObjectId)
   }
 
-  function getEditableMoveActionForElement(elementId: string | null | undefined):
-    | { element: TwigElement; action: ActionAnimation }
-    | null {
+  function getEditableMoveActionForElement(
+    elementId: string | null | undefined
+  ): { element: TwigElement; action: ActionAnimation } | null {
     const slide = appState.currentSlide
     if (!slide || !elementId) return null
 
@@ -736,32 +779,43 @@
     const pos = { left: action.toX, top: action.toY, angle: element.angle }
 
     if (element.type === 'rect') {
-      return stampGhostOverlay(new Rect({
-        ...pos,
-        width: element.width,
-        height: element.height,
-        fill: element.fill,
-        ...GHOST_OVERLAY_OPTIONS
-      }), action.id)
+      return stampGhostOverlay(
+        new Rect({
+          ...pos,
+          width: element.width,
+          height: element.height,
+          fill: element.fill,
+          ...GHOST_OVERLAY_OPTIONS
+        }),
+        action.id
+      )
     }
 
     if (element.type === 'text') {
-      return stampGhostOverlay(new Textbox(element.text || '', {
-        ...pos,
-        width: element.width,
-        fill: element.fill,
-        fontFamily: element.fontFamily,
-        fontSize: element.fontSize,
-        styles: element.styles ? cleanStylesObject(element.styles) : {},
-        lockScalingY: true,
-        editable: false,
-        ...GHOST_OVERLAY_OPTIONS
-      }), action.id)
+      return stampGhostOverlay(
+        new Textbox(element.text || '', {
+          ...pos,
+          width: element.width,
+          fill: element.fill,
+          fontFamily: element.fontFamily,
+          fontSize: element.fontSize,
+          styles: element.styles ? cleanStylesObject(element.styles) : {},
+          lockScalingY: true,
+          editable: false,
+          ...GHOST_OVERLAY_OPTIONS
+        }),
+        action.id
+      )
     }
 
     if (element.type === 'image' && sourceObject instanceof FabricImage) {
       const ghost = new FabricImage(sourceObject.getElement())
-      ghost.set({ ...pos, scaleX: sourceObject.scaleX, scaleY: sourceObject.scaleY, ...GHOST_OVERLAY_OPTIONS })
+      ghost.set({
+        ...pos,
+        scaleX: sourceObject.scaleX,
+        scaleY: sourceObject.scaleY,
+        ...GHOST_OVERLAY_OPTIONS
+      })
       return stampGhostOverlay(ghost, action.id)
     }
 
@@ -782,9 +836,9 @@
     }
 
     const { element, action } = editable
-    const sourceObject = fabCanvas.getObjects().find(
-      (obj) => (obj as TwigFabricObject).id === element.id
-    ) as TwigFabricObject | undefined
+    const sourceObject = fabCanvas
+      .getObjects()
+      .find((obj) => (obj as TwigFabricObject).id === element.id) as TwigFabricObject | undefined
     const indicatorPos = getMovePathIndicatorPosition(element, sourceObject)
     setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
 
@@ -830,25 +884,30 @@
   }
 
   function syncMovePathOverlay(element: TwigElement, action: ActionAnimation): void {
-    const sourceObject = fabCanvas?.getObjects().find(
-      (obj) => (obj as TwigFabricObject).id === element.id
-    ) as TwigFabricObject | undefined
+    const sourceObject = fabCanvas
+      ?.getObjects()
+      .find((obj) => (obj as TwigFabricObject).id === element.id) as TwigFabricObject | undefined
     const indicatorPos = getMovePathIndicatorPosition(element, sourceObject)
     applyMovePathCoords(element.x, element.y, action.toX, action.toY)
     setMovePathIndicatorPosition(indicatorPos.x, indicatorPos.y)
     fabCanvas?.renderAll()
   }
 
-  function syncMovePathOverlayPreview(startX: number, startY: number, endX: number, endY: number): void {
+  function syncMovePathOverlayPreview(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number
+  ): void {
     applyMovePathCoords(startX, startY, endX, endY)
     // Caller is responsible for renderAll — avoids double render in handleObjectMoving.
   }
 
   function restoreSelectedCanvasObject(): void {
     if (!fabCanvas || !appState.selectedObjectId) return
-    const selectedObject = fabCanvas.getObjects().find(
-      (obj) => (obj as TwigFabricObject).id === appState.selectedObjectId
-    )
+    const selectedObject = fabCanvas
+      .getObjects()
+      .find((obj) => (obj as TwigFabricObject).id === appState.selectedObjectId)
     if (selectedObject && fabCanvas.getActiveObject() !== selectedObject) {
       fabCanvas.setActiveObject(selectedObject)
       fabCanvas.renderAll()
@@ -941,14 +1000,26 @@
   function handleMovePathWindowMouseMove(event: MouseEvent): void {
     if (!movePathDragState || !fabCanvas) return
     const point = fabCanvas.getScenePoint(event)
-    setMoveActionTarget(movePathDragState.elementId, movePathDragState.actionId, point.x, point.y, false)
+    setMoveActionTarget(
+      movePathDragState.elementId,
+      movePathDragState.actionId,
+      point.x,
+      point.y,
+      false
+    )
     restoreSelectedCanvasObject()
   }
 
   function handleMovePathWindowMouseUp(event: MouseEvent): void {
     if (movePathDragState && fabCanvas) {
       const point = fabCanvas.getScenePoint(event)
-      setMoveActionTarget(movePathDragState.elementId, movePathDragState.actionId, point.x, point.y, true)
+      setMoveActionTarget(
+        movePathDragState.elementId,
+        movePathDragState.actionId,
+        point.x,
+        point.y,
+        true
+      )
     }
     detachMovePathWindowListeners()
     movePathDragState = null
@@ -1022,15 +1093,28 @@
         const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
         for (const el of sorted) {
           if (el.type === 'rect') {
-            tempCanvas.add(new Rect({
-              left: el.x, top: el.y, width: el.width, height: el.height,
-              angle: el.angle, fill: el.fill
-            }))
+            tempCanvas.add(
+              new Rect({
+                left: el.x,
+                top: el.y,
+                width: el.width,
+                height: el.height,
+                angle: el.angle,
+                fill: el.fill
+              })
+            )
           } else if (el.type === 'text') {
-            tempCanvas.add(new Textbox(el.text || '', {
-              left: el.x, top: el.y, width: el.width, angle: el.angle,
-              fill: el.fill, fontFamily: el.fontFamily, fontSize: el.fontSize
-            }))
+            tempCanvas.add(
+              new Textbox(el.text || '', {
+                left: el.x,
+                top: el.y,
+                width: el.width,
+                angle: el.angle,
+                fill: el.fill,
+                fontFamily: el.fontFamily,
+                fontSize: el.fontSize
+              })
+            )
           } else if (el.type === 'image' && el.src) {
             try {
               const img = await FabricImage.fromURL(el.src, { crossOrigin: 'anonymous' })
@@ -1097,9 +1181,12 @@
   // Reset background and transition checkpoint gates on pointer release so the next drag
   // session gets its own undo entry.
   onMount(() => {
-    const resetBgGate = () => { bgCheckpointPushed = false; transitionCheckpointPushed = false }
+    const resetBgGate = (): void => {
+      bgCheckpointPushed = false
+      transitionCheckpointPushed = false
+    }
     window.addEventListener('pointerup', resetBgGate, { passive: true })
-    return () => window.removeEventListener('pointerup', resetBgGate)
+    return (): void => window.removeEventListener('pointerup', resetBgGate)
   })
 
   onMount(async () => {
@@ -1108,7 +1195,7 @@
 
     // Expose state and utility functions to window for console debugging
     if (typeof window !== 'undefined') {
-      ;(window as any).__TWIG_STATE__ = {
+      ;(window as unknown as Record<string, unknown>).__TWIG_STATE__ = {
         appState,
         loadingState
       }
@@ -1121,14 +1208,16 @@
     })
 
     // Forward navigation requests from the presentation window
-    unsubscribePresentationNavigate = window.api?.presentation?.onNavigateRequest(async (direction) => {
-      const idx = appState.currentSlideIndex
-      if (direction === 'next' && idx < appState.slideIds.length - 1) {
-        await loadSlide(appState.slideIds[idx + 1])
-      } else if (direction === 'prev' && idx > 0) {
-        await loadSlide(appState.slideIds[idx - 1])
+    unsubscribePresentationNavigate = window.api?.presentation?.onNavigateRequest(
+      async (direction) => {
+        const idx = appState.currentSlideIndex
+        if (direction === 'next' && idx < appState.slideIds.length - 1) {
+          await loadSlide(appState.slideIds[idx + 1])
+        } else if (direction === 'prev' && idx > 0) {
+          await loadSlide(appState.slideIds[idx - 1])
+        }
       }
-    })
+    )
 
     // Handle presentation window being closed externally
     unsubscribePresentationClosed = window.api?.presentation?.onWindowClosed(() => {
@@ -1191,16 +1280,14 @@
    * Runs whenever any tracked state changes.
    */
   $effect(() => {
-    // Track all relevant state
-    const _ = [
-      appState.currentFilePath,
-      appState.slideIds,
-      appState.currentSlideIndex,
-      appState.currentSlide,
-      appState.selectedObjectId,
-      appState.isPresentingMode,
-      loadingState.isLoadingSlide
-    ]
+    // Track all relevant state by reading each property
+    void appState.currentFilePath
+    void appState.slideIds
+    void appState.currentSlideIndex
+    void appState.currentSlide
+    void appState.selectedObjectId
+    void appState.isPresentingMode
+    void loadingState.isLoadingSlide
 
     // Send state update to debug window (if open)
     sendStateToDebugWindow()
@@ -1265,9 +1352,12 @@
   $effect(() => {
     const filePath = appState.currentFilePath
     if (filePath) {
-      window.api.db.getSetting(filePath, 'default_background').then((value) => {
-        defaultSlideBackground = value ? JSON.parse(value) : undefined
-      }).catch(console.error)
+      window.api.db
+        .getSetting(filePath, 'default_background')
+        .then((value) => {
+          defaultSlideBackground = value ? JSON.parse(value) : undefined
+        })
+        .catch(console.error)
     } else {
       defaultSlideBackground = undefined
     }
@@ -1384,7 +1474,6 @@
         }
       }
     }
-
   })
 
   // ============================================================================
@@ -1396,8 +1485,10 @@
    * fabric.js sometimes adds transparent values for fill, stroke, and textBackgroundColor
    * which we don't want to persist in the state.
    */
-  function cleanStylesObject(styles: Record<string, any>): Record<string, any> {
-    const cleaned: Record<string, any> = {}
+  function cleanStylesObject(
+    styles: Record<string, Record<string, unknown>>
+  ): Record<string, Record<string, unknown>> {
+    const cleaned: Record<string, Record<string, unknown>> = {}
 
     Object.keys(styles).forEach((lineIndex) => {
       const lineStyles = styles[lineIndex]
@@ -1409,7 +1500,7 @@
         const charStyle = lineStyles[charIndex]
         if (!charStyle || typeof charStyle !== 'object') return
 
-        const cleanedCharStyle: Record<string, any> = {}
+        const cleanedCharStyle: Record<string, unknown> = {}
 
         Object.keys(charStyle).forEach((key) => {
           const value = charStyle[key]
@@ -1509,7 +1600,10 @@
     // Clear the canvas and apply background (may await for image backgrounds)
     fabCanvas.clear()
     await applySlideBackground(currentSlide.background)
-    if (renderGeneration !== generation) { slideTransitionOverlaySrc = null; return }
+    if (renderGeneration !== generation) {
+      slideTransitionOverlaySrc = null
+      return
+    }
 
     // Add non-image elements synchronously in z-order
     sortedElements.forEach((element) => {
@@ -1556,7 +1650,7 @@
       htmlImg: HTMLImageElement,
       element: TwigElement,
       imageZIndex: number
-    ) => {
+    ): void => {
       if (!fabCanvas || renderGeneration !== generation) return
       const img = new FabricImage(htmlImg)
       const scaleX = element.width / (img.width || 1)
@@ -1651,7 +1745,10 @@
     // z-order so each placement is stable without triggering selection events.
     // The generation guard ensures this is a no-op if the slide changed while loading.
     return Promise.allSettled(imageLoads).then(() => {
-      if (!fabCanvas || renderGeneration !== generation) { slideTransitionOverlaySrc = null; return }
+      if (!fabCanvas || renderGeneration !== generation) {
+        slideTransitionOverlaySrc = null
+        return
+      }
       if (imageLoads.length > 1) {
         const sorted = (fabCanvas.getObjects() as TwigFabricObject[])
           .slice()
@@ -1670,9 +1767,7 @@
     if (pendingSelectionIds.length === 0 || !fabCanvas) return
     const ids = new Set(pendingSelectionIds)
     pendingSelectionIds = []
-    const targets = fabCanvas.getObjects().filter(
-      (o) => ids.has((o as TwigFabricObject).id ?? '')
-    )
+    const targets = fabCanvas.getObjects().filter((o) => ids.has((o as TwigFabricObject).id ?? ''))
     if (targets.length === 1) {
       fabCanvas.setActiveObject(targets[0])
     } else if (targets.length > 1) {
@@ -1774,12 +1869,23 @@
    */
   function handlePropertyChange(): void {
     const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
-    const obj = fabCanvas?.getObjects().find((o) => (o as TwigFabricObject).id === appState.selectedObjectId)
+    const obj = fabCanvas
+      ?.getObjects()
+      .find((o) => (o as TwigFabricObject).id === appState.selectedObjectId)
     if (el && obj) {
       // State stores effective (scaled) dimensions: width = obj.width * scaleX.
       // Reset scale to 1 and set the raw dimensions so the visual size matches
       // the state value without double-applying any residual scale factor.
-      obj.set({ left: el.x, top: el.y, angle: el.angle, fill: el.fill, scaleX: 1, scaleY: 1, width: el.width, height: el.height })
+      obj.set({
+        left: el.x,
+        top: el.y,
+        angle: el.angle,
+        fill: el.fill,
+        scaleX: 1,
+        scaleY: 1,
+        width: el.width,
+        height: el.height
+      })
       obj.setCoords()
       fabCanvas?.renderAll()
     }
@@ -1801,14 +1907,14 @@
     let order = [...appState.currentSlide.animationOrder]
     for (const cat of ['buildIn', 'buildOut'] as const) {
       const wasSet = !!(prev as ElementAnimations)[cat]
-      const isSet  = !!(animations as ElementAnimations)[cat]
+      const isSet = !!(animations as ElementAnimations)[cat]
       if (!wasSet && isSet) {
         order = insertAnimationStep(order, { elementId, category: cat })
       }
     }
 
     const prevActionIds = new Set((prev.actions ?? []).map((a) => a.id))
-    for (const action of (animations.actions ?? [])) {
+    for (const action of animations.actions ?? []) {
       if (!prevActionIds.has(action.id)) {
         order = insertAnimationStep(order, { elementId, category: 'action', actionId: action.id })
       }
@@ -1816,7 +1922,8 @@
 
     // Prune steps for removed categories
     appState.currentSlide.animationOrder = normalizeAnimationOrder({
-      ...appState.currentSlide, animationOrder: order
+      ...appState.currentSlide,
+      animationOrder: order
     })
 
     renderMovePathOverlay()
@@ -1892,7 +1999,6 @@
     if (selectedObject instanceof Textbox) {
       // Text object selected - enable rich text controls
       activeTextObject = selectedObject
-      showRichTextControls = true
 
       // Update formatting button states based on the selected text object
       handleTextSelectionChange()
@@ -1907,9 +2013,8 @@
       activeTextObject.on('selection:changed', handleTextSelectionChange)
       handleTextSelectionChange()
     } else {
-      // Non-text object selected - hide rich text controls
+      // Non-text object selected
       activeTextObject = null
-      showRichTextControls = false
       isSelectionBold = false
       isSelectionItalic = false
       isSelectionUnderlined = false
@@ -1940,7 +2045,6 @@
     appState.selectedObjectId = null
     expandedMovePathElementId = null
     activeTextObject = null
-    showRichTextControls = false
     isSelectionBold = false
     isSelectionItalic = false
     isSelectionUnderlined = false
@@ -2139,7 +2243,13 @@
 
     // Helper to get effective style value using fabric's getValueOfPropertyAt
     // which properly handles base + character-level style inheritance
-    type StyleProperty = 'fontWeight' | 'fontStyle' | 'underline' | 'fontFamily' | 'fontSize' | 'fill'
+    type StyleProperty =
+      | 'fontWeight'
+      | 'fontStyle'
+      | 'underline'
+      | 'fontFamily'
+      | 'fontSize'
+      | 'fill'
     const getEffectiveStyle = (charIndex: number, property: StyleProperty): unknown => {
       const loc = activeTextObject.get2DCursorLocation(charIndex, true)
       return activeTextObject.getValueOfPropertyAt(loc.lineIndex, loc.charIndex, property)
@@ -2160,7 +2270,7 @@
       let allBold = true
       let allItalic = true
       let allUnderlined = true
-      const fontFamilies = new Set<string>()
+      const fontFamilies = new SvelteSet<string>()
       let firstFontSize: number | null = null
 
       for (let i = start; i < end; i++) {
@@ -2193,7 +2303,10 @@
 
       // Read fill color from first selected character
       if (end > start) {
-        selectionFillColor = (getEffectiveStyle(start, 'fill') as string) || activeTextObject.fill as string || '#333333'
+        selectionFillColor =
+          (getEffectiveStyle(start, 'fill') as string) ||
+          (activeTextObject.fill as string) ||
+          '#333333'
       }
     } else {
       if (!suppressSelectionTracking) {
@@ -2204,7 +2317,7 @@
       let allBold = true
       let allItalic = true
       let allUnderlined = true
-      const fontFamilies = new Set<string>()
+      const fontFamilies = new SvelteSet<string>()
       let firstFontSize: number | null = null
 
       for (let i = 0; i < textLength; i++) {
@@ -2238,9 +2351,7 @@
       // Read fill color from first character
       if (textLength > 0) {
         selectionFillColor =
-          (getEffectiveStyle(0, 'fill') as string) ||
-          (activeTextObject.fill as string) ||
-          '#333333'
+          (getEffectiveStyle(0, 'fill') as string) || (activeTextObject.fill as string) || '#333333'
       }
     }
   }
@@ -2297,7 +2408,10 @@
         setSaveStatus('saved')
         return // Success!
       } catch (error) {
-        console.error(`Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`, error)
+        console.error(
+          `Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`,
+          error
+        )
 
         // Clean up the temp file if it was created
         if (tempPath) {
@@ -2318,11 +2432,11 @@
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           const retry = confirm(
             `Failed to create new presentation after ${maxRetries} attempts: ${errorMessage}\n\n` +
-            'This might be due to:\n' +
-            '• Insufficient disk space\n' +
-            '• Permission issues\n' +
-            '• Corrupted temp directory\n\n' +
-            'Would you like to try again?'
+              'This might be due to:\n' +
+              '• Insufficient disk space\n' +
+              '• Permission issues\n' +
+              '• Corrupted temp directory\n\n' +
+              'Would you like to try again?'
           )
 
           if (retry) {
@@ -2331,7 +2445,7 @@
             if (userInitiatedRetries > maxUserRetries) {
               alert(
                 'Unable to create a new presentation after multiple attempts. ' +
-                'Please check your system resources and try again later.'
+                  'Please check your system resources and try again later.'
               )
               return
             }
@@ -2342,7 +2456,7 @@
           }
         } else {
           // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, NEW_PRESENTATION_RETRY_DELAY_MS))
+          await new Promise((resolve) => setTimeout(resolve, NEW_PRESENTATION_RETRY_DELAY_MS))
         }
       }
     }
@@ -2811,7 +2925,7 @@
 
     // Process in small batches with breaks between
     const batch = Array.from(fontLoadingQueue).slice(0, 5)
-    fontLoadingQueue = new Set(Array.from(fontLoadingQueue).slice(5))
+    fontLoadingQueue = new SvelteSet(Array.from(fontLoadingQueue).slice(5))
 
     for (const font of batch) {
       await loadFontForPreview(font)
@@ -2883,15 +2997,6 @@
     // Apply to selection
     applyStyleToSelection({ fontFamily })
     // Note: Do NOT call updateStateFromObject() here - it would re-render and lose cursor
-  }
-
-  /**
-   * Filters fonts based on search query
-   */
-  function getFilteredFonts(): string[] {
-    if (!fontSearchQuery) return availableFonts
-    const query = fontSearchQuery.toLowerCase()
-    return availableFonts.filter((font) => font.toLowerCase().includes(query))
   }
 
   // ============================================================================
@@ -3113,7 +3218,7 @@
     try {
       const prevId = appState.currentSlide?.id
       if (snapshot) slideTransitionOverlaySrc = snapshot
-      await loadSlide(slideId)  // loadSlide flushes pending saves internally
+      await loadSlide(slideId) // loadSlide flushes pending saves internally
       // If loadSlide aborted without changing slides, clear overlay immediately
       if (appState.currentSlide?.id === prevId) {
         slideTransitionOverlaySrc = null
@@ -3150,7 +3255,9 @@
     const savedHistory = historyBySlideId.get(slideId)
     const newSlideIds = slideIds.filter((id) => id !== slideId)
     appState.slideIds = newSlideIds
-    const { [slideId]: _removed, ...remainingThumbnails } = appState.thumbnails
+    const remainingThumbnails = Object.fromEntries(
+      Object.entries(appState.thumbnails).filter(([id]) => id !== slideId)
+    )
     appState.thumbnails = remainingThumbnails
     historyBySlideId.delete(slideId)
     historyRevision++
@@ -3284,7 +3391,9 @@
   function compactZIndexes(): void {
     if (!appState.currentSlide) return
     const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
-    sorted.forEach((el, i) => { el.zIndex = i })
+    sorted.forEach((el, i) => {
+      el.zIndex = i
+    })
   }
 
   /**
@@ -3309,31 +3418,6 @@
       if (obj) fabCanvas.setActiveObject(obj)
     }
     fabCanvas.requestRenderAll()
-  }
-
-  /**
-   * Re-renders the canvas then restores the previously active object.
-   * Used only for slide navigation and initial load, not for layer reorders
-   * (which use the lighter applyZOrderToCanvas instead).
-   * Waits for async image loads to settle before restoring, so image elements are
-   * re-selected correctly even when they land on the canvas asynchronously.
-   */
-  function renderCanvasAndRestoreSelection(): void {
-    const savedId = appState.selectedObjectId
-    // Capture the generation that renderCanvasFromState() is about to stamp.
-    // Checked in .then() to bail out if a newer render started before ours settled.
-    const expectedGeneration = renderGeneration + 1
-    renderCanvasFromState()
-      .then(() => {
-        if (!savedId || !fabCanvas) return
-        if (renderGeneration !== expectedGeneration) return
-        const obj = fabCanvas.getObjects().find((o) => (o as TwigFabricObject).id === savedId)
-        if (obj) {
-          fabCanvas.setActiveObject(obj)
-          fabCanvas.requestRenderAll()
-        }
-      })
-      .catch((err) => console.error('Canvas render failed:', err))
   }
 
   function layerBringToFront(id: string): void {
@@ -3463,22 +3547,24 @@
     // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
     let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
-    try { parsed = JSON.parse(raw) } catch { /* not JSON */ }
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      /* not JSON */
+    }
     if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
-      const validElements = parsed.elements.filter(
-        (el): el is TwigElement => {
-          if (typeof el !== 'object' || el === null) return false
-          const e = el as Record<string, unknown>
-          const type = e.type
-          if (typeof e.id !== 'string') return false
-          if (type !== 'rect' && type !== 'text' && type !== 'image') return false
-          if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
-          if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
-          if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
-          if (type === 'image' && typeof e.src !== 'string') return false
-          return true
-        }
-      )
+      const validElements = parsed.elements.filter((el): el is TwigElement => {
+        if (typeof el !== 'object' || el === null) return false
+        const e = el as Record<string, unknown>
+        const type = e.type
+        if (typeof e.id !== 'string') return false
+        if (type !== 'rect' && type !== 'text' && type !== 'image') return false
+        if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
+        if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
+        if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
+        if (type === 'image' && typeof e.src !== 'string') return false
+        return true
+      })
       if (validElements.length === 0) return
       event.preventDefault()
 
@@ -3490,7 +3576,8 @@
       const offset = pasteCount * 20
       const baseZ = nextZIndex()
 
-      const CANVAS_W = 960, CANVAS_H = 540
+      const CANVAS_W = 960,
+        CANVAS_H = 540
       const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
       const newElements: TwigElement[] = sortedElements.map((el, i) => {
         const prefix = el.id.split('_')[0] ?? el.type
@@ -3511,8 +3598,8 @@
     }
 
     // --- Raw image from clipboard (screenshot, copied image, etc.) ---
-    const imageItem = Array.from(event.clipboardData?.items ?? []).find(
-      (item) => item.type.startsWith('image/')
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) =>
+      item.type.startsWith('image/')
     )
     if (!imageItem || !appState.currentSlide) return
     event.preventDefault()
@@ -3537,7 +3624,8 @@
 
       // Convert physical pixels → logical pixels, then cap to canvas size
       const dpr = window.devicePixelRatio || 1
-      const CANVAS_W = 960, CANVAS_H = 540
+      const CANVAS_W = 960,
+        CANVAS_H = 540
       let width = Math.round((tempImg.naturalWidth || 200) / dpr)
       let height = Math.round((tempImg.naturalHeight || 200) / dpr)
       const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
@@ -3625,7 +3713,11 @@
 
     // Cmd/Ctrl+Backspace: Delete current slide (not while editing text, not last slide)
     if ((event.metaKey || event.ctrlKey) && event.key === 'Backspace') {
-      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing && appState.currentSlide) {
+      if (
+        !isNativeTextTarget(event.target) &&
+        !activeTextObject?.isEditing &&
+        appState.currentSlide
+      ) {
         event.preventDefault()
         deleteSlideById(appState.currentSlide.id)
         return
@@ -3737,25 +3829,56 @@
   })
 </script>
 
-<svelte:window onkeydown={handleKeyDown} onclick={hideContextMenu}
-  oncopy={handleCopy} oncut={handleCut} onpaste={handlePaste} />
+<svelte:window
+  onkeydown={handleKeyDown}
+  onclick={hideContextMenu}
+  oncopy={handleCopy}
+  oncut={handleCut}
+  onpaste={handlePaste}
+/>
 
 {#if appState.currentSlide}
-  <div
-    class="flex flex-col h-screen font-sans"
-    role="application"
-  >
+  <div class="flex flex-col h-screen font-sans" role="application">
     {#if contextMenuVisible}
       <ContextMenu
         x={contextMenuPosition.x}
         y={contextMenuPosition.y}
-        onCopy={() => { copySelected(); hideContextMenu() }}
-        onCut={() => { cutSelected(); hideContextMenu() }}
-        onDelete={() => { deleteSelectedObject(); hideContextMenu() }}
-        onBringToFront={appState.selectedObjectId ? () => { layerBringToFront(appState.selectedObjectId!); hideContextMenu() } : undefined}
-        onMoveUp={appState.selectedObjectId ? () => { layerMoveUp(appState.selectedObjectId!); hideContextMenu() } : undefined}
-        onMoveDown={appState.selectedObjectId ? () => { layerMoveDown(appState.selectedObjectId!); hideContextMenu() } : undefined}
-        onSendToBack={appState.selectedObjectId ? () => { layerSendToBack(appState.selectedObjectId!); hideContextMenu() } : undefined}
+        onCopy={() => {
+          copySelected()
+          hideContextMenu()
+        }}
+        onCut={() => {
+          cutSelected()
+          hideContextMenu()
+        }}
+        onDelete={() => {
+          deleteSelectedObject()
+          hideContextMenu()
+        }}
+        onBringToFront={appState.selectedObjectId
+          ? () => {
+              layerBringToFront(appState.selectedObjectId!)
+              hideContextMenu()
+            }
+          : undefined}
+        onMoveUp={appState.selectedObjectId
+          ? () => {
+              layerMoveUp(appState.selectedObjectId!)
+              hideContextMenu()
+            }
+          : undefined}
+        onMoveDown={appState.selectedObjectId
+          ? () => {
+              layerMoveDown(appState.selectedObjectId!)
+              hideContextMenu()
+            }
+          : undefined}
+        onSendToBack={appState.selectedObjectId
+          ? () => {
+              layerSendToBack(appState.selectedObjectId!)
+              hideContextMenu()
+            }
+          : undefined}
         isAtFront={selectedIsAtFront}
         isAtBack={selectedIsAtBack}
       />
@@ -3767,7 +3890,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="New presentation"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-40-64a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,152Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-40-64a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,152Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">New</span>
       </button>
       <button
@@ -3775,7 +3902,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Open presentation"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Open</span>
       </button>
       <button
@@ -3783,7 +3914,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Save presentation"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Save</span>
       </button>
       <button
@@ -3791,18 +3926,31 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Save presentation as…"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16">
+        <svg
+          class="w-5 h-5"
+          viewBox="0 0 256 256"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="16"
+        >
           <!-- back disk -->
           <g transform="translate(-14,-14) scale(0.89)">
-            <path d="M216,83.31V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z"/>
-            <path d="M80,216V152a8,8,0,0,1,8-8h80a8,8,0,0,1,8,8v64"/>
-            <line x1="152" y1="72" x2="96" y2="72"/>
+            <path
+              d="M216,83.31V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z"
+            />
+            <path d="M80,216V152a8,8,0,0,1,8-8h80a8,8,0,0,1,8,8v64" />
+            <line x1="152" y1="72" x2="96" y2="72" />
           </g>
           <!-- front disk -->
           <g transform="translate(14,14) scale(0.89)">
-            <path d="M216,83.31V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z" fill="#f3f4f6"/>
-            <path d="M80,216V152a8,8,0,0,1,8-8h80a8,8,0,0,1,8,8v64"/>
-            <line x1="152" y1="72" x2="96" y2="72"/>
+            <path
+              d="M216,83.31V208a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H172.69a8,8,0,0,1,5.65,2.34l35.32,35.32A8,8,0,0,1,216,83.31Z"
+              fill="#f3f4f6"
+            />
+            <path d="M80,216V152a8,8,0,0,1,8-8h80a8,8,0,0,1,8,8v64" />
+            <line x1="152" y1="72" x2="96" y2="72" />
           </g>
         </svg>
         <span class="text-[10px] font-medium leading-none text-gray-500">Save As</span>
@@ -3817,7 +3965,11 @@
         title="Undo (Cmd/Ctrl+Z)"
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M232,112a64.07,64.07,0,0,1-64,64H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48a8,8,0,0,1,11.32,11.32L51.31,160H168a48,48,0,0,0,0-96H80a8,8,0,0,1,0-16h88A64.07,64.07,0,0,1,232,112Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M232,112a64.07,64.07,0,0,1-64,64H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48a8,8,0,0,1,11.32,11.32L51.31,160H168a48,48,0,0,0,0-96H80a8,8,0,0,1,0-16h88A64.07,64.07,0,0,1,232,112Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Undo</span>
       </button>
       <button
@@ -3826,7 +3978,11 @@
         title="Redo (Cmd/Ctrl+Shift+Z)"
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,173.66l-48,48a8,8,0,0,1-11.32-11.32L204.69,176H88A64,64,0,0,1,88,48h88a8,8,0,0,1,0,16H88a48,48,0,0,0,0,96H204.69l-34.35-34.34a8,8,0,0,1,11.32-11.32l48,48A8,8,0,0,1,229.66,173.66Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M229.66,173.66l-48,48a8,8,0,0,1-11.32-11.32L204.69,176H88A64,64,0,0,1,88,48h88a8,8,0,0,1,0,16H88a48,48,0,0,0,0,96H204.69l-34.35-34.34a8,8,0,0,1,11.32-11.32l48,48A8,8,0,0,1,229.66,173.66Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Redo</span>
       </button>
 
@@ -3835,31 +3991,51 @@
         {#if saveStatus === 'idle' && lastSavedAt !== null}
           <span class="flex items-center gap-1 text-xs text-gray-400">
             <!-- Phosphor FloppyDisk -->
-            <svg class="w-3 h-3 shrink-0" viewBox="0 0 256 256" fill="currentColor"><path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/></svg>
+            <svg class="w-3 h-3 shrink-0" viewBox="0 0 256 256" fill="currentColor"
+              ><path
+                d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"
+              /></svg
+            >
             {formatRelativeTime(lastSavedAt)}
           </span>
         {:else if saveStatus === 'pending'}
           <span class="flex items-center gap-1 text-xs text-gray-400">
             <!-- Phosphor Circle -->
-            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/></svg>
+            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
+              ><path
+                d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"
+              /></svg
+            >
             Unsaved
           </span>
         {:else if saveStatus === 'saving'}
           <span class="flex items-center gap-1 text-xs text-blue-500">
             <!-- Phosphor ArrowsClockwise (spin) -->
-            <svg class="w-3 h-3 animate-spin" viewBox="0 0 256 256" fill="currentColor"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.69L195.64,79A80,80,0,1,0,207.6,193a8,8,0,1,1,11,11.53A96,96,0,1,1,187.07,67.21L204,84.28V56a8,8,0,0,1,16,0Z"/></svg>
+            <svg class="w-3 h-3 animate-spin" viewBox="0 0 256 256" fill="currentColor"
+              ><path
+                d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.69L195.64,79A80,80,0,1,0,207.6,193a8,8,0,1,1,11,11.53A96,96,0,1,1,187.07,67.21L204,84.28V56a8,8,0,0,1,16,0Z"
+              /></svg
+            >
             Saving...
           </span>
         {:else if saveStatus === 'saved'}
           <span class="flex items-center gap-1 text-xs text-green-600">
             <!-- Phosphor CheckCircle -->
-            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg>
+            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
+              ><path
+                d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"
+              /></svg
+            >
             Saved
           </span>
         {:else if saveStatus === 'error'}
           <span class="flex items-center gap-1 text-xs text-red-500" title="Auto-save failed">
             <!-- Phosphor WarningCircle -->
-            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M236,128A108,108,0,1,1,128,20,108.12,108.12,0,0,1,236,128Zm-16,0a92,92,0,1,0-92,92A92.1,92.1,0,0,0,220,128Zm-92,36a12,12,0,1,0,12,12A12,12,0,0,0,128,164Zm-8-92v56a8,8,0,0,0,16,0V72a8,8,0,0,0-16,0Z"/></svg>
+            <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
+              ><path
+                d="M236,128A108,108,0,1,1,128,20,108.12,108.12,0,0,1,236,128Zm-16,0a92,92,0,1,0-92,92A92.1,92.1,0,0,0,220,128Zm-92,36a12,12,0,1,0,12,12A12,12,0,0,0,128,164Zm-8-92v56a8,8,0,0,0,16,0V72a8,8,0,0,0-16,0Z"
+              /></svg
+            >
             Save failed
           </span>
         {/if}
@@ -3870,7 +4046,11 @@
           title="This presentation hasn't been saved to a file yet. Click 'Save' to choose a location."
         >
           <!-- Phosphor Warning -->
-          <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"><path d="M236.8,188.09,149.35,36.22a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09Zm-13.86,15.71a8.5,8.5,0,0,1-7.49,4.2H40.55a8.5,8.5,0,0,1-7.49-4.2,7.59,7.59,0,0,1,0-7.72L120.51,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.94,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg>
+          <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M236.8,188.09,149.35,36.22a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09Zm-13.86,15.71a8.5,8.5,0,0,1-7.49,4.2H40.55a8.5,8.5,0,0,1-7.49-4.2,7.59,7.59,0,0,1,0-7.72L120.51,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.94,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"
+            /></svg
+          >
           Unsaved
         </span>
       {/if}
@@ -3884,10 +4064,18 @@
         title={appState.isPresentingMode ? 'Stop presentation' : 'Start presentation (F5)'}
       >
         {#if appState.isPresentingMode}
-          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z"/></svg>
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z"
+            /></svg
+          >
           <span class="text-[10px] font-medium leading-none text-gray-500">Stop</span>
         {:else}
-          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/></svg>
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"
+            /></svg
+          >
           <span class="text-[10px] font-medium leading-none text-gray-500">Play</span>
         {/if}
       </button>
@@ -3896,7 +4084,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Open debug window (Cmd/Ctrl+Shift+D)"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Debug</span>
       </button>
 
@@ -3908,7 +4100,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Add text"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M112,40a8,8,0,0,0-8,8V64H24A16,16,0,0,0,8,80v96a16,16,0,0,0,16,16h80v16a8,8,0,0,0,16,0V48A8,8,0,0,0,112,40ZM24,176V80h80v96ZM248,80v96a16,16,0,0,1-16,16H144a8,8,0,0,1,0-16h88V80H144a8,8,0,0,1,0-16h88A16,16,0,0,1,248,80ZM88,112a8,8,0,0,1-8,8H72v24a8,8,0,0,1-16,0V120H48a8,8,0,0,1,0-16H80A8,8,0,0,1,88,112Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M112,40a8,8,0,0,0-8,8V64H24A16,16,0,0,0,8,80v96a16,16,0,0,0,16,16h80v16a8,8,0,0,0,16,0V48A8,8,0,0,0,112,40ZM24,176V80h80v96ZM248,80v96a16,16,0,0,1-16,16H144a8,8,0,0,1,0-16h88V80H144a8,8,0,0,1,0-16h88A16,16,0,0,1,248,80ZM88,112a8,8,0,0,1-8,8H72v24a8,8,0,0,1-16,0V120H48a8,8,0,0,1,0-16H80A8,8,0,0,1,88,112Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Text</span>
       </button>
       <button
@@ -3916,7 +4112,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Add shape"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Shape</span>
       </button>
       <button
@@ -3924,7 +4124,11 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
         title="Add image"
       >
-        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"/></svg>
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"
+          /></svg
+        >
         <span class="text-[10px] font-medium leading-none text-gray-500">Media</span>
       </button>
 
@@ -3932,7 +4136,7 @@
       <div class="ml-auto flex items-center pr-2">
         <div class="h-8 w-px bg-gray-300 mx-2"></div>
         <button
-          onclick={() => activeSidePanel = 'properties'}
+          onclick={() => (activeSidePanel = 'properties')}
           class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'properties'}
           class:text-gray-700={activeSidePanel === 'properties'}
@@ -3940,11 +4144,15 @@
           class:hover:bg-gray-200={activeSidePanel !== 'properties'}
           title="Properties panel"
         >
-          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M230.64,25.36a32,32,0,0,0-45.26,0q-.21.21-.42.45L131.55,88.22,121,77.64a24,24,0,0,0-33.95,0l-76.69,76.7a8,8,0,0,0,0,11.31l80,80a8,8,0,0,0,11.31,0L178.36,169a24,24,0,0,0,0-33.95l-10.58-10.57L230.19,71c.15-.14.31-.28.45-.43A32,32,0,0,0,230.64,25.36ZM96,228.69,79.32,212l22.34-22.35a8,8,0,0,0-11.31-11.31L68,200.68,55.32,188l22.34-22.35a8,8,0,0,0-11.31-11.31L44,176.68,27.31,160,72,115.31,140.69,184ZM219.52,59.1l-68.71,58.81a8,8,0,0,0-.46,11.74L167,146.34a8,8,0,0,1,0,11.31l-15,15L83.32,104l15-15a8,8,0,0,1,11.31,0l16.69,16.69a8,8,0,0,0,11.74-.46L196.9,36.48A16,16,0,0,1,219.52,59.1Z"/></svg>
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M230.64,25.36a32,32,0,0,0-45.26,0q-.21.21-.42.45L131.55,88.22,121,77.64a24,24,0,0,0-33.95,0l-76.69,76.7a8,8,0,0,0,0,11.31l80,80a8,8,0,0,0,11.31,0L178.36,169a24,24,0,0,0,0-33.95l-10.58-10.57L230.19,71c.15-.14.31-.28.45-.43A32,32,0,0,0,230.64,25.36ZM96,228.69,79.32,212l22.34-22.35a8,8,0,0,0-11.31-11.31L68,200.68,55.32,188l22.34-22.35a8,8,0,0,0-11.31-11.31L44,176.68,27.31,160,72,115.31,140.69,184ZM219.52,59.1l-68.71,58.81a8,8,0,0,0-.46,11.74L167,146.34a8,8,0,0,1,0,11.31l-15,15L83.32,104l15-15a8,8,0,0,1,11.31,0l16.69,16.69a8,8,0,0,0,11.74-.46L196.9,36.48A16,16,0,0,1,219.52,59.1Z"
+            /></svg
+          >
           <span class="text-[10px] font-medium leading-none text-gray-500">Properties</span>
         </button>
         <button
-          onclick={() => activeSidePanel = 'layers'}
+          onclick={() => (activeSidePanel = 'layers')}
           class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'layers'}
           class:text-gray-700={activeSidePanel === 'layers'}
@@ -3952,11 +4160,15 @@
           class:hover:bg-gray-200={activeSidePanel !== 'layers'}
           title="Layers panel"
         >
-          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"><path d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"/></svg>
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"
+            /></svg
+          >
           <span class="text-[10px] font-medium leading-none text-gray-500">Layers</span>
         </button>
         <button
-          onclick={() => activeSidePanel = 'animate'}
+          onclick={() => (activeSidePanel = 'animate')}
           class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'animate'}
           class:text-gray-700={activeSidePanel === 'animate'}
@@ -3964,17 +4176,25 @@
           class:hover:bg-gray-200={activeSidePanel !== 'animate'}
           title="Animate panel"
         >
-          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round">
-            <circle cx="96" cy="128" r="72" stroke-width="16" stroke-dasharray="0.1 27"/>
-            <circle cx="160" cy="128" r="72" stroke-width="16"/>
+          <svg
+            class="w-5 h-5"
+            viewBox="0 0 256 256"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+          >
+            <circle cx="96" cy="128" r="72" stroke-width="16" stroke-dasharray="0.1 27" />
+            <circle cx="160" cy="128" r="72" stroke-width="16" />
           </svg>
           <span class="text-[10px] font-medium leading-none text-gray-500">Animate</span>
         </button>
       </div>
-
     </div>
     <div class="flex flex-1 overflow-hidden">
-      <div role="list" class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1">
+      <div
+        role="list"
+        class="basis-32 py-2 overflow-y-auto bg-gray-50 border-r border-gray-300 flex flex-col items-center gap-1"
+      >
         {#each appState.slideIds as slideId, index (slideId)}
           <div
             class="relative w-full group"
@@ -3988,7 +4208,9 @@
             role="listitem"
           >
             {#if slideDragOverId === slideId && slideDragOverPosition === 'before'}
-              <div class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+              <div
+                class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"
+              ></div>
             {/if}
             <button
               class="w-full px-2 py-2 rounded-lg cursor-pointer hover:bg-gray-200 flex flex-col items-center gap-1"
@@ -3997,26 +4219,46 @@
               disabled={loadingState.isLoadingSlide}
             >
               {#if appState.thumbnails[slideId]}
-                <img src={appState.thumbnails[slideId]} alt="Slide {index + 1}" class="w-full block rounded-md shadow-md" />
+                <img
+                  src={appState.thumbnails[slideId]}
+                  alt="Slide {index + 1}"
+                  class="w-full block rounded-md shadow-md"
+                />
               {:else}
-                <div class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs" style="aspect-ratio: 16/9;"></div>
+                <div
+                  class="w-full bg-white rounded-md shadow-md flex items-center justify-center text-gray-400 text-xs"
+                  style="aspect-ratio: 16/9;"
+                ></div>
               {/if}
               <div class="w-full text-xs text-left text-gray-500">{index + 1}</div>
             </button>
             {#if appState.slideIds.length > 1}
               <button
                 class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-opacity z-10"
-                onclick={() => { if (confirm('Delete this slide? This cannot be undone.')) deleteSlideById(slideId) }}
+                onclick={() => {
+                  if (confirm('Delete this slide? This cannot be undone.')) deleteSlideById(slideId)
+                }}
                 title="Delete slide"
                 aria-label="Delete slide"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3">
-                  <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z" clip-rule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  class="w-3 h-3"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
               </button>
             {/if}
             {#if slideDragOverId === slideId && slideDragOverPosition === 'after'}
-              <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+              <div
+                class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"
+              ></div>
             {/if}
           </div>
         {/each}
@@ -4044,18 +4286,39 @@
               <button
                 class="absolute z-20 w-5 h-5 border-2 border-white shadow-sm flex items-center justify-center"
                 style="left: {movePathIndicatorUi.left}px; top: {movePathIndicatorUi.top}px; transform: translate(-50%, -50%) rotate(45deg); background: #e86b3a;"
-                onmousedown={(event) => { event.preventDefault(); event.stopPropagation() }}
+                onmousedown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
                 onclick={toggleExpandedMovePath}
                 aria-label="Toggle move path editor"
                 title="Toggle move path editor"
               >
                 {#if expandedMovePathElementId === appState.selectedObjectId}
-                  <svg viewBox="0 0 16.4746 1.76758" width="9" height="2" style="transform: rotate(-45deg);" fill="white" aria-hidden="true">
-                    <path d="M0.869141 1.76758L15.2441 1.76758C15.7129 1.76758 16.1133 1.36719 16.1133 0.888672C16.1133 0.410156 15.7129 0.0195312 15.2441 0.0195312L0.869141 0.0195312C0.400391 0.0195312 0 0.410156 0 0.888672C0 1.36719 0.400391 1.76758 0.869141 1.76758Z"/>
+                  <svg
+                    viewBox="0 0 16.4746 1.76758"
+                    width="9"
+                    height="2"
+                    style="transform: rotate(-45deg);"
+                    fill="white"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M0.869141 1.76758L15.2441 1.76758C15.7129 1.76758 16.1133 1.36719 16.1133 0.888672C16.1133 0.410156 15.7129 0.0195312 15.2441 0.0195312L0.869141 0.0195312C0.400391 0.0195312 0 0.410156 0 0.888672C0 1.36719 0.400391 1.76758 0.869141 1.76758Z"
+                    />
                   </svg>
                 {:else}
-                  <svg viewBox="0 0 16.4746 16.123" width="9" height="9" style="transform: rotate(-45deg);" fill="white" aria-hidden="true">
-                    <path d="M8.93555 15.2441L8.93555 0.869141C8.93555 0.400391 8.53516 0 8.05664 0C7.57812 0 7.1875 0.400391 7.1875 0.869141L7.1875 15.2441C7.1875 15.7129 7.57812 16.1133 8.05664 16.1133C8.53516 16.1133 8.93555 15.7129 8.93555 15.2441ZM0.869141 8.92578L15.2441 8.92578C15.7129 8.92578 16.1133 8.53516 16.1133 8.05664C16.1133 7.57812 15.7129 7.17773 15.2441 7.17773L0.869141 7.17773C0.400391 7.17773 0 7.57812 0 8.05664C0 8.53516 0.400391 8.92578 0.869141 8.92578Z"/>
+                  <svg
+                    viewBox="0 0 16.4746 16.123"
+                    width="9"
+                    height="9"
+                    style="transform: rotate(-45deg);"
+                    fill="white"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M8.93555 15.2441L8.93555 0.869141C8.93555 0.400391 8.53516 0 8.05664 0C7.57812 0 7.1875 0.400391 7.1875 0.869141L7.1875 15.2441C7.1875 15.7129 7.57812 16.1133 8.05664 16.1133C8.53516 16.1133 8.93555 15.7129 8.93555 15.2441ZM0.869141 8.92578L15.2441 8.92578C15.7129 8.92578 16.1133 8.53516 16.1133 8.05664C16.1133 7.57812 15.7129 7.17773 15.2441 7.17773L0.869141 7.17773C0.400391 7.17773 0 7.57812 0 8.05664C0 8.53516 0.400391 8.92578 0.869141 8.92578Z"
+                    />
                   </svg>
                 {/if}
               </button>
@@ -4086,7 +4349,10 @@
           -->
           <StackPanel
             onBeforeLayerChange={pushCheckpoint}
-            onLayerChange={() => { applyZOrderToCanvas(); scheduleSave() }}
+            onLayerChange={() => {
+              applyZOrderToCanvas()
+              scheduleSave()
+            }}
             onSelect={(id) => {
               if (!fabCanvas) return
               const obj = fabCanvas.getObjects().find((o) => (o as TwigFabricObject).id === id)
@@ -4145,8 +4411,12 @@
               selectFont: selectFontFromDropdown,
               previewFont: queueFontForLoading,
               escapeFont: escapeCssFontFamily,
-              closeFontDropdown: () => { fontDropdownOpen = false },
-              setFontSearchQuery: (q) => { fontSearchQuery = q }
+              closeFontDropdown: () => {
+                fontDropdownOpen = false
+              },
+              setFontSearchQuery: (q) => {
+                fontSearchQuery = q
+              }
             }}
             onSlideBackgroundChange={async (bg) => {
               if (appState.currentSlide) {
@@ -4177,14 +4447,16 @@
               // Snapshot every slide before the DB write so each slide's undo history
               // has a restore point. Non-current slides must be fetched from the DB first.
               const filePath = appState.currentFilePath
-              await Promise.all(appState.slideIds.map(async (id) => {
-                if (id === appState.currentSlide?.id) {
-                  pushCheckpoint()
-                } else {
-                  const slide = await window.api.db.getSlide(filePath, id)
-                  if (slide) pushCheckpointForSlide(slide)
-                }
-              }))
+              await Promise.all(
+                appState.slideIds.map(async (id) => {
+                  if (id === appState.currentSlide?.id) {
+                    pushCheckpoint()
+                  } else {
+                    const slide = await window.api.db.getSlide(filePath, id)
+                    if (slide) pushCheckpointForSlide(slide)
+                  }
+                })
+              )
               const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
               try {
                 await window.api.db.applyBackgroundToAll(appState.currentFilePath, plain)

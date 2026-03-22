@@ -62,10 +62,12 @@ const api = {
     isTempFile: (filePath) => ipcRenderer.invoke('db:is-temp-file', filePath),
 
     /** Move a temp database to a user-chosen location (Save) */
-    saveToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:save-to-location', sourcePath, destPath),
+    saveToLocation: (sourcePath, destPath) =>
+      ipcRenderer.invoke('db:save-to-location', sourcePath, destPath),
 
     /** Copy a database to a new location (Save As) */
-    copyToLocation: (sourcePath, destPath) => ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath),
+    copyToLocation: (sourcePath, destPath) =>
+      ipcRenderer.invoke('db:copy-to-location', sourcePath, destPath),
 
     /** Delete a temporary database file */
     deleteTemp: (filePath) => ipcRenderer.invoke('db:delete-temp', filePath),
@@ -75,8 +77,7 @@ const api = {
       ipcRenderer.invoke('db:save-thumbnail', filePath, slideId, thumbnail),
 
     /** Retrieve all stored thumbnails for a presentation */
-    getThumbnails: (filePath: string) =>
-      ipcRenderer.invoke('db:get-thumbnails', filePath),
+    getThumbnails: (filePath: string) => ipcRenderer.invoke('db:get-thumbnails', filePath),
 
     /** Retrieve a per-presentation setting value */
     getSetting: (filePath: string, key: string) =>
@@ -129,9 +130,10 @@ const api = {
 
     /** Listen for state updates (for debug window) */
     onStateUpdate: (callback) => {
-      const handler = (_event, state) => callback(state)
+      const handler = (_event: Electron.IpcRendererEvent, state: unknown): void =>
+        callback(state as Parameters<typeof callback>[0])
       ipcRenderer.on('debug:state-changed', handler)
-      return () => ipcRenderer.removeListener('debug:state-changed', handler)
+      return (): void => ipcRenderer.removeListener('debug:state-changed', handler)
     },
 
     /** Request current state (for debug window) */
@@ -139,9 +141,9 @@ const api = {
 
     /** Listen for state requests from debug window (for main window) */
     onStateRequest: (callback) => {
-      const handler = () => callback()
+      const handler = (): void => callback()
       ipcRenderer.on('debug:request-state-from-main', handler)
-      return () => ipcRenderer.removeListener('debug:request-state-from-main', handler)
+      return (): void => ipcRenderer.removeListener('debug:request-state-from-main', handler)
     }
   },
 
@@ -158,16 +160,17 @@ const api = {
 
     /** Listen for navigation requests from the presentation window (received in main window) */
     onNavigateRequest: (callback) => {
-      const handler = (_event, direction) => callback(direction)
+      const handler = (_event: Electron.IpcRendererEvent, direction: unknown): void =>
+        callback(direction as Parameters<typeof callback>[0])
       ipcRenderer.on('presentation:navigate-request', handler)
-      return () => ipcRenderer.removeListener('presentation:navigate-request', handler)
+      return (): void => ipcRenderer.removeListener('presentation:navigate-request', handler)
     },
 
     /** Listen for the presentation window being closed (received in main window) */
     onWindowClosed: (callback) => {
-      const handler = () => callback()
+      const handler = (): void => callback()
       ipcRenderer.on('presentation:window-closed', handler)
-      return () => ipcRenderer.removeListener('presentation:window-closed', handler)
+      return (): void => ipcRenderer.removeListener('presentation:window-closed', handler)
     },
 
     /** Send navigation request to main window (called from presentation window) */
@@ -178,9 +181,10 @@ const api = {
 
     /** Listen for slide state updates (received in presentation window) */
     onStateChanged: (callback) => {
-      const handler = (_event, state) => callback(state)
+      const handler = (_event: Electron.IpcRendererEvent, state: unknown): void =>
+        callback(state as Parameters<typeof callback>[0])
       ipcRenderer.on('presentation:state-changed', handler)
-      return () => ipcRenderer.removeListener('presentation:state-changed', handler)
+      return (): void => ipcRenderer.removeListener('presentation:state-changed', handler)
     },
 
     /** Signal to main process that this presentation window is ready (called from presentation window) */
@@ -188,9 +192,9 @@ const api = {
 
     /** Listen for presentation window ready signal (received in main window) */
     onWindowReady: (callback) => {
-      const handler = () => callback()
+      const handler = (): void => callback()
       ipcRenderer.on('presentation:window-ready', handler)
-      return () => ipcRenderer.removeListener('presentation:window-ready', handler)
+      return (): void => ipcRenderer.removeListener('presentation:window-ready', handler)
     }
   },
 
@@ -198,9 +202,9 @@ const api = {
   lifecycle: {
     /** Called by main process before window closes to flush pending saves */
     onBeforeClose: (callback) => {
-      const listener = () => callback()
+      const listener = (): void => callback()
       ipcRenderer.on('lifecycle:before-close', listener)
-      return () => ipcRenderer.removeListener('lifecycle:before-close', listener)
+      return (): void => ipcRenderer.removeListener('lifecycle:before-close', listener)
     },
 
     /** Notify main process that flush is complete */

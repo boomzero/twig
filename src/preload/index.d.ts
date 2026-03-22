@@ -66,7 +66,7 @@ export interface DebugState {
       text?: string
       fontSize?: number
       fontFamily?: string
-      styles?: Record<string, any>
+      styles?: Record<string, Record<string, unknown>>
       src?: string
       filename?: string
       zIndex: number
@@ -99,7 +99,10 @@ declare global {
         getThumbnails: (filePath: string) => Promise<Record<string, string>>
         getSetting: (filePath: string, key: string) => Promise<string | null>
         setSetting: (filePath: string, key: string, value: string | null) => Promise<void>
-        applyBackgroundToAll: (filePath: string, background: SlideBackground | null) => Promise<void>
+        applyBackgroundToAll: (
+          filePath: string,
+          background: SlideBackground | null
+        ) => Promise<void>
         deleteSlide: (filePath: string, slideId: string) => Promise<void>
         reorderSlides: (filePath: string, orderedIds: string[]) => Promise<void>
       }
@@ -112,18 +115,34 @@ declare global {
           variant?: string
         ) => Promise<void>
         getEmbeddedFonts: (filePath: string) => Promise<FontData[]>
-        getFontData: (filePath: string, fontFamily: string, variant?: string) => Promise<FontData | null>
+        getFontData: (
+          filePath: string,
+          fontFamily: string,
+          variant?: string
+        ) => Promise<FontData | null>
         loadFontFile: (fontPath: string) => Promise<Buffer>
       }
       presentation: {
         openWindow: () => void
         closeWindow: () => Promise<void>
-        sendStateUpdate: (state: { slideId: string | null; slideIndex: number; slideCount: number; filePath: string | null }) => void
+        sendStateUpdate: (state: {
+          slideId: string | null
+          slideIndex: number
+          slideCount: number
+          filePath: string | null
+        }) => void
         onNavigateRequest: (callback: (direction: 'next' | 'prev') => void) => () => void
         onWindowClosed: (callback: () => void) => () => void
         navigate: (direction: 'next' | 'prev') => void
         exit: () => void
-        onStateChanged: (callback: (state: { slideId: string | null; slideIndex: number; slideCount: number; filePath: string | null }) => void) => () => void
+        onStateChanged: (
+          callback: (state: {
+            slideId: string | null
+            slideIndex: number
+            slideCount: number
+            filePath: string | null
+          }) => void
+        ) => () => void
         signalReady: () => void
         onWindowReady: (callback: () => void) => () => void
       }

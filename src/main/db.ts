@@ -1,6 +1,11 @@
 import type { Database } from 'better-sqlite3'
 import { v4 as uuid_v4 } from 'uuid'
-import type { SlideBackground, AnimationStep, ElementAnimations, SlideTransition } from '../renderer/src/lib/types'
+import type {
+  SlideBackground,
+  AnimationStep,
+  ElementAnimations,
+  SlideTransition
+} from '../renderer/src/lib/types'
 
 export type { SlideBackground }
 
@@ -199,7 +204,6 @@ export function getSlideIds(db: Database): string[] {
   return rows.map((row) => row.id)
 }
 
-
 /**
  * Represents a database row from the elements table.
  * The styles field is stored as a JSON string in the database.
@@ -234,18 +238,29 @@ interface ElementRow {
 export function getSlide(db: Database, slideId: string): Slide | null {
   const slideRow = db
     .prepare('SELECT id, background, animation_order, transition FROM slides WHERE id = ?')
-    .get(slideId) as { id: string; background: string | null; animation_order: string | null; transition: string | null } | undefined
+    .get(slideId) as
+    | {
+        id: string
+        background: string | null
+        animation_order: string | null
+        transition: string | null
+      }
+    | undefined
   if (!slideRow) return null
 
   const elementRows = db
-    .prepare('SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations FROM elements WHERE slide_id = ? ORDER BY z_index ASC')
+    .prepare(
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+    )
     .all(slideId) as ElementRow[]
 
   const elements: TwigElement[] = elementRows.map((el) => {
     let parsedAnimations: ElementAnimations | undefined
     try {
       parsedAnimations = el.animations ? JSON.parse(el.animations) : undefined
-    } catch { parsedAnimations = undefined }
+    } catch {
+      parsedAnimations = undefined
+    }
 
     return {
       type: el.type as 'rect' | 'text' | 'image',
@@ -290,12 +305,16 @@ export function getSlide(db: Database, slideId: string): Slide | null {
   let animationOrder: AnimationStep[]
   try {
     animationOrder = slideRow.animation_order ? JSON.parse(slideRow.animation_order) : []
-  } catch { animationOrder = [] }
+  } catch {
+    animationOrder = []
+  }
 
   let transition: SlideTransition | undefined
   try {
     transition = slideRow.transition ? JSON.parse(slideRow.transition) : undefined
-  } catch { transition = undefined }
+  } catch {
+    transition = undefined
+  }
 
   return { id: slideRow.id, elements, background, animationOrder, transition }
 }
@@ -313,9 +332,10 @@ export function getSlide(db: Database, slideId: string): Slide | null {
  */
 function validateAndRepairSlideOrder(db: Database): void {
   // Get all slides ordered by their current slide_order
-  const slides = db
-    .prepare('SELECT id, slide_order FROM slides ORDER BY slide_order')
-    .all() as { id: string; slide_order: number }[]
+  const slides = db.prepare('SELECT id, slide_order FROM slides ORDER BY slide_order').all() as {
+    id: string
+    slide_order: number
+  }[]
 
   // Check if reordering is needed
   let needsRepair = false
@@ -405,17 +425,43 @@ function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
  * @param slide - The slide object to save (with all its elements)
  */
 function prepareSlideOps(db: Database): {
-  insertSlide: (id: string, order: number, background: string | null, animationOrder: string, transition: string | null) => void
-  updateSlide: (background: string | null, animationOrder: string, transition: string | null, id: string) => void
-  updateSlideWithOrder: (order: number, background: string | null, animationOrder: string, transition: string | null, id: string) => void
+  insertSlide: (
+    id: string,
+    order: number,
+    background: string | null,
+    animationOrder: string,
+    transition: string | null
+  ) => void
+  updateSlide: (
+    background: string | null,
+    animationOrder: string,
+    transition: string | null,
+    id: string
+  ) => void
+  updateSlideWithOrder: (
+    order: number,
+    background: string | null,
+    animationOrder: string,
+    transition: string | null,
+    id: string
+  ) => void
 } {
-  const ins = db.prepare('INSERT INTO slides (id, slide_order, background, animation_order, transition) VALUES (?, ?, ?, ?, ?)')
-  const upd = db.prepare('UPDATE slides SET background = ?, animation_order = ?, transition = ? WHERE id = ?')
-  const updOrd = db.prepare('UPDATE slides SET slide_order = ?, background = ?, animation_order = ?, transition = ? WHERE id = ?')
+  const ins = db.prepare(
+    'INSERT INTO slides (id, slide_order, background, animation_order, transition) VALUES (?, ?, ?, ?, ?)'
+  )
+  const upd = db.prepare(
+    'UPDATE slides SET background = ?, animation_order = ?, transition = ? WHERE id = ?'
+  )
+  const updOrd = db.prepare(
+    'UPDATE slides SET slide_order = ?, background = ?, animation_order = ?, transition = ? WHERE id = ?'
+  )
   return {
-    insertSlide: (id, order, background, animationOrder, transition) => ins.run(id, order, background, animationOrder, transition),
-    updateSlide: (background, animationOrder, transition, id) => upd.run(background, animationOrder, transition, id),
-    updateSlideWithOrder: (order, background, animationOrder, transition, id) => updOrd.run(order, background, animationOrder, transition, id),
+    insertSlide: (id, order, background, animationOrder, transition) =>
+      ins.run(id, order, background, animationOrder, transition),
+    updateSlide: (background, animationOrder, transition, id) =>
+      upd.run(background, animationOrder, transition, id),
+    updateSlideWithOrder: (order, background, animationOrder, transition, id) =>
+      updOrd.run(order, background, animationOrder, transition, id)
   }
 }
 
@@ -438,12 +484,23 @@ export function saveSlide(db: Database, slide: Slide): void {
         max: number | null
       }
       const newOrder = maxOrder.max === null ? 0 : maxOrder.max + 1
-      slideOps.insertSlide(s.id, newOrder, serializeJson(s.background), JSON.stringify(s.animationOrder ?? []), serializeJson(s.transition))
+      slideOps.insertSlide(
+        s.id,
+        newOrder,
+        serializeJson(s.background),
+        JSON.stringify(s.animationOrder ?? []),
+        serializeJson(s.transition)
+      )
     }
 
     // Always sync background, animation_order, and transition (handles both new and existing slides)
     if (slideInfo) {
-      slideOps.updateSlide(serializeJson(s.background), JSON.stringify(s.animationOrder ?? []), serializeJson(s.transition), s.id)
+      slideOps.updateSlide(
+        serializeJson(s.background),
+        JSON.stringify(s.animationOrder ?? []),
+        serializeJson(s.transition),
+        s.id
+      )
     }
 
     s.elements.forEach((el) => {
@@ -461,7 +518,9 @@ export function saveSlide(db: Database, slide: Slide): void {
       if (el.animations) {
         try {
           animationsJson = JSON.stringify(el.animations)
-        } catch { animationsJson = null }
+        } catch {
+          animationsJson = null
+        }
       }
 
       elementUpsert(
@@ -552,10 +611,22 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         | undefined
 
       if (slideInfo) {
-        slideOps.updateSlideWithOrder(index, serializeJson(slide.background), JSON.stringify(slide.animationOrder ?? []), serializeJson(slide.transition), slide.id)
+        slideOps.updateSlideWithOrder(
+          index,
+          serializeJson(slide.background),
+          JSON.stringify(slide.animationOrder ?? []),
+          serializeJson(slide.transition),
+          slide.id
+        )
       } else {
         hasNewSlides = true
-        slideOps.insertSlide(slide.id, index, serializeJson(slide.background), JSON.stringify(slide.animationOrder ?? []), serializeJson(slide.transition))
+        slideOps.insertSlide(
+          slide.id,
+          index,
+          serializeJson(slide.background),
+          JSON.stringify(slide.animationOrder ?? []),
+          serializeJson(slide.transition)
+        )
       }
 
       slide.elements.forEach((el) => {
@@ -573,7 +644,9 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         if (el.animations) {
           try {
             animationsJson = JSON.stringify(el.animations)
-          } catch { animationsJson = null }
+          } catch {
+            animationsJson = null
+          }
         }
 
         elementUpsert(

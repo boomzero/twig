@@ -98,7 +98,7 @@
     if (!selectedObject) return
     if (!continuous || !animSnapshotPushed) {
       onBeforePropertyChange?.()
-      animSnapshotPushed = continuous  // stay true only for continuous sessions
+      animSnapshotPushed = continuous // stay true only for continuous sessions
     }
     onAnimationChange?.(selectedObject.id, animations)
   }
@@ -108,16 +108,9 @@
   }
 
   // Duration presets in ms
-  const DURATION_FAST   = 250
+  const DURATION_FAST = 250
   const DURATION_NORMAL = 500
-  const DURATION_SLOW   = 1000
-
-  function durationLabel(ms: number): string {
-    if (ms === DURATION_FAST)   return 'Fast'
-    if (ms === DURATION_NORMAL) return 'Normal'
-    if (ms === DURATION_SLOW)   return 'Slow'
-    return 'Custom'
-  }
+  const DURATION_SLOW = 1000
 
   // Reactively compute the currently selected object from app state
   const selectedObject = $derived(
@@ -128,11 +121,9 @@
   const currentBg = $derived(appState.currentSlide?.background)
   const bgType = $derived(currentBg?.type ?? 'solid')
 
-  let activeTab = $state<'solid' | 'gradient' | 'image'>('solid')
-
-  $effect(() => {
-    activeTab = bgType as 'solid' | 'gradient' | 'image'
-  })
+  let activeTab = $derived.by<'solid' | 'gradient' | 'image'>(
+    () => bgType as 'solid' | 'gradient' | 'image'
+  )
 
   function emitSolid(color: string): void {
     onSlideBackgroundChange?.({ type: 'solid', color })
@@ -142,7 +133,10 @@
     onSlideBackgroundChange?.({
       type: 'gradient',
       angle,
-      stops: [{ offset: 0, color: color1 }, { offset: 1, color: color2 }]
+      stops: [
+        { offset: 0, color: color1 },
+        { offset: 1, color: color2 }
+      ]
     })
   }
 
@@ -179,24 +173,24 @@
               class:bg-gray-200={richText.isBold}
               class:text-gray-700={richText.isBold}
               class:text-gray-600={!richText.isBold}
-              class:hover:bg-gray-100={!richText.isBold}
-            >B</button>
+              class:hover:bg-gray-100={!richText.isBold}>B</button
+            >
             <button
               onclick={richText.toggleItalic}
               class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md focus:outline-none"
               class:bg-gray-200={richText.isItalic}
               class:text-gray-700={richText.isItalic}
               class:text-gray-600={!richText.isItalic}
-              class:hover:bg-gray-100={!richText.isItalic}
-            >I</button>
+              class:hover:bg-gray-100={!richText.isItalic}>I</button
+            >
             <button
               onclick={richText.toggleUnderline}
               class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md focus:outline-none"
               class:bg-gray-200={richText.isUnderlined}
               class:text-gray-700={richText.isUnderlined}
               class:text-gray-600={!richText.isUnderlined}
-              class:hover:bg-gray-100={!richText.isUnderlined}
-            >U</button>
+              class:hover:bg-gray-100={!richText.isUnderlined}>U</button
+            >
             <input
               type="number"
               value={richText.fontSize}
@@ -228,10 +222,20 @@
               <span
                 class="truncate"
                 class:italic={richText.fontFamily === 'Multiple'}
-                class:text-gray-500={richText.fontFamily === 'Multiple'}
-              >{richText.fontFamily}</span>
-              <svg class="w-4 h-4 absolute right-1 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                class:text-gray-500={richText.fontFamily === 'Multiple'}>{richText.fontFamily}</span
+              >
+              <svg
+                class="w-4 h-4 absolute right-1 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
             {#if richText.fontDropdownOpen}
@@ -244,21 +248,25 @@
                   <input
                     type="text"
                     value={richText.fontSearchQuery}
-                    oninput={(e) => richText?.setFontSearchQuery((e.target as HTMLInputElement).value)}
+                    oninput={(e) =>
+                      richText?.setFontSearchQuery((e.target as HTMLInputElement).value)}
                     placeholder="Search fonts..."
                     class="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white"
                     onkeydown={(e) => e.stopPropagation()}
                   />
                 </div>
                 <div class="py-1">
-                  {#each richText.availableFonts.filter(f => !richText?.fontSearchQuery || f.toLowerCase().includes(richText.fontSearchQuery.toLowerCase())) as font}
+                  {#each richText.availableFonts.filter((f) => !richText?.fontSearchQuery || f
+                        .toLowerCase()
+                        .includes(richText.fontSearchQuery.toLowerCase())) as font (font)}
                     <button
                       onclick={() => richText?.selectFont(font)}
                       onmouseenter={() => richText?.previewFont(font)}
                       class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
                       class:bg-blue-100={font === richText.fontFamily}
                       style="font-family: {richText.escapeFont(font)}; contain: layout style;"
-                    >{font}</button>
+                      >{font}</button
+                    >
                   {/each}
                 </div>
               </div>
@@ -322,17 +330,17 @@
         />
       </div>
       {#if selectedObject.type === 'rect'}
-      <div>
-        <label for="fill" class="block text-sm font-medium text-gray-600">Fill Color</label>
-        <input
-          type="color"
-          id="fill"
-          bind:value={selectedObject.fill}
-          oninput={handleInput}
-          onblur={handleBlur}
-          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-        />
-      </div>
+        <div>
+          <label for="fill" class="block text-sm font-medium text-gray-600">Fill Color</label>
+          <input
+            type="color"
+            id="fill"
+            bind:value={selectedObject.fill}
+            oninput={handleInput}
+            onblur={handleBlur}
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+          />
+        </div>
       {/if}
 
       <!-- Animations section -->
@@ -349,11 +357,16 @@
               const val = (e.target as HTMLSelectElement).value
               const cur = selectedObject.animations ?? {}
               if (val === 'none') {
-                const { buildIn: _bi, ...rest } = cur
+                const rest = Object.fromEntries(
+                  Object.entries(cur).filter(([k]) => k !== 'buildIn')
+                ) as ElementAnimations
                 emitAnimationChange(rest)
               } else {
                 const type = val as 'appear' | 'fade-in'
-                emitAnimationChange({ ...cur, buildIn: { type, duration: cur.buildIn?.duration ?? DURATION_NORMAL } })
+                emitAnimationChange({
+                  ...cur,
+                  buildIn: { type, duration: cur.buildIn?.duration ?? DURATION_NORMAL }
+                })
               }
             }}
             onblur={handleAnimationBlur}
@@ -364,14 +377,20 @@
           </select>
           {#if selectedObject.animations?.buildIn?.type === 'fade-in'}
             <div class="mt-1 flex gap-1">
-              {#each [[DURATION_FAST,'Fast'],[DURATION_NORMAL,'Normal'],[DURATION_SLOW,'Slow']] as [ms, lbl]}
+              {#each [[DURATION_FAST, 'Fast'], [DURATION_NORMAL, 'Normal'], [DURATION_SLOW, 'Slow']] as [ms, lbl] (ms)}
                 <button
-                  class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildIn.duration === ms ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
+                  class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildIn
+                    .duration === ms
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-gray-300 hover:bg-gray-50'}"
                   onclick={() => {
                     const cur = selectedObject.animations ?? {}
-                    emitAnimationChange({ ...cur, buildIn: { type: 'fade-in', duration: ms as number } })
-                  }}
-                >{lbl}</button>
+                    emitAnimationChange({
+                      ...cur,
+                      buildIn: { type: 'fade-in', duration: ms as number }
+                    })
+                  }}>{lbl}</button
+                >
               {/each}
               <input
                 type="number"
@@ -382,7 +401,10 @@
                   const ms = parseInt((e.target as HTMLInputElement).value)
                   if (!isNaN(ms) && ms > 0) {
                     const cur = selectedObject.animations ?? {}
-                    emitAnimationChange({ ...cur, buildIn: { type: 'fade-in', duration: ms } }, true)
+                    emitAnimationChange(
+                      { ...cur, buildIn: { type: 'fade-in', duration: ms } },
+                      true
+                    )
                   }
                 }}
                 onblur={handleAnimationBlur}
@@ -409,8 +431,8 @@
                   duration: DURATION_NORMAL
                 }
                 emitAnimationChange({ ...cur, actions: [...(cur.actions ?? []), newAction] })
-              }}
-            >+ Add Move</button>
+              }}>+ Add Move</button
+            >
           </div>
           {#each selectedObject.animations?.actions ?? [] as action (action.id)}
             <div class="mb-2 p-2 border border-gray-200 rounded bg-gray-50">
@@ -426,8 +448,8 @@
                     else delete updated.actions
                     emitAnimationChange(updated)
                   }}
-                  aria-label="Remove action"
-                >×</button>
+                  aria-label="Remove action">×</button
+                >
               </div>
               <div class="space-y-1">
                 <div class="flex gap-1 items-center">
@@ -439,7 +461,15 @@
                       const v = parseFloat((e.target as HTMLInputElement).value)
                       if (!isNaN(v)) {
                         const cur = selectedObject.animations ?? {}
-                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, toX: v } : a) }, true)
+                        emitAnimationChange(
+                          {
+                            ...cur,
+                            actions: (cur.actions ?? []).map((a) =>
+                              a.id === action.id ? { ...a, toX: v } : a
+                            )
+                          },
+                          true
+                        )
                       }
                     }}
                     onblur={handleAnimationBlur}
@@ -455,7 +485,15 @@
                       const v = parseFloat((e.target as HTMLInputElement).value)
                       if (!isNaN(v)) {
                         const cur = selectedObject.animations ?? {}
-                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, toY: v } : a) }, true)
+                        emitAnimationChange(
+                          {
+                            ...cur,
+                            actions: (cur.actions ?? []).map((a) =>
+                              a.id === action.id ? { ...a, toY: v } : a
+                            )
+                          },
+                          true
+                        )
                       }
                     }}
                     onblur={handleAnimationBlur}
@@ -463,14 +501,21 @@
                   />
                 </div>
                 <div class="flex gap-1">
-                  {#each [[DURATION_FAST,'Fast'],[DURATION_NORMAL,'Normal'],[DURATION_SLOW,'Slow']] as [ms, lbl]}
+                  {#each [[DURATION_FAST, 'Fast'], [DURATION_NORMAL, 'Normal'], [DURATION_SLOW, 'Slow']] as [ms, lbl] (ms)}
                     <button
-                      class="flex-1 py-0.5 text-xs rounded border {action.duration === ms ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
+                      class="flex-1 py-0.5 text-xs rounded border {action.duration === ms
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'border-gray-300 hover:bg-gray-50'}"
                       onclick={() => {
                         const cur = selectedObject.animations ?? {}
-                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, duration: ms as number } : a) })
-                      }}
-                    >{lbl}</button>
+                        emitAnimationChange({
+                          ...cur,
+                          actions: (cur.actions ?? []).map((a) =>
+                            a.id === action.id ? { ...a, duration: ms as number } : a
+                          )
+                        })
+                      }}>{lbl}</button
+                    >
                   {/each}
                   <input
                     type="number"
@@ -481,7 +526,15 @@
                       const ms = parseInt((e.target as HTMLInputElement).value)
                       if (!isNaN(ms) && ms > 0) {
                         const cur = selectedObject.animations ?? {}
-                        emitAnimationChange({ ...cur, actions: (cur.actions ?? []).map((a) => a.id === action.id ? { ...a, duration: ms } : a) }, true)
+                        emitAnimationChange(
+                          {
+                            ...cur,
+                            actions: (cur.actions ?? []).map((a) =>
+                              a.id === action.id ? { ...a, duration: ms } : a
+                            )
+                          },
+                          true
+                        )
                       }
                     }}
                     onblur={handleAnimationBlur}
@@ -504,11 +557,16 @@
               const val = (e.target as HTMLSelectElement).value
               const cur = selectedObject.animations ?? {}
               if (val === 'none') {
-                const { buildOut: _bo, ...rest } = cur
+                const rest = Object.fromEntries(
+                  Object.entries(cur).filter(([k]) => k !== 'buildOut')
+                ) as ElementAnimations
                 emitAnimationChange(rest)
               } else {
                 const type = val as 'disappear' | 'fade-out'
-                emitAnimationChange({ ...cur, buildOut: { type, duration: cur.buildOut?.duration ?? DURATION_NORMAL } })
+                emitAnimationChange({
+                  ...cur,
+                  buildOut: { type, duration: cur.buildOut?.duration ?? DURATION_NORMAL }
+                })
               }
             }}
             onblur={handleAnimationBlur}
@@ -519,14 +577,20 @@
           </select>
           {#if selectedObject.animations?.buildOut?.type === 'fade-out'}
             <div class="mt-1 flex gap-1">
-              {#each [[DURATION_FAST,'Fast'],[DURATION_NORMAL,'Normal'],[DURATION_SLOW,'Slow']] as [ms, lbl]}
+              {#each [[DURATION_FAST, 'Fast'], [DURATION_NORMAL, 'Normal'], [DURATION_SLOW, 'Slow']] as [ms, lbl] (ms)}
                 <button
-                  class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildOut.duration === ms ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
+                  class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildOut
+                    .duration === ms
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-gray-300 hover:bg-gray-50'}"
                   onclick={() => {
                     const cur = selectedObject.animations ?? {}
-                    emitAnimationChange({ ...cur, buildOut: { type: 'fade-out', duration: ms as number } })
-                  }}
-                >{lbl}</button>
+                    emitAnimationChange({
+                      ...cur,
+                      buildOut: { type: 'fade-out', duration: ms as number }
+                    })
+                  }}>{lbl}</button
+                >
               {/each}
               <input
                 type="number"
@@ -537,7 +601,10 @@
                   const ms = parseInt((e.target as HTMLInputElement).value)
                   if (!isNaN(ms) && ms > 0) {
                     const cur = selectedObject.animations ?? {}
-                    emitAnimationChange({ ...cur, buildOut: { type: 'fade-out', duration: ms } }, true)
+                    emitAnimationChange(
+                      { ...cur, buildOut: { type: 'fade-out', duration: ms } },
+                      true
+                    )
                   }
                 }}
                 onblur={handleAnimationBlur}
@@ -556,9 +623,11 @@
 
       <!-- Type selector tabs -->
       <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-        {#each ['solid', 'gradient', 'image'] as t}
+        {#each ['solid', 'gradient', 'image'] as t (t)}
           <button
-            class="flex-1 py-1 {activeTab === t ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
+            class="flex-1 py-1 {activeTab === t
+              ? 'bg-indigo-600 text-white'
+              : 'bg-white text-gray-600 hover:bg-gray-50'}"
             onclick={() => {
               activeTab = t as 'solid' | 'gradient' | 'image'
               if (t === 'gradient' && currentBg?.type !== 'gradient') {
@@ -566,8 +635,8 @@
               } else if (t === 'solid' && currentBg?.type !== 'solid') {
                 emitSolid('#ffffff')
               }
-            }}
-          >{t}</button>
+            }}>{t}</button
+          >
         {/each}
       </div>
 
@@ -581,7 +650,6 @@
             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm h-8"
           />
         </div>
-
       {:else if activeTab === 'gradient'}
         <div class="space-y-2">
           <div>
@@ -589,11 +657,12 @@
             <input
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5'}
-              oninput={(e) => emitGradient(
-                currentBg?.type === 'gradient' ? currentBg.angle : 90,
-                (e.target as HTMLInputElement).value,
-                currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'
-              )}
+              oninput={(e) =>
+                emitGradient(
+                  currentBg?.type === 'gradient' ? currentBg.angle : 90,
+                  (e.target as HTMLInputElement).value,
+                  currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'
+                )}
               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm h-8"
             />
           </div>
@@ -602,31 +671,35 @@
             <input
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'}
-              oninput={(e) => emitGradient(
-                currentBg?.type === 'gradient' ? currentBg.angle : 90,
-                currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5',
-                (e.target as HTMLInputElement).value
-              )}
+              oninput={(e) =>
+                emitGradient(
+                  currentBg?.type === 'gradient' ? currentBg.angle : 90,
+                  currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5',
+                  (e.target as HTMLInputElement).value
+                )}
               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm h-8"
             />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-600">Angle</label>
             <div class="flex gap-1 mt-1 flex-wrap">
-              {#each [[0,'→'],[90,'↓'],[45,'↘'],[135,'↙'],[180,'←'],[270,'↑']] as [deg, label]}
+              {#each [[0, '→'], [90, '↓'], [45, '↘'], [135, '↙'], [180, '←'], [270, '↑']] as [deg, label] (deg)}
                 <button
-                  class="flex-1 py-1 text-xs rounded border {currentBg?.type === 'gradient' && currentBg.angle === deg ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}"
-                  onclick={() => emitGradient(
-                    deg as number,
-                    currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5',
-                    currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'
-                  )}
-                >{label}</button>
+                  class="flex-1 py-1 text-xs rounded border {currentBg?.type === 'gradient' &&
+                  currentBg.angle === deg
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'border-gray-300 hover:bg-gray-50'}"
+                  onclick={() =>
+                    emitGradient(
+                      deg as number,
+                      currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5',
+                      currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'
+                    )}>{label}</button
+                >
               {/each}
             </div>
           </div>
         </div>
-
       {:else if activeTab === 'image'}
         <div class="space-y-2">
           {#if currentBg?.type === 'image'}
@@ -637,11 +710,14 @@
             <div>
               <label class="block text-xs font-medium text-gray-500 mb-1">Fit</label>
               <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-                {#each [['stretch','Stretch'],['contain','Fit'],['cover','Cover']] as [val, label]}
+                {#each [['stretch', 'Stretch'], ['contain', 'Fit'], ['cover', 'Cover']] as [val, label] (val)}
                   <button
-                    class="flex-1 py-1 {(currentBg.fit ?? 'cover') === val ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
+                    class="flex-1 py-1 {(currentBg.fit ?? 'cover') === val
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'}"
                     onclick={() => emitImageFit(val as 'stretch' | 'contain' | 'cover')}
-                  >{label}</button>
+                    >{label}</button
+                  >
                 {/each}
               </div>
             </div>
@@ -649,12 +725,13 @@
           <button
             onclick={pickImageBackground}
             class="w-full py-1.5 text-sm rounded-md border border-gray-300 hover:bg-gray-50 text-gray-700"
-          >{currentBg?.type === 'image' ? 'Change Image' : 'Choose Image...'}</button>
+            >{currentBg?.type === 'image' ? 'Change Image' : 'Choose Image...'}</button
+          >
           {#if currentBg?.type === 'image'}
             <button
               onclick={() => emitSolid('#ffffff')}
-              class="w-full py-1 text-xs text-red-500 hover:underline"
-            >Remove image</button>
+              class="w-full py-1 text-xs text-red-500 hover:underline">Remove image</button
+            >
           {/if}
         </div>
       {/if}
@@ -663,28 +740,35 @@
         <button
           onclick={() => onSetAsDefault?.(currentBg ?? null)}
           class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
-        >Set as default for new slides</button>
+          >Set as default for new slides</button
+        >
         <button
           onclick={() => onApplyToAll?.(currentBg ?? null)}
           class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
-        >Apply to all slides</button>
+          >Apply to all slides</button
+        >
       </div>
 
       <!-- Slide transition controls -->
       <div class="border-t border-gray-200 pt-3 space-y-2">
         <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Slide Transition</p>
         <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-          {#each [['none', 'None'], ['dissolve', 'Dissolve'], ['push', 'Push']] as [val, label]}
+          {#each [['none', 'None'], ['dissolve', 'Dissolve'], ['push', 'Push']] as [val, label] (val)}
             <button
-              class="flex-1 py-1 {(slideTransition?.type ?? 'none') === val ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
+              class="flex-1 py-1 {(slideTransition?.type ?? 'none') === val
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'}"
               onclick={() => {
                 if (val === 'none') {
                   onSlideTransitionChange?.(undefined)
                 } else {
-                  onSlideTransitionChange?.({ type: val as 'dissolve' | 'push', duration: slideTransition?.duration ?? 0.4 })
+                  onSlideTransitionChange?.({
+                    type: val as 'dissolve' | 'push',
+                    duration: slideTransition?.duration ?? 0.4
+                  })
                 }
-              }}
-            >{label}</button>
+              }}>{label}</button
+            >
           {/each}
         </div>
         {#if slideTransition && slideTransition.type !== 'none'}

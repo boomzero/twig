@@ -9,7 +9,6 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
   import type { AnimationStep } from '../lib/types'
-  import type { TwigElement } from '../lib/state.svelte'
   import { isValidAnimationOrder, getAnimationStepKey } from '../lib/animationUtils'
   import { getElementLabel, computeDropInsertIndex } from '../lib/elementUtils'
 
@@ -37,10 +36,15 @@
     onAfterChange?.()
   }
 
-  function getCategoryBadge(category: AnimationStep['category']): { label: string; classes: string } {
-    if (category === 'buildIn')  return { label: 'In',     classes: 'bg-green-100 text-green-700 border-green-200' }
-    if (category === 'buildOut') return { label: 'Out',    classes: 'bg-orange-100 text-orange-700 border-orange-200' }
-    return                                { label: 'Action', classes: 'bg-blue-100 text-blue-700 border-blue-200' }
+  function getCategoryBadge(category: AnimationStep['category']): {
+    label: string
+    classes: string
+  } {
+    if (category === 'buildIn')
+      return { label: 'In', classes: 'bg-green-100 text-green-700 border-green-200' }
+    if (category === 'buildOut')
+      return { label: 'Out', classes: 'bg-orange-100 text-orange-700 border-orange-200' }
+    return { label: 'Action', classes: 'bg-blue-100 text-blue-700 border-blue-200' }
   }
 
   function getAnimationTypeLabel(step: AnimationStep): string {
@@ -52,10 +56,10 @@
     }
     const anim = el.animations[step.category]
     if (!anim) return ''
-    if (anim.type === 'appear')    return 'Appear'
-    if (anim.type === 'fade-in')   return 'Fade In'
+    if (anim.type === 'appear') return 'Appear'
+    if (anim.type === 'fade-in') return 'Fade In'
     if (anim.type === 'disappear') return 'Disappear'
-    if (anim.type === 'fade-out')  return 'Fade Out'
+    if (anim.type === 'fade-out') return 'Fade Out'
     return ''
   }
 
@@ -64,7 +68,7 @@
 
   // Drag-and-drop state
   let dragSourceIndex = $state<number | null>(null)
-  let dragOverIndex  = $state<number | null>(null)
+  let dragOverIndex = $state<number | null>(null)
   let dragOverPosition = $state<'before' | 'after'>('before')
 
   function onDragStart(e: DragEvent, index: number): void {
@@ -107,7 +111,9 @@
 <!-- Reset snapshot gate on pointer release so each drag gets its own undo entry -->
 <div
   class="flex flex-col h-full"
-  onpointerup={() => { snapshotPushed = false }}
+  onpointerup={() => {
+    snapshotPushed = false
+  }}
   role="presentation"
 >
   <div class="px-3 py-2 border-b border-gray-200">
@@ -137,24 +143,35 @@
           role="listitem"
         >
           {#if isDragTarget && dragOverPosition === 'before'}
-            <div class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+            <div
+              class="absolute top-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"
+            ></div>
           {/if}
           {#if isDragTarget && dragOverPosition === 'after'}
-            <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"></div>
+            <div
+              class="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 z-10 pointer-events-none"
+            ></div>
           {/if}
           <!-- Drag handle -->
-          <span class="text-gray-300 cursor-grab active:cursor-grabbing flex-shrink-0 text-xs">⠿</span>
+          <span class="text-gray-300 cursor-grab active:cursor-grabbing flex-shrink-0 text-xs"
+            >⠿</span
+          >
 
           <!-- Step number -->
           <span class="text-xs text-gray-400 w-4 flex-shrink-0 font-mono">{i + 1}</span>
 
           <!-- Category badge -->
-          <span class="text-xs px-1.5 py-0.5 rounded border font-medium flex-shrink-0 {badge.classes}">
+          <span
+            class="text-xs px-1.5 py-0.5 rounded border font-medium flex-shrink-0 {badge.classes}"
+          >
             {badge.label}
           </span>
 
           <!-- Element label -->
-          <span class="flex-1 text-xs truncate text-gray-700" title={el ? getElementLabel(el) : step.elementId}>
+          <span
+            class="flex-1 text-xs truncate text-gray-700"
+            title={el ? getElementLabel(el) : step.elementId}
+          >
             {el ? getElementLabel(el) : '(deleted)'}
           </span>
 

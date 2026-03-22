@@ -46,7 +46,9 @@ export function insertAnimationStep(order: AnimationStep[], step: AnimationStep)
   }
 
   if (step.category === 'action') {
-    const firstBuildOut = sameElementIndexes.find(({ existing }) => existing.category === 'buildOut')
+    const firstBuildOut = sameElementIndexes.find(
+      ({ existing }) => existing.category === 'buildOut'
+    )
     if (firstBuildOut) {
       const insertAt = firstBuildOut.index
       return [...order.slice(0, insertAt), step, ...order.slice(insertAt)]
@@ -87,7 +89,11 @@ export function isValidAnimationOrder(steps: AnimationStep[]): boolean {
   const seenByElement = new Map<string, { buildIn: boolean; buildOut: boolean; action: boolean }>()
   for (const step of steps) {
     const meta = elementMeta.get(step.elementId) ?? { hasBuildIn: false, hasBuildOut: false }
-    const seen = seenByElement.get(step.elementId) ?? { buildIn: false, buildOut: false, action: false }
+    const seen = seenByElement.get(step.elementId) ?? {
+      buildIn: false,
+      buildOut: false,
+      action: false
+    }
 
     if (step.category === 'buildIn') {
       if (seen.action || seen.buildOut) return false

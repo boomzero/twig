@@ -25,11 +25,13 @@ If you haven't already:
 5. Download and double-click the certificate to install it in your Keychain
 
 Verify installation:
+
 ```bash
 security find-identity -v -p codesigning
 ```
 
 You should see a line like:
+
 ```
 1) ABCDEF1234567890... "Developer ID Application: Your Name (TEAM_ID)"
 ```
@@ -48,11 +50,13 @@ You should see a line like:
 ## Step 4: Configure Environment Variables
 
 1. Copy `.env.example` to `.env`:
+
    ```bash
    cp .env.example .env
    ```
 
 2. Edit `.env` and fill in your values:
+
    ```bash
    APPLE_TEAM_ID=YOUR_TEAM_ID
    APPLE_ID=your.email@example.com
@@ -64,11 +68,13 @@ You should see a line like:
 ## Step 5: Build with Notarization
 
 Build for macOS:
+
 ```bash
 npm run build:mac
 ```
 
 The build process will:
+
 1. Code sign the app with your Developer ID certificate
 2. Upload the app to Apple for notarization
 3. Wait for Apple's approval (usually 1-5 minutes)
@@ -77,19 +83,23 @@ The build process will:
 ## Troubleshooting
 
 ### "No identity found"
+
 - Make sure your Developer ID certificate is installed in Keychain
 - Run `security find-identity -v -p codesigning` to verify
 
 ### "Authentication failed"
+
 - Double-check your `APPLE_ID` and `APPLE_APP_SPECIFIC_PASSWORD`
 - Make sure you're using an app-specific password, not your regular Apple ID password
 
 ### Notarization timeout
+
 - Apple's servers can be slow sometimes
 - The build will wait up to 30 minutes by default
 - Check status at https://developer.apple.com/account/resources/notarization/list
 
 ### "Hardened Runtime" errors
+
 - The entitlements file (`build/entitlements.mac.plist`) allows necessary exceptions
 - Required for Electron apps using JIT compilation and native modules
 
@@ -104,6 +114,7 @@ For automated builds (GitHub Actions, etc.):
    - Store as `CSC_LINK` (base64 string) and `CSC_KEY_PASSWORD` (p12 password)
 
 Example GitHub Actions:
+
 ```yaml
 - name: Build macOS app
   env:
