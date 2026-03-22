@@ -3434,6 +3434,29 @@
     }
   }
 
+  /** Copies selected elements to the clipboard programmatically (e.g. from context menu). */
+  function copySelected(): void {
+    const activeObjects = fabCanvas?.getActiveObjects() ?? []
+    if (activeObjects.length === 0) return
+    const ids = new Set(activeObjects.map((o) => (o as TwigFabricObject).id).filter(Boolean))
+    const elements = (appState.currentSlide?.elements ?? [])
+      .filter((el) => ids.has(el.id))
+      .map((el) => ({
+        ...el,
+        src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
+      }))
+    const payload = JSON.stringify({ __twig_clipboard__: true, copyId: uuid_v4(), elements })
+    navigator.clipboard.writeText(payload).catch(() => {})
+    pasteCount = 0
+    lastCopiedPayload = payload
+  }
+
+  /** Cuts selected elements (copy + delete) programmatically (e.g. from context menu). */
+  function cutSelected(): void {
+    copySelected()
+    deleteSelectedObject()
+  }
+
   async function handlePaste(event: ClipboardEvent): Promise<void> {
     if (shouldBypassClipboard(event)) return
 
@@ -3726,6 +3749,8 @@
       <ContextMenu
         x={contextMenuPosition.x}
         y={contextMenuPosition.y}
+        onCopy={() => { copySelected(); hideContextMenu() }}
+        onCut={() => { cutSelected(); hideContextMenu() }}
         onDelete={() => { deleteSelectedObject(); hideContextMenu() }}
         onBringToFront={appState.selectedObjectId ? () => { layerBringToFront(appState.selectedObjectId!); hideContextMenu() } : undefined}
         onMoveUp={appState.selectedObjectId ? () => { layerMoveUp(appState.selectedObjectId!); hideContextMenu() } : undefined}
