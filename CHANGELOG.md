@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0-rc.4] - 2026-03-22
+
+### Fixed
+
+- macOS: remove canvas after rebuilding native modules to prevent unsigned dylibs from being bundled
+
 ## [1.0.0-rc.3] - 2026-03-22
 
 ### Fixed
