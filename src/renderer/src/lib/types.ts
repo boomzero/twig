@@ -85,6 +85,11 @@ export type SlideBackground =
   | { type: 'gradient'; angle: number; stops: [{ offset: 0; color: string }, { offset: 1; color: string }] }
   | { type: 'image'; src: string; filename?: string; fit?: 'stretch' | 'contain' | 'cover' }
 
+export interface SlideTransition {
+  type: 'none' | 'dissolve' | 'push'
+  duration: number  // seconds, e.g. 0.4
+}
+
 /**
  * Represents a single slide containing multiple elements.
  */
@@ -100,4 +105,7 @@ export interface Slide {
 
   /** Ordered list of animation steps for this slide */
   animationOrder: AnimationStep[]
+
+  /** Optional slide transition configuration */
+  transition?: SlideTransition
 }

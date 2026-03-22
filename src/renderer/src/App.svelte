@@ -25,7 +25,7 @@
   import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { TwigElement, SelectionState } from './lib/state.svelte'
-  import type { SlideBackground, ElementAnimations, AnimationStep, ActionAnimation } from './lib/types'
+  import type { SlideBackground, ElementAnimations, AnimationStep, ActionAnimation, SlideTransition } from './lib/types'
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { fontDataToBase64 } from './lib/fontUtils'
   import {
@@ -167,6 +167,9 @@
   // Cache of decoded image elements keyed by src (base64 data URI).
   // Allows synchronous FabricImage construction on re-renders, preventing flicker.
   const imageElementCache = new Map<string, HTMLImageElement>()
+  // Tracks which slide IDs have been fully prefetched, so repeated renderCanvasFromState
+  // calls (per keystroke/drag) don't re-issue IPC round-trips for already-fetched slides.
+  const prefetchedSlideIds = new Set<string>()
 
   /**
    * Auto-save debounce delay in milliseconds.
@@ -198,7 +201,7 @@
   const imageAssets = new Map<string, string>()
 
   type ElementSnapshot = Omit<TwigElement, 'src'>
-  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined, animationOrder: AnimationStep[] }
+  type SlideSnapshot = { elements: ElementSnapshot[], background: SlideBackground | undefined, animationOrder: AnimationStep[], transition: SlideTransition | undefined }
   // Each entry stores the snapshot and its JSON serialization (for O(1) dedup).
   type HistoryEntry = { snapshot: SlideSnapshot, serialized: string }
   type SlideHistory = { undo: HistoryEntry[], redo: HistoryEntry[] }
@@ -208,6 +211,8 @@
   let historyRevision = $state(0) // bumped on every history mutation to drive $derived
 
   let bgCheckpointPushed = false // gates background-change history to first event per drag
+  let transitionCheckpointPushed = false // gates transition-change history to first event per drag
+  let slideTransitionOverlaySrc = $state<string | null>(null)
 
   // Copy/paste state
   let pasteCount = 0                      // resets on each copy; increments each paste
@@ -358,6 +363,73 @@
     }
   }
 
+  /**
+   * Preloads images from a slide's elements into imageElementCache.
+   * Skips srcs already cached. Returns a promise that resolves when all
+   * images on that slide have been decoded.
+   */
+  async function prefetchSlideImages(slideId: string): Promise<void> {
+    const filePath = appState.currentFilePath
+    if (!filePath) return
+    if (prefetchedSlideIds.has(slideId)) return
+    try {
+      const slide = await window.api.db.getSlide(filePath, slideId)
+      if (!slide) return
+      const loads: Promise<void>[] = []
+      for (const el of slide.elements) {
+        if (el.type === 'image' && el.src && !imageElementCache.has(el.src)) {
+          const src = el.src
+          loads.push(
+            new Promise<void>((resolve) => {
+              const img = new Image()
+              img.onload = () => {
+                imageElementCache.set(src, img)
+                resolve()
+              }
+              img.onerror = () => resolve() // Don't block on broken images
+              img.src = src
+            })
+          )
+        }
+      }
+      await Promise.all(loads)
+      prefetchedSlideIds.add(slideId)
+    } catch {
+      // Best-effort prefetch; ignore errors
+    }
+  }
+
+  /**
+   * Preemptively loads images from adjacent slides into imageElementCache so that
+   * switching to those slides renders synchronously without flicker.
+   * Fire-and-forget — errors are silently ignored.
+   */
+  async function prefetchAdjacentSlideImages(): Promise<void> {
+    const idx = appState.currentSlideIndex
+    const slideIds = appState.slideIds
+
+    const adjacentIds: string[] = []
+    if (idx + 1 < slideIds.length) adjacentIds.push(slideIds[idx + 1])
+    if (idx - 1 >= 0) adjacentIds.push(slideIds[idx - 1])
+
+    await Promise.all(adjacentIds.map((id) => prefetchSlideImages(id)))
+  }
+
+  /**
+   * Preloads images for ALL slides in the background immediately after a
+   * presentation is opened, so that first-visit renders are flicker-free.
+   * Skips the current slide (already rendering). Fire-and-forget.
+   */
+  async function prefetchAllSlideImages(): Promise<void> {
+    const currentId = appState.currentSlide?.id
+    const slideIds = appState.slideIds
+    // Prefetch remaining slides sequentially to avoid flooding IPC
+    for (const slideId of slideIds) {
+      if (slideId === currentId) continue
+      await prefetchSlideImages(slideId)
+    }
+  }
+
   // ============================================================================
   // Undo/Redo Core
   // ============================================================================
@@ -376,7 +448,10 @@
       background: appState.currentSlide.background
         ? JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground
         : undefined,
-      animationOrder: JSON.parse(JSON.stringify(appState.currentSlide.animationOrder))
+      animationOrder: JSON.parse(JSON.stringify(appState.currentSlide.animationOrder)),
+      transition: appState.currentSlide.transition
+        ? JSON.parse(JSON.stringify(appState.currentSlide.transition)) as SlideTransition
+        : undefined
     }
   }
 
@@ -384,7 +459,8 @@
     const snapshot: SlideSnapshot = {
       elements: slide.elements.map(({ src: _src, ...rest }) => JSON.parse(JSON.stringify(rest)) as ElementSnapshot),
       background: slide.background ? JSON.parse(JSON.stringify(slide.background)) as SlideBackground : undefined,
-      animationOrder: JSON.parse(JSON.stringify(slide.animationOrder ?? []))
+      animationOrder: JSON.parse(JSON.stringify(slide.animationOrder ?? [])),
+      transition: slide.transition ? JSON.parse(JSON.stringify(slide.transition)) as SlideTransition : undefined
     }
     const serialized = JSON.stringify(snapshot)
     const h = getSlideHistory(slide.id)
@@ -427,6 +503,9 @@
       ...appState.currentSlide,
       animationOrder: JSON.parse(JSON.stringify(snapshot.animationOrder ?? []))
     })
+    appState.currentSlide.transition = snapshot.transition
+      ? JSON.parse(JSON.stringify(snapshot.transition)) as SlideTransition
+      : undefined
     appState.selectedObjectId = null
     fabCanvas?.discardActiveObject()
     // The $effect watching appState.currentSlide triggers renderCanvasFromState() automatically
@@ -532,19 +611,19 @@
     }
   }
 
+  function captureCanvasSnapshot(quality = 0.85, multiplier = 1): string | null {
+    if (!fabCanvas) return null
+    const hadOverlay = !!(movePathLine || movePathSourceMarker || movePathGhostObject)
+    if (hadOverlay) { setMovePathOverlayVisible(false); fabCanvas.renderAll() }
+    const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality, multiplier })
+    if (hadOverlay) { setMovePathOverlayVisible(true); fabCanvas.requestRenderAll() }
+    return dataUrl
+  }
+
   async function captureAndStoreThumbnail(): Promise<void> {
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
-    // Keep editor affordances out of slide thumbnails.
-    const hadOverlay = !!(movePathLine || movePathSourceMarker || movePathGhostObject)
-    if (hadOverlay) {
-      setMovePathOverlayVisible(false)
-      fabCanvas.renderAll()
-    }
-    const dataUrl = fabCanvas.toDataURL({ format: 'jpeg', quality: 0.7, multiplier: 0.2 })
-    if (hadOverlay) {
-      setMovePathOverlayVisible(true)
-      fabCanvas.requestRenderAll()
-    }
+    const dataUrl = captureCanvasSnapshot(0.7, 0.2)
+    if (!dataUrl) return
     appState.thumbnails[appState.currentSlide.id] = dataUrl
     window.api.db.saveThumbnail(appState.currentFilePath, appState.currentSlide.id, dataUrl).catch(console.error)
   }
@@ -1015,10 +1094,10 @@
   let unsubscribePresentationClosed: (() => void) | undefined
   let unsubscribePresentationReady: (() => void) | undefined
 
-  // Reset background checkpoint gate on pointer release so the next drag
+  // Reset background and transition checkpoint gates on pointer release so the next drag
   // session gets its own undo entry.
   onMount(() => {
-    const resetBgGate = () => { bgCheckpointPushed = false }
+    const resetBgGate = () => { bgCheckpointPushed = false; transitionCheckpointPushed = false }
     window.addEventListener('pointerup', resetBgGate, { passive: true })
     return () => window.removeEventListener('pointerup', resetBgGate)
   })
@@ -1430,7 +1509,7 @@
     // Clear the canvas and apply background (may await for image backgrounds)
     fabCanvas.clear()
     await applySlideBackground(currentSlide.background)
-    if (renderGeneration !== generation) return
+    if (renderGeneration !== generation) { slideTransitionOverlaySrc = null; return }
 
     // Add non-image elements synchronously in z-order
     sortedElements.forEach((element) => {
@@ -1531,7 +1610,8 @@
             ).length
 
             fabCanvas.insertAt(insertIndex, img)
-            fabCanvas.renderAll()
+            // Do NOT renderAll() here — wait for Promise.allSettled to do a single
+            // batched render, avoiding N progressive re-renders that look like flicker.
           })
           .catch((error) => {
             console.error('Failed to load image:', error)
@@ -1542,6 +1622,9 @@
     })
 
     fabCanvas.renderAll()
+
+    // Kick off background prefetch of adjacent slides' images — fire-and-forget
+    prefetchAdjacentSlideImages().catch(() => {})
 
     // Re-attach event listeners
     fabCanvas.on('object:modified', handleObjectModified)
@@ -1555,6 +1638,7 @@
     fabCanvas.on('mouse:down:before', handleCanvasMouseDownBefore)
 
     if (imageLoads.length === 0) {
+      slideTransitionOverlaySrc = null
       applyPendingSelection()
       renderMovePathOverlay()
       captureAndStoreThumbnail().catch(console.error)
@@ -1567,14 +1651,15 @@
     // z-order so each placement is stable without triggering selection events.
     // The generation guard ensures this is a no-op if the slide changed while loading.
     return Promise.allSettled(imageLoads).then(() => {
-      if (!fabCanvas || renderGeneration !== generation) return
+      if (!fabCanvas || renderGeneration !== generation) { slideTransitionOverlaySrc = null; return }
       if (imageLoads.length > 1) {
         const sorted = (fabCanvas.getObjects() as TwigFabricObject[])
           .slice()
           .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
-        sorted.forEach((obj, targetIndex) => fabCanvas.moveTo(obj, targetIndex))
+        sorted.forEach((obj, targetIndex) => fabCanvas.moveObjectTo(obj, targetIndex))
       }
       fabCanvas.renderAll()
+      slideTransitionOverlaySrc = null
       applyPendingSelection()
       renderMovePathOverlay()
       captureAndStoreThumbnail().catch(console.error)
@@ -2187,6 +2272,7 @@
         appState.currentSlide = null
         appState.currentSlideIndex = -1
         imageElementCache.clear()
+        prefetchedSlideIds.clear()
 
         // Close any existing database connection
         if (appState.currentFilePath) {
@@ -2275,8 +2361,10 @@
 
         clearAllHistory()
         imageElementCache.clear()
+        prefetchedSlideIds.clear()
         await loadPresentation(filePath)
         setSaveStatus('saved')
+        prefetchAllSlideImages().catch(() => {})
       } catch (error) {
         console.error('Failed to open presentation:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -3014,12 +3102,26 @@
 
   /**
    * Flush any pending save for the current slide then navigate to the target slide.
-   * This prevents stale status carrying over to the new slide's view.
+   * Captures the current canvas as a bitmap overlay before switching to avoid blank-canvas flicker.
    */
   async function handleSlideSelect(slideId: string): Promise<void> {
     if (slideId === appState.currentSlide?.id) return
-    await flushPendingSave()
-    await loadSlide(slideId)
+
+    // Capture BEFORE any async work (sync, so canvas is still showing old slide)
+    const snapshot = captureCanvasSnapshot(0.85)
+
+    try {
+      const prevId = appState.currentSlide?.id
+      if (snapshot) slideTransitionOverlaySrc = snapshot
+      await loadSlide(slideId)  // loadSlide flushes pending saves internally
+      // If loadSlide aborted without changing slides, clear overlay immediately
+      if (appState.currentSlide?.id === prevId) {
+        slideTransitionOverlaySrc = null
+      }
+    } catch (err) {
+      slideTransitionOverlaySrc = null
+      throw err
+    }
   }
 
   /**
@@ -3199,7 +3301,7 @@
     const objs = fabCanvas.getObjects() as TwigFabricObject[]
     sorted.forEach((el, targetIndex) => {
       const obj = objs.find((o) => o.id === el.id)
-      if (obj) fabCanvas.moveTo(obj, targetIndex)
+      if (obj) fabCanvas.moveObjectTo(obj, targetIndex)
     })
     const savedId = appState.selectedObjectId
     if (savedId) {
@@ -3904,6 +4006,15 @@
         <div class="flex items-center justify-center h-full overflow-auto">
           <div class="bg-white shadow-lg relative">
             <canvas bind:this={canvasEl} width="960" height="540"></canvas>
+            {#if slideTransitionOverlaySrc}
+              <img
+                src={slideTransitionOverlaySrc}
+                alt=""
+                class="absolute inset-0 w-full h-full z-10 pointer-events-none select-none"
+                aria-hidden="true"
+                draggable="false"
+              />
+            {/if}
             {#if movePathIndicatorUi.visible}
               <button
                 class="absolute z-20 w-5 h-5 border-2 border-white shadow-sm flex items-center justify-center"
@@ -3980,6 +4091,16 @@
             onPropertyChange={handlePropertyChange}
             onBeforePropertyChange={pushCheckpoint}
             onAnimationChange={handleAnimationChange}
+            slideTransition={appState.currentSlide?.transition}
+            onSlideTransitionChange={(t) => {
+              if (!appState.currentSlide) return
+              if (!transitionCheckpointPushed) {
+                pushCheckpoint()
+                transitionCheckpointPushed = true
+              }
+              appState.currentSlide.transition = t
+              scheduleSave()
+            }}
             richText={{
               isBold: isSelectionBold,
               isItalic: isSelectionItalic,
