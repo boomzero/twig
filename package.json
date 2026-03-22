@@ -32,9 +32,6 @@
     "fontkit": "^2.0.4",
     "uuid": "^11.1.0"
   },
-  "optionalDependencies": {
-    "canvas": "^2.11.2"
-  },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.0.0",
