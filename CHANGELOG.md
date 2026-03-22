@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-rc.9] - 2026-03-22
+
+### Added
+
+- Auto-update: silently checks for updates on startup; shows a banner when a new version is ready to install
+- Window title now shows the open filename (e.g. `my-deck — twig`)
+
 ## [1.0.0-rc.8] - 2026-03-22
 
 ### Fixed
