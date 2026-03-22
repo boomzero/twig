@@ -1177,6 +1177,7 @@
   let unsubscribePresentationNavigate: (() => void) | undefined
   let unsubscribePresentationClosed: (() => void) | undefined
   let unsubscribePresentationReady: (() => void) | undefined
+  let unsubscribeOpenFile: (() => void) | undefined
 
   // Reset background and transition checkpoint gates on pointer release so the next drag
   // session gets its own undo entry.
@@ -1191,7 +1192,19 @@
 
   onMount(async () => {
     await loadSystemFonts()
-    await handleNewPresentation()
+
+    // Check if the app was launched by double-clicking a .tb file
+    const launchFile = await window.api?.app?.getFileToOpen()
+    if (launchFile) {
+      await loadPresentation(launchFile)
+    } else {
+      await handleNewPresentation()
+    }
+
+    // Handle .tb files opened while the app is already running
+    unsubscribeOpenFile = window.api?.app?.onOpenFile(async (filePath) => {
+      await loadPresentation(filePath)
+    })
 
     // Expose state and utility functions to window for console debugging
     if (typeof window !== 'undefined') {
@@ -1270,6 +1283,7 @@
     unsubscribePresentationNavigate?.()
     unsubscribePresentationClosed?.()
     unsubscribePresentationReady?.()
+    unsubscribeOpenFile?.()
 
     // Unregister flush save callback
     unregisterFlushSave()

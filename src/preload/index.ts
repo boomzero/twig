@@ -133,7 +133,9 @@ const api = {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void =>
         callback(state as Parameters<typeof callback>[0])
       ipcRenderer.on('debug:state-changed', handler)
-      return (): void => { ipcRenderer.removeListener('debug:state-changed', handler) }
+      return (): void => {
+        ipcRenderer.removeListener('debug:state-changed', handler)
+      }
     },
 
     /** Request current state (for debug window) */
@@ -143,7 +145,9 @@ const api = {
     onStateRequest: (callback) => {
       const handler = (): void => callback()
       ipcRenderer.on('debug:request-state-from-main', handler)
-      return (): void => { ipcRenderer.removeListener('debug:request-state-from-main', handler) }
+      return (): void => {
+        ipcRenderer.removeListener('debug:request-state-from-main', handler)
+      }
     }
   },
 
@@ -163,14 +167,18 @@ const api = {
       const handler = (_event: Electron.IpcRendererEvent, direction: unknown): void =>
         callback(direction as Parameters<typeof callback>[0])
       ipcRenderer.on('presentation:navigate-request', handler)
-      return (): void => { ipcRenderer.removeListener('presentation:navigate-request', handler) }
+      return (): void => {
+        ipcRenderer.removeListener('presentation:navigate-request', handler)
+      }
     },
 
     /** Listen for the presentation window being closed (received in main window) */
     onWindowClosed: (callback) => {
       const handler = (): void => callback()
       ipcRenderer.on('presentation:window-closed', handler)
-      return (): void => { ipcRenderer.removeListener('presentation:window-closed', handler) }
+      return (): void => {
+        ipcRenderer.removeListener('presentation:window-closed', handler)
+      }
     },
 
     /** Send navigation request to main window (called from presentation window) */
@@ -184,7 +192,9 @@ const api = {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void =>
         callback(state as Parameters<typeof callback>[0])
       ipcRenderer.on('presentation:state-changed', handler)
-      return (): void => { ipcRenderer.removeListener('presentation:state-changed', handler) }
+      return (): void => {
+        ipcRenderer.removeListener('presentation:state-changed', handler)
+      }
     },
 
     /** Signal to main process that this presentation window is ready (called from presentation window) */
@@ -194,7 +204,25 @@ const api = {
     onWindowReady: (callback) => {
       const handler = (): void => callback()
       ipcRenderer.on('presentation:window-ready', handler)
-      return (): void => { ipcRenderer.removeListener('presentation:window-ready', handler) }
+      return (): void => {
+        ipcRenderer.removeListener('presentation:window-ready', handler)
+      }
+    }
+  },
+
+  // File association
+  app: {
+    /** Returns the .tb file path passed via OS file association (consumed once) */
+    getFileToOpen: () => ipcRenderer.invoke('app:get-file-to-open'),
+
+    /** Listen for open-file events sent while the app is already running */
+    onOpenFile: (callback: (filePath: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, filePath: string): void =>
+        callback(filePath)
+      ipcRenderer.on('app:open-file', handler)
+      return (): void => {
+        ipcRenderer.removeListener('app:open-file', handler)
+      }
     }
   },
 
@@ -204,7 +232,9 @@ const api = {
     onBeforeClose: (callback) => {
       const listener = (): void => callback()
       ipcRenderer.on('lifecycle:before-close', listener)
-      return (): void => { ipcRenderer.removeListener('lifecycle:before-close', listener) }
+      return (): void => {
+        ipcRenderer.removeListener('lifecycle:before-close', listener)
+      }
     },
 
     /** Notify main process that flush is complete */

@@ -781,6 +781,30 @@ function createPresentationWindow(): void {
 }
 
 // ============================================================================
+// File Association Handling
+// ============================================================================
+
+// Path of a .tb file to open on launch (set by OS file association)
+let fileToOpen: string | null = null
+
+// macOS: open-file fires before and after app ready when double-clicking a .tb file
+app.on('open-file', (event, path) => {
+  event.preventDefault()
+  if (path.endsWith('.tb')) {
+    fileToOpen = path
+    // If the main window is already up, send immediately
+    const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+    win?.webContents.send('app:open-file', path)
+  }
+})
+
+// Windows / Linux: the file path is passed as a CLI argument
+if (process.platform !== 'darwin') {
+  const argFile = process.argv.slice(1).find((a) => a.endsWith('.tb'))
+  if (argFile) fileToOpen = argFile
+}
+
+// ============================================================================
 // Application Lifecycle
 // ============================================================================
 
@@ -1528,6 +1552,20 @@ app.whenReady().then(() => {
   // On macOS, re-create window when dock icon is clicked and no windows are open
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+
+  // --------------------------------------------------------------------------
+  // File Association Handlers
+  // --------------------------------------------------------------------------
+
+  /**
+   * Returns the file path to open on launch (from OS file association or argv).
+   * Clears the pending value after returning it so it is consumed only once.
+   */
+  ipcMain.handle('app:get-file-to-open', (): string | null => {
+    const path = fileToOpen
+    fileToOpen = null
+    return path
   })
 
   // --------------------------------------------------------------------------

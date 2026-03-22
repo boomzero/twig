@@ -12,6 +12,13 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+fileAssociations:
+  - ext: tb
+    name: Twig Presentation
+    description: Twig Presentation File
+    mimeType: application/x-twig
+    icon: build/icon
+    role: Editor
 win:
   executableName: twig
 nsis:
@@ -37,11 +44,12 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: boomzero
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: boomzero
+  repo: twig
