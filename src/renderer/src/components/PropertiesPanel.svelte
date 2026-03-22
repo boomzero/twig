@@ -13,7 +13,7 @@
 
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
-  import type { SlideBackground, ElementAnimations } from '../lib/types'
+  import type { SlideBackground, ElementAnimations, SlideTransition } from '../lib/types'
 
   type RichText = {
     isBold: boolean
@@ -45,6 +45,8 @@
     onSetAsDefault,
     onApplyToAll,
     onAnimationChange,
+    onSlideTransitionChange,
+    slideTransition,
     richText
   }: {
     onPropertyChange?: () => void
@@ -53,6 +55,8 @@
     onSetAsDefault?: (bg: SlideBackground | null) => void
     onApplyToAll?: (bg: SlideBackground | null) => void
     onAnimationChange?: (elementId: string, animations: ElementAnimations) => void
+    onSlideTransitionChange?: (t: SlideTransition | undefined) => void
+    slideTransition?: SlideTransition
     richText?: RichText
   } = $props()
 
@@ -664,6 +668,44 @@
           onclick={() => onApplyToAll?.(currentBg ?? null)}
           class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
         >Apply to all slides</button>
+      </div>
+
+      <!-- Slide transition controls -->
+      <div class="border-t border-gray-200 pt-3 space-y-2">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Slide Transition</p>
+        <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
+          {#each [['none', 'None'], ['dissolve', 'Dissolve'], ['push', 'Push']] as [val, label]}
+            <button
+              class="flex-1 py-1 {(slideTransition?.type ?? 'none') === val ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}"
+              onclick={() => {
+                if (val === 'none') {
+                  onSlideTransitionChange?.(undefined)
+                } else {
+                  onSlideTransitionChange?.({ type: val as 'dissolve' | 'push', duration: slideTransition?.duration ?? 0.4 })
+                }
+              }}
+            >{label}</button>
+          {/each}
+        </div>
+        {#if slideTransition && slideTransition.type !== 'none'}
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">
+              Duration: {slideTransition.duration.toFixed(2)}s
+            </label>
+            <input
+              type="range"
+              min="0.1"
+              max="2.0"
+              step="0.05"
+              value={slideTransition.duration}
+              oninput={(e) => {
+                const dur = parseFloat((e.target as HTMLInputElement).value)
+                onSlideTransitionChange?.({ ...slideTransition!, duration: dur })
+              }}
+              class="w-full"
+            />
+          </div>
+        {/if}
       </div>
     </div>
   {/if}

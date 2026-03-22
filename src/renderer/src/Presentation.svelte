@@ -9,7 +9,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { Canvas, Textbox, Rect, FabricImage, type FabricObject, Gradient, util } from 'fabric'
-  import type { TwigElement, Slide, SlideBackground, AnimationStep } from './lib/types'
+  import type { TwigElement, Slide, SlideBackground, AnimationStep, SlideTransition } from './lib/types'
   import { isStepConfiguredForElement } from './lib/animationUtils'
   import { normalizeFontBytes } from './lib/fontUtils'
 
@@ -48,12 +48,22 @@
   let fetchGeneration = 0
   // Guards stale async image loads within renderSlide (incremented on each render).
   let renderGeneration = 0
+  // Transition overlay state
+  let transitionOverlaySrc = $state<string | null>(null)
+  let transitionOverlayStyle = $state('')
+  let slideWrapperStyle = $state('position: relative;')
+  let lastNavigationDirection: 'forward' | 'backward' = 'forward'
+  let transitionGeneration = 0
+  let hasRenderedOnce = false
+  let lastSlideIndex = 0
+  let lastSlideTransition: SlideTransition | undefined = undefined
   // Animation state
   const fabObjById = new Map<string, FabricObject>()   // elementId → fabric object
   const elementById = new Map<string, TwigElement>()   // elementId → slide element (rebuilt per render)
   const failedElementIds = new Set<string>()           // image elements that failed to load
   let animProgress = 0    // steps consumed on current slide; reset on every slide entry
   let animating = false   // guard against concurrent animations
+  let transitioning = false
   // Remembers one advance request that arrived while the next animated image
   // step was still loading, so the slide doesn't appear frozen.
   let pendingAdvanceAfterImageLoad = false
@@ -77,7 +87,6 @@
     })
 
     scaleCanvas()
-    renderSlide()
 
     // Listen for slide state updates from the main window.
     // Fonts and slide data are fetched in parallel; loadedSlide is only set once
@@ -88,6 +97,9 @@
 
       if (!slideId || !filePath) {
         loadedSlide = null
+        transitionOverlaySrc = null
+        transitionOverlayStyle = ''
+        transitioning = false
         return
       }
 
@@ -129,9 +141,12 @@
   function scaleCanvas(): void {
     if (!presentationCanvas) return
     const scale = Math.min(window.innerWidth / SLIDE_WIDTH, window.innerHeight / SLIDE_HEIGHT)
-    presentationCanvas.setDimensions({ width: SLIDE_WIDTH * scale, height: SLIDE_HEIGHT * scale })
+    const w = SLIDE_WIDTH * scale
+    const h = SLIDE_HEIGHT * scale
+    presentationCanvas.setDimensions({ width: w, height: h })
     presentationCanvas.setZoom(scale)
     presentationCanvas.renderAll()
+    slideWrapperStyle = `position: relative; width: ${w}px; height: ${h}px;`
   }
 
   // ============================================================================
@@ -139,10 +154,14 @@
   // ============================================================================
 
   // Render whenever loadedSlide is updated (set only after fonts are ready).
+  // Also track slide index direction for push transitions.
   $effect(() => {
     const slide = loadedSlide
+    const idx = currentState.slideIndex
     if (slide && presentationCanvas && slide.id !== lastRenderedSlideId) {
-      renderSlide()
+      lastNavigationDirection = idx >= lastSlideIndex ? 'forward' : 'backward'
+      lastSlideIndex = idx
+      handleSlideChange(slide).catch(console.error)
     }
   })
 
@@ -190,9 +209,64 @@
     }
   }
 
-  function renderSlide(): void {
-    const slide = loadedSlide
-    if (!presentationCanvas || !slide) return
+  function captureSlide(): string | null {
+    if (!presentationCanvas) return null
+    return presentationCanvas.toDataURL({ format: 'jpeg', quality: 0.85 })
+  }
+
+  async function handleSlideChange(slide: Slide): Promise<void> {
+    const isFirstRender = !hasRenderedOnce
+    hasRenderedOnce = true
+    const myGeneration = ++transitionGeneration
+
+    // Capture old slide bitmap and its transition config BEFORE rendering the new slide.
+    // Per Keynote/PowerPoint convention, the transition on a slide controls leaving that slide.
+    const outgoingTransition = isFirstRender ? undefined : lastSlideTransition
+    const fromSnap = !isFirstRender ? captureSlide() : null
+    if (fromSnap) {
+      transitionOverlayStyle = ''
+      transitionOverlaySrc = fromSnap
+    }
+
+    // Render new slide fully underneath
+    await renderSlide(slide)
+
+    // Record this slide's transition so it plays when we leave it next time
+    lastSlideTransition = slide.transition
+
+    if (myGeneration !== transitionGeneration) return
+
+    const t = outgoingTransition
+    if (!fromSnap || !t || t.type === 'none') {
+      transitionOverlaySrc = null
+      transitionOverlayStyle = ''
+      transitioning = false
+      return
+    }
+
+    // Wait two animation frames so the browser paints the initial overlay state
+    // before we set the end-state style (otherwise the transition is skipped).
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    if (myGeneration !== transitionGeneration) return
+
+    transitioning = true
+    if (t.type === 'dissolve') {
+      transitionOverlayStyle = `opacity: 0; transition: opacity ${t.duration}s ease`
+    } else if (t.type === 'push') {
+      const dir = lastNavigationDirection === 'forward' ? '-100%' : '100%'
+      transitionOverlayStyle = `transform: translateX(${dir}); transition: transform ${t.duration}s ease`
+    }
+
+    await new Promise<void>((r) => setTimeout(r, t.duration * 1000 + 60))
+
+    if (myGeneration !== transitionGeneration) return
+    transitionOverlaySrc = null
+    transitionOverlayStyle = ''
+    transitioning = false
+  }
+
+  async function renderSlide(slide: Slide): Promise<void> {
+    if (!presentationCanvas) return
 
     // Stamp the current generation so async image callbacks from a previous
     // render can detect that the slide has since changed and bail out.
@@ -206,7 +280,7 @@
     animating = false
     pendingAdvanceAfterImageLoad = false
     lastRenderedSlideId = slide.id
-    applyPresentationBackground(slide.background, generation).catch(console.error)
+    const backgroundLoad = applyPresentationBackground(slide.background, generation).catch(console.error)
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
     for (const el of slide.elements) elementById.set(el.id, el)
@@ -252,9 +326,10 @@
 
     // Load images asynchronously. Guard against stale callbacks by comparing
     // the generation counter captured above with the current value.
+    const imageLoads: Promise<void>[] = []
     sorted.forEach((element: TwigElement) => {
       if (element.type !== 'image' || !element.src) return
-      FabricImage.fromURL(element.src)
+      const load = FabricImage.fromURL(element.src)
         .then((img) => {
           // Slide changed while this image was loading — discard it.
           if (renderGeneration !== generation || !presentationCanvas) return
@@ -279,10 +354,13 @@
           console.error('Failed to load image in presentation:', err)
           continuePendingAdvance(slide, generation)
         })
+      imageLoads.push(load)
     })
 
     presentationCanvas.renderAll()
     applyInitialAnimationState(slide)
+
+    await Promise.allSettled([backgroundLoad, ...imageLoads])
   }
 
   function applyAnimationStateToObject(slide: Slide, el: TwigElement, fabObj: FabricObject): void {
@@ -470,7 +548,7 @@
       case ' ':
       case 'PageDown':
         event.preventDefault()
-        if (animating || !loadedSlide) return
+        if (animating || transitioning || !loadedSlide) return
         if (animProgress < loadedSlide.animationOrder.length) {
           executeNextAnimation(loadedSlide).catch(console.error)
         } else {
@@ -480,7 +558,7 @@
       case 'ArrowLeft':
       case 'PageUp':
         event.preventDefault()
-        if (animating || !loadedSlide) return
+        if (animating || transitioning || !loadedSlide) return
         pendingAdvanceAfterImageLoad = false
         if (animProgress > 0) {
           animProgress = 0
@@ -494,7 +572,18 @@
 </script>
 
 <div class="presentation-root">
-  <canvas bind:this={canvasEl}></canvas>
+  <div style={slideWrapperStyle}>
+    <canvas bind:this={canvasEl}></canvas>
+    {#if transitionOverlaySrc}
+      <img
+        src={transitionOverlaySrc}
+        alt=""
+        style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; user-select: none; z-index: 10; {transitionOverlayStyle}"
+        aria-hidden="true"
+        draggable="false"
+      />
+    {/if}
+  </div>
   {#if currentState.slideCount > 0}
     <div class="slide-counter">
       {currentState.slideIndex + 1} / {currentState.slideCount}
