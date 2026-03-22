@@ -3111,10 +3111,9 @@
     const snapshot = captureCanvasSnapshot(0.85)
 
     try {
-      await flushPendingSave()
       const prevId = appState.currentSlide?.id
-      if (snapshot) slideTransitionOverlaySrc = snapshot  // set AFTER save succeeds
-      await loadSlide(slideId)
+      if (snapshot) slideTransitionOverlaySrc = snapshot
+      await loadSlide(slideId)  // loadSlide flushes pending saves internally
       // If loadSlide aborted without changing slides, clear overlay immediately
       if (appState.currentSlide?.id === prevId) {
         slideTransitionOverlaySrc = null
