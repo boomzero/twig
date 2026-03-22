@@ -222,6 +222,10 @@
     // Capture old slide bitmap and its transition config BEFORE rendering the new slide.
     // Per Keynote/PowerPoint convention, the transition on a slide controls leaving that slide.
     const outgoingTransition = isFirstRender ? undefined : lastSlideTransition
+    // Record the new slide's transition immediately (before any await) so that if the
+    // presenter advances again while images are still loading, the correct outgoing
+    // transition is already in place for the next handleSlideChange call.
+    lastSlideTransition = slide.transition
     const fromSnap = !isFirstRender ? captureSlide() : null
     if (fromSnap) {
       transitionOverlayStyle = ''
@@ -230,9 +234,6 @@
 
     // Render new slide fully underneath
     await renderSlide(slide)
-
-    // Record this slide's transition so it plays when we leave it next time
-    lastSlideTransition = slide.transition
 
     if (myGeneration !== transitionGeneration) return
 
