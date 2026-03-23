@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0-rc.10] - 2026-03-23
+
+### Fixed
+
+- Backspace/Delete in properties panel text fields no longer deletes the selected canvas object
+
 ## [1.0.0-rc.9] - 2026-03-22
 
 ### Added

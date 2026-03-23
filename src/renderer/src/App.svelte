@@ -3992,9 +3992,11 @@
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
+    const nativeTextTarget = isNativeTextTarget(event.target)
+
     // Cmd/Ctrl+Z: Undo
     if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
-      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing) {
+      if (!nativeTextTarget && !activeTextObject?.isEditing) {
         event.preventDefault()
         performUndo()
         return
@@ -4006,7 +4008,7 @@
       ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'z') ||
       (event.ctrlKey && !event.metaKey && !event.shiftKey && event.key.toLowerCase() === 'y')
     ) {
-      if (!isNativeTextTarget(event.target) && !activeTextObject?.isEditing) {
+      if (!nativeTextTarget && !activeTextObject?.isEditing) {
         event.preventDefault()
         performRedo()
         return
@@ -4022,8 +4024,8 @@
 
     // Cmd/Ctrl+A: Select all objects on the canvas (unless editing text)
     if ((event.metaKey || event.ctrlKey) && event.key === 'a') {
-      // Don't intercept if user is editing text - let them select text normally
-      if (activeTextObject && activeTextObject.isEditing) {
+      // Don't intercept if user is editing text - let them select text normally.
+      if (nativeTextTarget || (activeTextObject && activeTextObject.isEditing)) {
         return
       }
 
@@ -4041,11 +4043,7 @@
 
     // Cmd/Ctrl+Backspace: Delete current slide (not while editing text, not last slide)
     if ((event.metaKey || event.ctrlKey) && event.key === 'Backspace') {
-      if (
-        !isNativeTextTarget(event.target) &&
-        !activeTextObject?.isEditing &&
-        appState.currentSlide
-      ) {
+      if (!nativeTextTarget && !activeTextObject?.isEditing && appState.currentSlide) {
         event.preventDefault()
         deleteSlideById(appState.currentSlide.id)
         return
@@ -4054,8 +4052,8 @@
 
     // Delete/Backspace: Delete selected object (but not while editing text)
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      // Don't delete object if user is editing text content
-      if (activeTextObject && activeTextObject.isEditing) {
+      // Let native form fields handle text deletion/editing themselves.
+      if (nativeTextTarget || (activeTextObject && activeTextObject.isEditing)) {
         return
       }
       event.preventDefault()
