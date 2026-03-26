@@ -70,7 +70,7 @@ CREATE TABLE fonts (
   id         TEXT PRIMARY KEY,       -- any stable unique key (hash or UUID)
   fontFamily TEXT NOT NULL,          -- must match fontFamily used in elements
   fontData   BLOB NOT NULL,          -- raw font file bytes
-  format     TEXT NOT NULL,          -- 'ttf' | 'woff' | 'woff2' | 'otf'
+  format     TEXT NOT NULL,          -- 'ttf' | 'ttc' | 'woff' | 'woff2' | 'otf'
   variant    TEXT NOT NULL           -- '<weight>-<style>' e.g. 'normal-normal'
 );
 
