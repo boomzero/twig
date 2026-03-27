@@ -860,15 +860,26 @@ app.whenReady().then(() => {
   // --------------------------------------------------------------------------
 
   ipcMain.handle('prefs:get', (_event, key: string) => getPref(key as 'locale' | 'autoUpdate'))
-  ipcMain.handle('prefs:set', (_event, key: string, value: unknown) =>
-    setPref(key as 'locale' | 'autoUpdate', value as never)
-  )
+  ipcMain.handle('prefs:set', (_event, key: string, value: unknown) => {
+    if (key === 'locale' && (value === 'en' || value === 'zh')) {
+      setPref('locale', value)
+    } else if (key === 'autoUpdate' && typeof value === 'boolean') {
+      setPref('autoUpdate', value)
+    }
+    // Unknown key or invalid value type: silently ignore
+  })
 
   // --------------------------------------------------------------------------
   // File Dialog Handlers
   // --------------------------------------------------------------------------
 
-  /** Translate a dialog string key based on the current locale preference. */
+  /**
+   * Translate a native dialog string by key using the current locale preference.
+   *
+   * NOTE: These strings intentionally duplicate content in en.json / zh.json because
+   * the main process cannot import renderer JSON files at runtime. If you update a
+   * translation here, update the corresponding key in both locale files too.
+   */
   function tDialog(key: string): string {
     const locale = getPref('locale')
     const strings: Record<string, { en: string; zh: string }> = {
@@ -1730,8 +1741,12 @@ app.whenReady().then(() => {
       autoUpdater.quitAndInstall()
     })
 
-    // Manual check for Settings modal — returns availability without auto-downloading
+    // Manual check for Settings modal — returns availability without auto-downloading.
+    // Temporarily forces autoDownload=false so checkForUpdates() never starts a download,
+    // regardless of the user's autoUpdate preference.
     ipcMain.handle('app:check-for-update-manual', async () => {
+      const prev = autoUpdater.autoDownload
+      autoUpdater.autoDownload = false
       try {
         const result = await autoUpdater.checkForUpdates()
         if (!result?.updateInfo) return { available: false }
@@ -1740,17 +1755,20 @@ app.whenReady().then(() => {
         return { available, version: result.updateInfo.version }
       } catch {
         return { available: false, error: true }
+      } finally {
+        autoUpdater.autoDownload = prev
       }
     })
 
-    // Manual download + install (triggered from Settings after manual check)
+    // Manual download + install (triggered from Settings after manual check).
+    // Rejects on download failure so the renderer can show an error.
     ipcMain.handle('app:download-and-install', async () => {
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         autoUpdater.once('update-downloaded', () => {
           autoUpdater.quitAndInstall()
           resolve()
         })
-        autoUpdater.downloadUpdate().catch(resolve)
+        autoUpdater.downloadUpdate().catch(reject)
       })
     })
 

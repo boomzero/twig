@@ -92,7 +92,7 @@
   "bg.angle": "Angle",
   "bg.fit": "Fit",
   "bg.stretch": "Stretch",
-  "bg.contain": "Fit",
+  "bg.contain": "Contain",
   "bg.cover": "Cover",
   "bg.change_image": "Change Image",
   "bg.choose_image": "Choose Image...",

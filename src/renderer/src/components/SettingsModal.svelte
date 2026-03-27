@@ -22,10 +22,15 @@
 
   $effect(() => {
     if (open && !autoUpdateLoaded) {
-      window.api?.prefs?.get('autoUpdate').then((val) => {
-        autoUpdate = val !== false
-        autoUpdateLoaded = true
-      })
+      window.api?.prefs?.get('autoUpdate')
+        .then((val) => {
+          autoUpdate = val !== false
+          autoUpdateLoaded = true
+        })
+        .catch(() => {
+          // Keep default (true) on failure
+          autoUpdateLoaded = true
+        })
     }
   })
 
@@ -64,6 +69,7 @@
       await window.api?.app?.downloadAndInstall()
     } catch {
       isDownloading = false
+      checkStatus = 'error'
     }
   }
 

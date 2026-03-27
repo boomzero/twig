@@ -4001,7 +4001,7 @@
 
   /**
    * Global keyboard event handler for shortcuts.
-   * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
+   * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), Cmd/Ctrl+Shift+D (Debug Window), and Cmd/Ctrl+, (Settings).
    */
   function isNativeTextTarget(t: EventTarget | null): boolean {
     if (!t || !(t instanceof HTMLElement)) return false
@@ -4187,8 +4187,9 @@
   onpaste={handlePaste}
 />
 
+<SettingsModal bind:open={settingsOpen} />
+
 {#if appState.currentSlide}
-  <SettingsModal bind:open={settingsOpen} />
   <div class="flex flex-col h-screen font-sans" role="application">
     {#if contextMenuVisible}
       <ContextMenu

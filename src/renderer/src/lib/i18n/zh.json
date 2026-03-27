@@ -92,7 +92,7 @@
   "bg.angle": "角度",
   "bg.fit": "适应方式",
   "bg.stretch": "拉伸",
-  "bg.contain": "适应",
+  "bg.contain": "包含",
   "bg.cover": "填充",
   "bg.change_image": "更换图片",
   "bg.choose_image": "选择图片…",

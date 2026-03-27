@@ -4,12 +4,12 @@ import zh from './zh.json'
 
 export type SupportedLocale = 'en' | 'zh'
 
-export function setupI18n(savedLocale?: string | null): void {
+export function setupI18n(savedLocale?: string | null): Promise<void> {
   addMessages('en', en)
   addMessages('zh', zh)
   const resolved: SupportedLocale =
     savedLocale === 'zh' ? 'zh' : savedLocale === 'en' ? 'en' : 'en'
-  init({ fallbackLocale: 'en', initialLocale: resolved })
+  return init({ fallbackLocale: 'en', initialLocale: resolved })
 }
 
 export async function changeLocale(l: SupportedLocale): Promise<void> {
