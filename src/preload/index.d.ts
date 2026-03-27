@@ -164,6 +164,8 @@ declare global {
           error?: boolean
         }>
         downloadAndInstall: () => Promise<void>
+        isMAS: boolean
+        onLocaleChanged: (callback: (locale: string) => void) => () => void
         onUpdateDownloaded: (callback: (version: string) => void) => () => void
       }
       prefs: {

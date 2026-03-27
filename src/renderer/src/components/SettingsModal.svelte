@@ -16,6 +16,8 @@
     await changeLocale(l)
   }
 
+  const isMAS = window.api?.app?.isMAS ?? false
+
   // Auto-update
   let autoUpdate = $state(true)
   let autoUpdateLoaded = $state(false)
@@ -145,9 +147,10 @@
         </section>
 
         <!-- Divider -->
-        <hr class="border-gray-100" />
+        {#if !isMAS}<hr class="border-gray-100" />{/if}
 
-        <!-- Updates -->
+        <!-- Updates (hidden on Mac App Store builds — updater is not available) -->
+        {#if !isMAS}
         <section>
           <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
             {$_('settings.updates')}
@@ -194,6 +197,7 @@
             {/if}
           </div>
         </section>
+        {/if}
       </div>
 
       <!-- Footer -->

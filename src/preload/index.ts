@@ -237,6 +237,19 @@ const api = {
     /** Download and install update (used after manual check finds an update). */
     downloadAndInstall: () => ipcRenderer.invoke('app:download-and-install'),
 
+    /** True when running as a Mac App Store build (update controls should be hidden). */
+    isMAS: process.mas === true,
+
+    /** Listen for locale change broadcasts from the main process. */
+    onLocaleChanged: (callback: (locale: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, locale: string): void =>
+        callback(locale)
+      ipcRenderer.on('locale:changed', handler)
+      return (): void => {
+        ipcRenderer.removeListener('locale:changed', handler)
+      }
+    },
+
     /** Listen for update-downloaded events (version string). */
     onUpdateDownloaded: (callback: (version: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, version: string): void =>

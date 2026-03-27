@@ -8,7 +8,7 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -863,8 +863,17 @@ app.whenReady().then(() => {
   ipcMain.handle('prefs:set', (_event, key: string, value: unknown) => {
     if (key === 'locale' && (value === 'en' || value === 'zh')) {
       setPref('locale', value)
+      // Broadcast to all windows so the debug window stays in sync
+      for (const wc of webContents.getAllWebContents()) {
+        wc.send('locale:changed', value)
+      }
     } else if (key === 'autoUpdate' && typeof value === 'boolean') {
       setPref('autoUpdate', value)
+      // Apply immediately to the running updater (not just on next launch)
+      if (!process.mas) {
+        autoUpdater.autoDownload = value
+        autoUpdater.autoInstallOnAppQuit = value
+      }
     }
     // Unknown key or invalid value type: silently ignore
   })
