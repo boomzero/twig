@@ -7,6 +7,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import type { TwigElement } from './lib/state.svelte'
+  import { _ } from 'svelte-i18n'
 
   interface AppState {
     currentFilePath: string | null
@@ -163,20 +164,20 @@
   <div class="max-w-4xl mx-auto">
     {#if isLoading}
       <div class="bg-white rounded-lg shadow-lg p-12 text-center">
-        <div class="text-gray-500 text-lg">Loading debug panel...</div>
+        <div class="text-gray-500 text-lg">{$_('debug.loading')}</div>
       </div>
     {:else if !window.api?.debug}
       <div class="bg-white rounded-lg shadow-lg p-12 text-center">
-        <div class="text-red-600 text-lg font-semibold mb-4">Debug API Not Available</div>
+        <div class="text-red-600 text-lg font-semibold mb-4">{$_('debug.api_unavailable')}</div>
         <div class="text-gray-600 text-sm">
-          <p class="mb-2">The debug API is not properly loaded.</p>
-          <p>Try refreshing the window or restarting the application.</p>
+          <p class="mb-2">{$_('debug.api_error')}</p>
+          <p>{$_('debug.api_error_hint')}</p>
         </div>
         <button
           onclick={() => location.reload()}
           class="mt-6 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
         >
-          Reload Window
+          {$_('debug.reload')}
         </button>
       </div>
     {:else}
@@ -184,15 +185,15 @@
       <div class="bg-gray-800 text-white px-6 py-4 rounded-t-lg">
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-xl font-bold">twig Debug Panel</h1>
-            <p class="text-sm text-gray-300 mt-1">Real-time application state monitor</p>
+            <h1 class="text-xl font-bold">{$_('debug.title')}</h1>
+            <p class="text-sm text-gray-300 mt-1">{$_('debug.subtitle')}</p>
           </div>
           <div class="text-right text-sm">
-            <div class="text-gray-300">Last Update</div>
+            <div class="text-gray-300">{$_('debug.last_update')}</div>
             <div class="font-mono">{lastUpdate || 'Waiting for data...'}</div>
-            <div class="text-xs text-gray-400 mt-1">Updates: {updateCount}</div>
+            <div class="text-xs text-gray-400 mt-1">{$_('debug.update_count', { values: { count: updateCount } })}</div>
             {#if updateCount === 0}
-              <div class="text-xs text-yellow-400 mt-2">No updates yet - check console</div>
+              <div class="text-xs text-yellow-400 mt-2">{$_('debug.no_updates')}</div>
             {/if}
           </div>
         </div>
@@ -202,21 +203,21 @@
       <div class="bg-white rounded-b-lg shadow-lg p-6 space-y-6">
         <!-- File Info -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">File Information</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.file_info')}</h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
-              <span class="text-gray-600">Current File:</span>
+              <span class="text-gray-600">{$_('debug.current_file')}</span>
               <span
                 class="text-gray-900 truncate ml-4 max-w-md"
-                title={state.currentFilePath || 'Unsaved'}
+                title={state.currentFilePath || $_('debug.unsaved')}
               >
-                {state.currentFilePath || 'Unsaved'}
+                {state.currentFilePath || $_('debug.unsaved')}
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-600">Persistence Mode:</span>
+              <span class="text-gray-600">{$_('debug.persistence_mode')}</span>
               <span class="text-gray-900">
-                {state.isTempFile ? 'Temp DB (unsaved)' : 'Saved to disk'}
+                {state.isTempFile ? $_('debug.temp_db') : $_('debug.saved_to_disk')}
               </span>
             </div>
           </div>
@@ -224,29 +225,29 @@
 
         <!-- Slide Info -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Slide Information</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.slide_info')}</h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
-              <span class="text-gray-600">Total Slides:</span>
+              <span class="text-gray-600">{$_('debug.total_slides')}</span>
               <span class="text-gray-900 font-bold">{state.slideIds.length}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-600">Current Slide Index:</span>
+              <span class="text-gray-600">{$_('debug.current_index')}</span>
               <span class="text-gray-900"
                 >{state.currentSlideIndex + 1} of {state.slideIds.length}</span
               >
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-600">Current Slide ID:</span>
+              <span class="text-gray-600">{$_('debug.current_id')}</span>
               <span
                 class="text-gray-900 truncate ml-4 max-w-md"
-                title={state.currentSlideId || 'None'}
+                title={state.currentSlideId || $_('debug.none')}
               >
-                {state.currentSlideId || 'None'}
+                {state.currentSlideId || $_('debug.none')}
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-600">Elements on Slide:</span>
+              <span class="text-gray-600">{$_('debug.elements_on_slide')}</span>
               <span class="text-gray-900 font-bold">{state.currentSlideElementCount}</span>
             </div>
           </div>
@@ -254,12 +255,12 @@
 
         <!-- Selection Info -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Selection State</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.selection_state')}</h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
-              <span class="text-gray-600">Selected Object ID:</span>
+              <span class="text-gray-600">{$_('debug.selected_id')}</span>
               <span class="text-gray-900">
-                {state.selectedObjectId || 'None'}
+                {state.selectedObjectId || $_('debug.none')}
               </span>
             </div>
           </div>
@@ -267,16 +268,16 @@
 
         <!-- Loading State -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Loading State</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.loading_state')}</h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
-              <span class="text-gray-600">Is Loading Slide:</span>
+              <span class="text-gray-600">{$_('debug.is_loading')}</span>
               <span
                 class:text-yellow-600={state.isLoadingSlide}
                 class:text-gray-900={!state.isLoadingSlide}
                 class="font-bold"
               >
-                {state.isLoadingSlide ? 'Yes' : 'No'}
+                {state.isLoadingSlide ? $_('debug.yes') : $_('debug.no')}
               </span>
             </div>
           </div>
@@ -284,16 +285,16 @@
 
         <!-- Presentation Mode -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Presentation</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.presentation')}</h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
-              <span class="text-gray-600">Is Presenting:</span>
+              <span class="text-gray-600">{$_('debug.is_presenting')}</span>
               <span
                 class:text-green-600={state.isPresentingMode}
                 class:text-gray-900={!state.isPresentingMode}
                 class="font-bold"
               >
-                {state.isPresentingMode ? 'Yes' : 'No'}
+                {state.isPresentingMode ? $_('debug.yes') : $_('debug.no')}
               </span>
             </div>
           </div>
@@ -301,10 +302,10 @@
 
         <!-- Memory Usage -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">Memory</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.memory')}</h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
-              <span class="text-gray-600">Approx. State Size:</span>
+              <span class="text-gray-600">{$_('debug.state_size')}</span>
               <span class="text-gray-900">{getStateSize()}</span>
             </div>
           </div>
@@ -313,7 +314,7 @@
         <!-- Slide IDs List -->
         {#if state.slideIds.length > 0}
           <section>
-            <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">All Slide IDs</h2>
+            <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.all_slide_ids')}</h2>
             <div class="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto">
               <div class="text-xs font-mono space-y-1">
                 {#each state.slideIds as slideId, index (slideId)}
@@ -333,23 +334,23 @@
         {#if state.currentSlide}
           <section>
             <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
-              Current Slide Details
+              {$_('debug.current_slide_details')}
             </h2>
             <div class="bg-gray-50 rounded-lg p-4">
               <div class="text-sm font-mono space-y-1 mb-3">
                 <div class="flex justify-between">
-                  <span class="text-gray-600">Slide ID:</span>
+                  <span class="text-gray-600">{$_('debug.slide_id')}</span>
                   <span class="text-gray-900 font-bold">{state.currentSlide.id}</span>
                 </div>
                 <div class="flex justify-between">
-                  <span class="text-gray-600">Elements:</span>
+                  <span class="text-gray-600">{$_('debug.elements')}</span>
                   <span class="text-gray-900 font-bold">{state.currentSlide.elements.length}</span>
                 </div>
               </div>
 
               {#if state.currentSlide.elements.length > 0}
                 <div class="border-t border-gray-300 pt-3 mt-3">
-                  <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase">Elements:</h3>
+                  <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase">{$_('debug.elements_section')}</h3>
                   <div class="space-y-4 max-h-96 overflow-y-auto">
                     {#each state.currentSlide.elements as element, index (element.id)}
                       <div
@@ -375,7 +376,7 @@
                               <span
                                 class="px-2 py-0.5 text-xs font-semibold rounded bg-indigo-100 text-indigo-800"
                               >
-                                SELECTED
+                                {$_('debug.selected_badge')}
                               </span>
                             {/if}
                           </div>
@@ -480,7 +481,7 @@
                   </div>
                 </div>
               {:else}
-                <div class="text-center text-gray-500 text-sm py-4">No elements on this slide</div>
+                <div class="text-center text-gray-500 text-sm py-4">{$_('debug.no_elements')}</div>
               {/if}
             </div>
           </section>
@@ -493,24 +494,24 @@
           <button
             onclick={logFullState}
             class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm"
-            title="Log state to this window's console (open DevTools)"
+            title={$_('debug.log_console.title')}
           >
-            Log to Console
+            {$_('debug.log_console')}
           </button>
           <button
             onclick={showStateJson}
             class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 shadow-sm"
-            title="Open state JSON in a new window"
+            title={$_('debug.view_json.title')}
           >
-            View JSON
+            {$_('debug.view_json')}
           </button>
         </div>
         <button
           onclick={copyStateToClipboard}
           class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 shadow-sm"
-          title="Copy state JSON to clipboard"
+          title={$_('debug.copy_clipboard.title')}
         >
-          Copy to Clipboard
+          {$_('debug.copy_clipboard')}
         </button>
       </div>
     {/if}

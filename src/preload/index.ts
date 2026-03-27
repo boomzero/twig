@@ -231,6 +231,12 @@ const api = {
     /** Quit and install a downloaded update. */
     installUpdate: () => ipcRenderer.invoke('app:install-update'),
 
+    /** Manual update check for Settings modal — returns availability without auto-downloading. */
+    checkForUpdateManual: () => ipcRenderer.invoke('app:check-for-update-manual'),
+
+    /** Download and install update (used after manual check finds an update). */
+    downloadAndInstall: () => ipcRenderer.invoke('app:download-and-install'),
+
     /** Listen for update-downloaded events (version string). */
     onUpdateDownloaded: (callback: (version: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, version: string): void =>
@@ -240,6 +246,15 @@ const api = {
         ipcRenderer.removeListener('app:update-downloaded', handler)
       }
     }
+  },
+
+  // Global preferences (locale, auto-update)
+  prefs: {
+    /** Get a global preference value. */
+    get: (key: string) => ipcRenderer.invoke('prefs:get', key),
+
+    /** Set a global preference value. */
+    set: (key: string, value: unknown) => ipcRenderer.invoke('prefs:set', key, value)
   },
 
   // Window lifecycle

@@ -19,6 +19,7 @@
   import { appState } from '../lib/state.svelte'
   import type { TwigElement } from '../lib/state.svelte'
   import { getElementLabel, computeDropInsertIndex } from '../lib/elementUtils'
+  import { _ } from 'svelte-i18n'
 
   const {
     onBeforeLayerChange,
@@ -157,12 +158,12 @@
 
 <div class="flex flex-col h-full" onmouseleave={hideTooltip} role="presentation">
   <div class="px-3 py-2 border-b border-gray-200">
-    <h3 class="text-sm font-semibold text-gray-700">Layers</h3>
+    <h3 class="text-sm font-semibold text-gray-700">{$_('layers.title')}</h3>
   </div>
 
-  <div class="flex-1 overflow-y-auto" role="listbox" aria-label="Layers">
+  <div class="flex-1 overflow-y-auto" role="listbox" aria-label={$_('layers.title')}>
     {#if sortedElements.length === 0}
-      <p class="px-3 py-4 text-xs text-gray-400 text-center">No elements on this slide.</p>
+      <p class="px-3 py-4 text-xs text-gray-400 text-center">{$_('layers.empty')}</p>
     {:else}
       {#each sortedElements as el, i (el.id)}
         {@const isFirst = i === 0}
@@ -224,11 +225,11 @@
                 e.stopPropagation()
                 onBringToFront?.(el.id)
               }}
-              onmouseenter={(e) => showTooltip(e, 'Bring to Front')}
+              onmouseenter={(e) => showTooltip(e, $_('layers.front'))}
               onmouseleave={hideTooltip}
               disabled={isFirst}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-              aria-label="Bring to Front"
+              aria-label={$_('layers.front')}
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
                 <rect x="1" y="1" width="10" height="1.5" rx="0.5" />
@@ -241,11 +242,11 @@
                 e.stopPropagation()
                 onMoveUp?.(el.id)
               }}
-              onmouseenter={(e) => showTooltip(e, 'Move Up')}
+              onmouseenter={(e) => showTooltip(e, $_('layers.up'))}
               onmouseleave={hideTooltip}
               disabled={isFirst}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-              aria-label="Move Up"
+              aria-label={$_('layers.up')}
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
                 <path d="M6 1.5 L9.5 6.5 L6.75 6.5 L6.75 10.5 L5.25 10.5 L5.25 6.5 L2.5 6.5 Z" />
@@ -257,11 +258,11 @@
                 e.stopPropagation()
                 onMoveDown?.(el.id)
               }}
-              onmouseenter={(e) => showTooltip(e, 'Move Down')}
+              onmouseenter={(e) => showTooltip(e, $_('layers.down'))}
               onmouseleave={hideTooltip}
               disabled={isLast}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-              aria-label="Move Down"
+              aria-label={$_('layers.down')}
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
                 <path d="M6 10.5 L2.5 5.5 L5.25 5.5 L5.25 1.5 L6.75 1.5 L6.75 5.5 L9.5 5.5 Z" />
@@ -273,11 +274,11 @@
                 e.stopPropagation()
                 onSendToBack?.(el.id)
               }}
-              onmouseenter={(e) => showTooltip(e, 'Send to Back')}
+              onmouseenter={(e) => showTooltip(e, $_('layers.back'))}
               onmouseleave={hideTooltip}
               disabled={isLast}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-              aria-label="Send to Back"
+              aria-label={$_('layers.back')}
             >
               <svg viewBox="0 0 12 12" width="12" height="12" fill="currentColor">
                 <rect x="1" y="9.5" width="10" height="1.5" rx="0.5" />
