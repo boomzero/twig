@@ -1773,11 +1773,15 @@ app.whenReady().then(() => {
     // Rejects on download failure so the renderer can show an error.
     ipcMain.handle('app:download-and-install', async () => {
       await new Promise<void>((resolve, reject) => {
-        autoUpdater.once('update-downloaded', () => {
+        const onDownloaded = (): void => {
           autoUpdater.quitAndInstall()
           resolve()
+        }
+        autoUpdater.once('update-downloaded', onDownloaded)
+        autoUpdater.downloadUpdate().catch((err) => {
+          autoUpdater.removeListener('update-downloaded', onDownloaded)
+          reject(err)
         })
-        autoUpdater.downloadUpdate().catch(reject)
       })
     })
 
