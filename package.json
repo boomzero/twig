@@ -18,6 +18,7 @@
     "build:unpack": "npm run build && enject run -- electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && enject run -- electron-builder --mac",
+    "build:mas": "npm run build && rm -rf dist/mas-arm64 dist/$npm_package_name-$npm_package_version-mas.pkg && (electron-builder --mac mas --dir -c.mac.identity=null -c.mas.identity=\"Apple Distribution: Chenrui Zhu (65ZLJ987GH)\" || test -d dist/mas-arm64/twig.app) && productbuild --component dist/mas-arm64/twig.app /Applications --sign \"3rd Party Mac Developer Installer: Chenrui Zhu (65ZLJ987GH)\" dist/$npm_package_name-$npm_package_version-mas.pkg",
     "build:linux": "npm run build && electron-builder --linux",
     "rebuild": "electron-rebuild"
   },
