@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0-rc.11] - 2026-03-28
+
+### Added
+
+- Internationalization (EN/ZH) with language setting in the new Settings page
+- Settings page with auto-update toggle
+- macOS App Store build support
+
 ## [1.0.0-rc.10] - 2026-03-23
 
 ### Fixed

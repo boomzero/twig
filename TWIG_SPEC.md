@@ -1,6 +1,6 @@
 # .tb File Format
 
-> This document describes the `.tb` format as implemented in **twig 1.0.0-rc.10**.
+> This document describes the `.tb` format as implemented in **twig 1.0.0-rc.11**.
 
 A `.tb` file is a standard SQLite database that stores a twig presentation. You can create, read, or modify one with any SQLite tooling — no proprietary library required.
 
