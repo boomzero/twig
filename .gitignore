@@ -10,3 +10,6 @@ logs/
 .idea/
 .ai/
 .claude/
+/defense.tb
+/presenter_notes.md
+build/twig.provisionprofile
