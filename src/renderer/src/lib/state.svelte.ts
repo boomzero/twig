@@ -12,6 +12,8 @@
 
 import { getFlushSave } from './saveCallbacks'
 import type { TwigElement, Slide } from './types'
+import { get } from 'svelte/store'
+import { _ } from 'svelte-i18n'
 
 // Re-export so existing importers (App.svelte, Debug.svelte, etc.) don't need
 // to change their import paths.
@@ -141,9 +143,7 @@ export async function loadPresentation(filePath: string): Promise<void> {
       appState.currentSlideIndex = 0
     } catch (error) {
       console.error('Failed to create initial slide for empty presentation:', error)
-      alert(
-        'Failed to initialize the presentation file. The file may be corrupted or you may not have write permissions.'
-      )
+      alert(get(_)('state.init_error'))
       // Reset state to prevent inconsistent state
       resetState()
       throw error
@@ -198,8 +198,7 @@ export async function loadSlide(slideId: string): Promise<void> {
             // All retries failed - ask user what to do
             const errorMessage = error instanceof Error ? error.message : 'Unknown error'
             const userChoice = confirm(
-              `Failed to save current slide before navigation:\n${errorMessage}\n\n` +
-                'Click OK to discard unsaved changes and continue, or Cancel to stay on this slide.'
+              get(_)('state.save_error_confirm', { values: { error: errorMessage } })
             )
 
             if (!userChoice) {

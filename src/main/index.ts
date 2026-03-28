@@ -8,7 +8,7 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -16,6 +16,7 @@ import icon from '../../resources/icon.png?asset'
 import Database from 'better-sqlite3'
 import * as dbService from './db'
 import type { Slide, FontData } from './db'
+import { getPref, setPref } from './prefs'
 import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
@@ -449,8 +450,25 @@ function getFontDirectories(): string[] {
   const homedir = os.homedir()
 
   if (platform === 'darwin') {
-    // macOS font directories
-    return ['/System/Library/Fonts', '/Library/Fonts', join(homedir, 'Library', 'Fonts')]
+    // macOS font directories (including Apple's downloadable asset fonts, e.g. Founders Grotesk)
+    const assetFontDirs: string[] = []
+    const assetsV2 = '/System/Library/AssetsV2'
+    try {
+      const entries = fs.readdirSync(assetsV2)
+      for (const entry of entries) {
+        if (entry.startsWith('com_apple_MobileAsset_Font')) {
+          assetFontDirs.push(join(assetsV2, entry))
+        }
+      }
+    } catch {
+      // AssetsV2 may not exist on older macOS versions
+    }
+    return [
+      '/System/Library/Fonts',
+      '/Library/Fonts',
+      join(homedir, 'Library', 'Fonts'),
+      ...assetFontDirs
+    ]
   } else if (platform === 'win32') {
     // Windows font directories
     const windir = process.env.WINDIR || 'C:\\Windows'
@@ -497,7 +515,10 @@ function scanFontDirectory(dir: string, fonts: SystemFont[]): void {
 
             if (font?.type === 'TTC' && Array.isArray(font.fonts)) {
               for (const collectionFont of font.fonts) {
-                const familyName = collectionFont.familyName
+                // Prefer typographic family name (name ID 16) which groups all weights
+                // under one family. Fall back to name ID 1 which may include weight suffixes.
+                const familyName =
+                  (collectionFont as any).preferredFamily || collectionFont.familyName
                 if (familyName) {
                   fonts.push({
                     family: familyName,
@@ -507,7 +528,7 @@ function scanFontDirectory(dir: string, fonts: SystemFont[]): void {
                 }
               }
             } else {
-              const familyName = font.familyName
+              const familyName = (font as any).preferredFamily || font.familyName
               if (familyName) {
                 fonts.push({
                   family: familyName,
@@ -835,8 +856,50 @@ app.whenReady().then(() => {
   // ============================================================================
 
   // --------------------------------------------------------------------------
+  // Global Preferences Handlers
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle('prefs:get', (_event, key: string) => getPref(key as 'locale' | 'autoUpdate'))
+  ipcMain.handle('prefs:set', (_event, key: string, value: unknown) => {
+    if (key === 'locale' && (value === 'en' || value === 'zh')) {
+      setPref('locale', value)
+      // Broadcast to all windows so the debug window stays in sync
+      for (const wc of webContents.getAllWebContents()) {
+        wc.send('locale:changed', value)
+      }
+    } else if (key === 'autoUpdate' && typeof value === 'boolean') {
+      setPref('autoUpdate', value)
+      // Apply immediately to the running updater (not just on next launch)
+      if (!process.mas) {
+        autoUpdater.autoDownload = value
+        autoUpdater.autoInstallOnAppQuit = value
+      }
+    }
+    // Unknown key or invalid value type: silently ignore
+  })
+
+  // --------------------------------------------------------------------------
   // File Dialog Handlers
   // --------------------------------------------------------------------------
+
+  /**
+   * Translate a native dialog string by key using the current locale preference.
+   *
+   * NOTE: These strings intentionally duplicate content in en.json / zh.json because
+   * the main process cannot import renderer JSON files at runtime. If you update a
+   * translation here, update the corresponding key in both locale files too.
+   */
+  function tDialog(key: string): string {
+    const locale = getPref('locale')
+    const strings: Record<string, { en: string; zh: string }> = {
+      'dialog.open.title': { en: 'Open Presentation', zh: '打开演示文稿' },
+      'dialog.save.title': { en: 'Save Presentation', zh: '保存演示文稿' },
+      'dialog.image.title': { en: 'Insert Image', zh: '插入图片' },
+      'dialog.filter.twig': { en: 'twig Files', zh: 'twig 文件' },
+      'dialog.filter.image': { en: 'Images', zh: '图片' }
+    }
+    return strings[key]?.[locale] ?? strings[key]?.en ?? key
+  }
 
   /**
    * Shows a file open dialog for selecting a presentation file.
@@ -845,9 +908,9 @@ app.whenReady().then(() => {
   ipcMain.handle('dialog:show-open-dialog', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const { filePaths } = await dialog.showOpenDialog(window!, {
-      title: 'Open Presentation',
+      title: tDialog('dialog.open.title'),
       properties: ['openFile'],
-      filters: [{ name: 'twig Files', extensions: ['tb'] }]
+      filters: [{ name: tDialog('dialog.filter.twig'), extensions: ['tb'] }]
     })
     return filePaths && filePaths.length > 0 ? filePaths[0] : null
   })
@@ -859,9 +922,9 @@ app.whenReady().then(() => {
   ipcMain.handle('dialog:show-save-dialog', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const { filePath } = await dialog.showSaveDialog(window!, {
-      title: 'Save Presentation',
+      title: tDialog('dialog.save.title'),
       defaultPath: 'presentation.tb',
-      filters: [{ name: 'twig Files', extensions: ['tb'] }]
+      filters: [{ name: tDialog('dialog.filter.twig'), extensions: ['tb'] }]
     })
     return filePath
   })
@@ -874,9 +937,9 @@ app.whenReady().then(() => {
   ipcMain.handle('dialog:show-image-dialog', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const { filePaths } = await dialog.showOpenDialog(window!, {
-      title: 'Insert Image',
+      title: tDialog('dialog.image.title'),
       properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }]
+      filters: [{ name: tDialog('dialog.filter.image'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }]
     })
 
     if (!filePaths || filePaths.length === 0) {
@@ -1651,44 +1714,81 @@ app.whenReady().then(() => {
   })
 
   // --------------------------------------------------------------------------
-  // Auto-updater
+  // Auto-updater (disabled for MAS — the App Store handles updates)
   // --------------------------------------------------------------------------
 
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  if (!process.mas) {
+    const autoUpdateEnabled = getPref('autoUpdate')
 
-  /** Notify the main window that a new version is downloaded and ready. */
-  function notifyUpdateReady(version: string): void {
-    const mainWindow = BrowserWindow.getAllWindows().find(
-      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
-    )
-    mainWindow?.webContents.send('app:update-downloaded', version)
-  }
+    // Explicit assignment required — electron-updater defaults both to true internally
+    autoUpdater.autoDownload = autoUpdateEnabled
+    autoUpdater.autoInstallOnAppQuit = autoUpdateEnabled
 
-  autoUpdater.on('update-downloaded', (info) => {
-    notifyUpdateReady(info.version)
-  })
-
-  /** Manual or programmatic update check. Returns a status string. */
-  ipcMain.handle('app:check-for-updates', async () => {
-    try {
-      const result = await autoUpdater.checkForUpdates()
-      if (!result) return 'up-to-date'
-      // If the downloaded version matches the available version, it's already ready
-      return 'checking'
-    } catch {
-      return 'error'
+    /** Notify the main window that a new version is downloaded and ready. */
+    function notifyUpdateReady(version: string): void {
+      const mainWindow = BrowserWindow.getAllWindows().find(
+        (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
+      )
+      mainWindow?.webContents.send('app:update-downloaded', version)
     }
-  })
 
-  /** Quit and install the downloaded update. */
-  ipcMain.handle('app:install-update', () => {
-    autoUpdater.quitAndInstall()
-  })
+    autoUpdater.on('update-downloaded', (info) => {
+      notifyUpdateReady(info.version)
+    })
 
-  // Silent background check on startup (errors are silently ignored)
-  if (!is.dev) {
-    autoUpdater.checkForUpdates().catch(() => {})
+    ipcMain.handle('app:check-for-updates', async () => {
+      try {
+        const result = await autoUpdater.checkForUpdates()
+        if (!result) return 'up-to-date'
+        return 'checking'
+      } catch {
+        return 'error'
+      }
+    })
+
+    ipcMain.handle('app:install-update', () => {
+      autoUpdater.quitAndInstall()
+    })
+
+    // Manual check for Settings modal — returns availability without auto-downloading.
+    // Temporarily forces autoDownload=false so checkForUpdates() never starts a download,
+    // regardless of the user's autoUpdate preference.
+    ipcMain.handle('app:check-for-update-manual', async () => {
+      const prev = autoUpdater.autoDownload
+      autoUpdater.autoDownload = false
+      try {
+        const result = await autoUpdater.checkForUpdates()
+        if (!result?.updateInfo) return { available: false }
+        const current = app.getVersion()
+        const available = result.updateInfo.version !== current
+        return { available, version: result.updateInfo.version }
+      } catch {
+        return { available: false, error: true }
+      } finally {
+        autoUpdater.autoDownload = prev
+      }
+    })
+
+    // Manual download + install (triggered from Settings after manual check).
+    // Rejects on download failure so the renderer can show an error.
+    ipcMain.handle('app:download-and-install', async () => {
+      await new Promise<void>((resolve, reject) => {
+        const onDownloaded = (): void => {
+          autoUpdater.quitAndInstall()
+          resolve()
+        }
+        autoUpdater.once('update-downloaded', onDownloaded)
+        autoUpdater.downloadUpdate().catch((err) => {
+          autoUpdater.removeListener('update-downloaded', onDownloaded)
+          reject(err)
+        })
+      })
+    })
+
+    // Silent background check on startup (errors are silently ignored)
+    if (!is.dev && autoUpdateEnabled) {
+      autoUpdater.checkForUpdates().catch(() => {})
+    }
   }
 })
 

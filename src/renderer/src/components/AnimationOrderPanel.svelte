@@ -11,6 +11,8 @@
   import type { AnimationStep } from '../lib/types'
   import { isValidAnimationOrder, getAnimationStepKey } from '../lib/animationUtils'
   import { getElementLabel, computeDropInsertIndex } from '../lib/elementUtils'
+  import { _ } from 'svelte-i18n'
+  import { get } from 'svelte/store'
 
   const {
     onBeforeChange,
@@ -41,10 +43,10 @@
     classes: string
   } {
     if (category === 'buildIn')
-      return { label: 'In', classes: 'bg-green-100 text-green-700 border-green-200' }
+      return { label: get(_)('anim_panel.in'), classes: 'bg-green-100 text-green-700 border-green-200' }
     if (category === 'buildOut')
-      return { label: 'Out', classes: 'bg-orange-100 text-orange-700 border-orange-200' }
-    return { label: 'Action', classes: 'bg-blue-100 text-blue-700 border-blue-200' }
+      return { label: get(_)('anim_panel.out'), classes: 'bg-orange-100 text-orange-700 border-orange-200' }
+    return { label: get(_)('anim_panel.action'), classes: 'bg-blue-100 text-blue-700 border-blue-200' }
   }
 
   function getAnimationTypeLabel(step: AnimationStep): string {
@@ -52,14 +54,14 @@
     if (!el?.animations) return ''
     if (step.category === 'action') {
       const action = el.animations.actions?.find((a) => a.id === step.actionId)
-      return action?.type === 'move' ? 'Move' : ''
+      return action?.type === 'move' ? get(_)('anim.move') : ''
     }
     const anim = el.animations[step.category]
     if (!anim) return ''
-    if (anim.type === 'appear') return 'Appear'
-    if (anim.type === 'fade-in') return 'Fade In'
-    if (anim.type === 'disappear') return 'Disappear'
-    if (anim.type === 'fade-out') return 'Fade Out'
+    if (anim.type === 'appear') return get(_)('anim.appear')
+    if (anim.type === 'fade-in') return get(_)('anim.fade_in')
+    if (anim.type === 'disappear') return get(_)('anim.disappear')
+    if (anim.type === 'fade-out') return get(_)('anim.fade_out')
     return ''
   }
 
@@ -117,13 +119,13 @@
   role="presentation"
 >
   <div class="px-3 py-2 border-b border-gray-200">
-    <h3 class="text-sm font-semibold text-gray-700">Animations</h3>
+    <h3 class="text-sm font-semibold text-gray-700">{$_('anim_panel.title')}</h3>
   </div>
 
-  <div class="flex-1 overflow-y-auto" role="list" aria-label="Animation steps">
+  <div class="flex-1 overflow-y-auto" role="list" aria-label={$_('anim_panel.steps.label')}>
     {#if order.length === 0}
       <p class="px-3 py-4 text-xs text-gray-400 text-center">
-        No animations. Select an element and add animations in the Properties panel.
+        {$_('anim_panel.empty')}
       </p>
     {:else}
       {#each order as step, i (getAnimationStepKey(step))}
@@ -172,7 +174,7 @@
             class="flex-1 text-xs truncate text-gray-700"
             title={el ? getElementLabel(el) : step.elementId}
           >
-            {el ? getElementLabel(el) : '(deleted)'}
+            {el ? getElementLabel(el) : $_('anim_panel.deleted')}
           </span>
 
           <!-- Animation type -->
@@ -184,8 +186,8 @@
           <button
             onclick={() => onRemoveStep?.(step)}
             class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50"
-            aria-label="Remove animation step"
-            title="Remove animation step"
+            aria-label={$_('anim_panel.remove_step.title')}
+            title={$_('anim_panel.remove_step.title')}
           >
             ×
           </button>

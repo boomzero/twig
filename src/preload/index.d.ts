@@ -158,7 +158,19 @@ declare global {
         onOpenFile: (callback: (filePath: string) => void) => () => void
         checkForUpdates: () => Promise<'checking' | 'up-to-date' | 'error'>
         installUpdate: () => Promise<void>
+        checkForUpdateManual: () => Promise<{
+          available: boolean
+          version?: string
+          error?: boolean
+        }>
+        downloadAndInstall: () => Promise<void>
+        isMAS: boolean
+        onLocaleChanged: (callback: (locale: string) => void) => () => void
         onUpdateDownloaded: (callback: (version: string) => void) => () => void
+      }
+      prefs: {
+        get: (key: 'locale' | 'autoUpdate') => Promise<string | boolean | null>
+        set: (key: 'locale' | 'autoUpdate', value: string | boolean) => Promise<void>
       }
       lifecycle: {
         onBeforeClose: (callback: () => void) => () => void

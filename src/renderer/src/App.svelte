@@ -56,7 +56,10 @@
   import ContextMenu from './components/ContextMenu.svelte'
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
+  import SettingsModal from './components/SettingsModal.svelte'
   import { PressedKeys } from 'runed'
+  import { _ } from 'svelte-i18n'
+  import { get } from 'svelte/store'
 
   // ============================================================================
   // Shape Geometry Helpers
@@ -128,6 +131,9 @@
   let suppressMovePathSelectionClear = false
   let expandedMovePathElementId = $state<string | null>(null)
   let movePathIndicatorUi = $state({ visible: false, left: 0, top: 0 })
+
+  // Settings modal
+  let settingsOpen = $state(false)
 
   // Active side panel — only one can be open at a time
   type SidePanel = 'properties' | 'layers' | 'animate'
@@ -358,11 +364,11 @@
 
   function formatRelativeTime(ts: number): string {
     const secs = Math.floor((now - ts) / 1000)
-    if (secs < 10) return 'just now'
-    if (secs < 60) return `${secs}s ago`
+    if (secs < 10) return get(_)('time.just_now')
+    if (secs < 60) return get(_)('time.seconds_ago', { values: { s: secs } })
     const mins = Math.floor(secs / 60)
-    if (mins < 60) return `${mins}m ago`
-    return `${Math.floor(mins / 60)}h ago`
+    if (mins < 60) return get(_)('time.minutes_ago', { values: { m: mins } })
+    return get(_)('time.hours_ago', { values: { h: Math.floor(mins / 60) } })
   }
 
   /**
@@ -3861,10 +3867,15 @@
   }
 
   async function handlePaste(event: ClipboardEvent): Promise<void> {
-    if (shouldBypassClipboard(event)) return
+    console.log('[paste] fired', { target: event.target, activeTextEditing: activeTextObject?.isEditing })
+    if (shouldBypassClipboard(event)) {
+      console.log('[paste] bypassed — target:', event.target, 'isEditing:', activeTextObject?.isEditing)
+      return
+    }
 
     // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
+    console.log('[paste] raw length:', raw.length, 'isTwigPayload:', raw.includes('__twig_clipboard__'))
     let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
     try {
       parsed = JSON.parse(raw)
@@ -3893,14 +3904,20 @@
         if (type === 'image' && typeof e.src !== 'string') return false
         return true
       })
-      if (validElements.length === 0) return
+      console.log('[paste] validElements:', validElements.length, 'of', parsed.elements?.length)
+      if (validElements.length === 0) {
+        console.log('[paste] all elements failed validation')
+        return
+      }
       event.preventDefault()
 
       if (raw !== lastCopiedPayload) {
+        console.log('[paste] new payload detected, resetting pasteCount')
         pasteCount = 0
         lastCopiedPayload = raw
       }
       pasteCount++
+      console.log('[paste] pasting', validElements.length, 'elements, pasteCount:', pasteCount)
       const offset = pasteCount * 20
       const baseZ = nextZIndex()
 
@@ -3984,7 +4001,7 @@
 
   /**
    * Global keyboard event handler for shortcuts.
-   * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), and Cmd/Ctrl+Shift+D (Debug Window).
+   * Handles Cmd/Ctrl+A (Select All), Delete/Backspace (Delete object), Cmd/Ctrl+Shift+D (Debug Window), and Cmd/Ctrl+, (Settings).
    */
   function isNativeTextTarget(t: EventTarget | null): boolean {
     if (!t || !(t instanceof HTMLElement)) return false
@@ -3993,6 +4010,13 @@
 
   function handleKeyDown(event: KeyboardEvent): void {
     const nativeTextTarget = isNativeTextTarget(event.target)
+
+    // Cmd/Ctrl+,: Settings
+    if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+      event.preventDefault()
+      settingsOpen = true
+      return
+    }
 
     // Cmd/Ctrl+Z: Undo
     if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
@@ -4163,6 +4187,8 @@
   onpaste={handlePaste}
 />
 
+<SettingsModal bind:open={settingsOpen} />
+
 {#if appState.currentSlide}
   <div class="flex flex-col h-screen font-sans" role="application">
     {#if contextMenuVisible}
@@ -4214,43 +4240,43 @@
       <button
         onclick={handleNewPresentation}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="New presentation"
+        title={$_('toolbar.new')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
             d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-40-64a8,8,0,0,1-8,8H136v16a8,8,0,0,1-16,0V160H104a8,8,0,0,1,0-16h16V128a8,8,0,0,1,16,0v16h16A8,8,0,0,1,160,152Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">New</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.new')}</span>
       </button>
       <button
         onclick={handleOpen}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Open presentation"
+        title={$_('toolbar.open')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
             d="M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Open</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.open')}</span>
       </button>
       <button
         onclick={handleSave}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Save presentation"
+        title={$_('toolbar.save')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
             d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Save</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.save')}</span>
       </button>
       <button
         onclick={handleSaveAs}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Save presentation as…"
+        title={$_('toolbar.save_as')}
       >
         <svg
           class="w-5 h-5"
@@ -4279,7 +4305,7 @@
             <line x1="152" y1="72" x2="96" y2="72" />
           </g>
         </svg>
-        <span class="text-[10px] font-medium leading-none text-gray-500">Save As</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.save_as')}</span>
       </button>
 
       <div class="h-8 w-px bg-gray-300 mx-1"></div>
@@ -4288,7 +4314,7 @@
       <button
         onclick={performUndo}
         disabled={!canUndo}
-        title="Undo (Cmd/Ctrl+Z)"
+        title={$_('toolbar.undo')}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -4296,12 +4322,12 @@
             d="M232,112a64.07,64.07,0,0,1-64,64H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48a8,8,0,0,1,11.32,11.32L51.31,160H168a48,48,0,0,0,0-96H80a8,8,0,0,1,0-16h88A64.07,64.07,0,0,1,232,112Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Undo</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.undo')}</span>
       </button>
       <button
         onclick={performRedo}
         disabled={!canRedo}
-        title="Redo (Cmd/Ctrl+Shift+Z)"
+        title={$_('toolbar.redo')}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -4309,7 +4335,7 @@
             d="M229.66,173.66l-48,48a8,8,0,0,1-11.32-11.32L204.69,176H88A64,64,0,0,1,88,48h88a8,8,0,0,1,0,16H88a48,48,0,0,0,0,96H204.69l-34.35-34.34a8,8,0,0,1,11.32-11.32l48,48A8,8,0,0,1,229.66,173.66Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Redo</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.redo')}</span>
       </button>
 
       <!-- Save status indicator -->
@@ -4332,7 +4358,7 @@
                 d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"
               /></svg
             >
-            Unsaved
+            {$_('status.unsaved')}
           </span>
         {:else if saveStatus === 'saving'}
           <span class="flex items-center gap-1 text-xs text-blue-500">
@@ -4342,7 +4368,7 @@
                 d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16h28.69L195.64,79A80,80,0,1,0,207.6,193a8,8,0,1,1,11,11.53A96,96,0,1,1,187.07,67.21L204,84.28V56a8,8,0,0,1,16,0Z"
               /></svg
             >
-            Saving...
+            {$_('status.saving')}
           </span>
         {:else if saveStatus === 'saved'}
           <span class="flex items-center gap-1 text-xs text-green-600">
@@ -4352,24 +4378,24 @@
                 d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"
               /></svg
             >
-            Saved
+            {$_('status.saved')}
           </span>
         {:else if saveStatus === 'error'}
-          <span class="flex items-center gap-1 text-xs text-red-500" title="Auto-save failed">
+          <span class="flex items-center gap-1 text-xs text-red-500" title={$_('status.save_failed')}>
             <!-- Phosphor WarningCircle -->
             <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
               ><path
                 d="M236,128A108,108,0,1,1,128,20,108.12,108.12,0,0,1,236,128Zm-16,0a92,92,0,1,0-92,92A92.1,92.1,0,0,0,220,128Zm-92,36a12,12,0,1,0,12,12A12,12,0,0,0,128,164Zm-8-92v56a8,8,0,0,0,16,0V72a8,8,0,0,0-16,0Z"
               /></svg
             >
-            Save failed
+            {$_('status.save_failed')}
           </span>
         {/if}
       </div>
       {#if appState.isTempFile}
         <span
           class="flex items-center gap-1 px-2 py-0.5 mr-1 text-xs font-medium text-amber-700 bg-amber-100 border border-amber-300 rounded-md"
-          title="This presentation hasn't been saved to a file yet. Click 'Save' to choose a location."
+          title={$_('status.unsaved_file.title')}
         >
           <!-- Phosphor Warning -->
           <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
@@ -4377,7 +4403,7 @@
               d="M236.8,188.09,149.35,36.22a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09Zm-13.86,15.71a8.5,8.5,0,0,1-7.49,4.2H40.55a8.5,8.5,0,0,1-7.49-4.2,7.59,7.59,0,0,1,0-7.72L120.51,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.94,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"
             /></svg
           >
-          Unsaved
+          {$_('status.unsaved')}
         </span>
       {/if}
 
@@ -4387,7 +4413,7 @@
       <button
         onclick={appState.isPresentingMode ? exitPresentationMode : enterPresentationMode}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title={appState.isPresentingMode ? 'Stop presentation' : 'Start presentation (F5)'}
+        title={appState.isPresentingMode ? $_('toolbar.stop') : $_('toolbar.play')}
       >
         {#if appState.isPresentingMode}
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -4395,27 +4421,27 @@
               d="M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">Stop</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.stop')}</span>
         {:else}
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
             ><path
               d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">Play</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.play')}</span>
         {/if}
       </button>
       <button
         onclick={openDebugWindow}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Open debug window (Cmd/Ctrl+Shift+D)"
+        title={$_('toolbar.debug')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
             d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Debug</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.debug')}</span>
       </button>
 
       <div class="h-8 w-px bg-gray-300 mx-1"></div>
@@ -4424,28 +4450,28 @@
       <button
         onclick={addText}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Add text"
+        title={$_('toolbar.text')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
             d="M112,40a8,8,0,0,0-8,8V64H24A16,16,0,0,0,8,80v96a16,16,0,0,0,16,16h80v16a8,8,0,0,0,16,0V48A8,8,0,0,0,112,40ZM24,176V80h80v96ZM248,80v96a16,16,0,0,1-16,16H144a8,8,0,0,1,0-16h88V80H144a8,8,0,0,1,0-16h88A16,16,0,0,1,248,80ZM88,112a8,8,0,0,1-8,8H72v24a8,8,0,0,1-16,0V120H48a8,8,0,0,1,0-16H80A8,8,0,0,1,88,112Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Text</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.text')}</span>
       </button>
       <div class="relative">
         <button
           onclick={() => (showShapePicker = !showShapePicker)}
           class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
           class:bg-gray-200={showShapePicker}
-          title="Add shape"
+          title={$_('toolbar.shape')}
         >
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
             ><path
               d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">Shape</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.shape')}</span>
         </button>
         {#if showShapePicker}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -4458,35 +4484,35 @@
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
               <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6" width="20" height="12" rx="1"/></svg>
-              Rectangle
+              {$_('shape.rect')}
             </button>
             <button
               onclick={() => { addEllipse(); showShapePicker = false }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
               <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><ellipse cx="12" cy="12" rx="10" ry="7"/></svg>
-              Ellipse
+              {$_('shape.ellipse')}
             </button>
             <button
               onclick={() => { addTriangle(); showShapePicker = false }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
               <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,3 22,21 2,21"/></svg>
-              Triangle
+              {$_('shape.triangle')}
             </button>
             <button
               onclick={() => { addStar(); showShapePicker = false }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
               <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
-              Star
+              {$_('shape.star')}
             </button>
             <button
               onclick={() => { addArrow(); showShapePicker = false }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
               <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="2,9 14,9 14,5 22,12 14,19 14,15 2,15"/></svg>
-              Arrow
+              {$_('shape.arrow')}
             </button>
           </div>
         {/if}
@@ -4494,14 +4520,14 @@
       <button
         onclick={addImage}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
-        title="Add image"
+        title={$_('toolbar.media')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
             d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">Media</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.media')}</span>
       </button>
 
       <!-- Panel toggles — pushed to the far right -->
@@ -4514,14 +4540,14 @@
           class:text-gray-700={activeSidePanel === 'properties'}
           class:text-gray-600={activeSidePanel !== 'properties'}
           class:hover:bg-gray-200={activeSidePanel !== 'properties'}
-          title="Properties panel"
+          title={$_('panel.properties')}
         >
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
             ><path
               d="M230.64,25.36a32,32,0,0,0-45.26,0q-.21.21-.42.45L131.55,88.22,121,77.64a24,24,0,0,0-33.95,0l-76.69,76.7a8,8,0,0,0,0,11.31l80,80a8,8,0,0,0,11.31,0L178.36,169a24,24,0,0,0,0-33.95l-10.58-10.57L230.19,71c.15-.14.31-.28.45-.43A32,32,0,0,0,230.64,25.36ZM96,228.69,79.32,212l22.34-22.35a8,8,0,0,0-11.31-11.31L68,200.68,55.32,188l22.34-22.35a8,8,0,0,0-11.31-11.31L44,176.68,27.31,160,72,115.31,140.69,184ZM219.52,59.1l-68.71,58.81a8,8,0,0,0-.46,11.74L167,146.34a8,8,0,0,1,0,11.31l-15,15L83.32,104l15-15a8,8,0,0,1,11.31,0l16.69,16.69a8,8,0,0,0,11.74-.46L196.9,36.48A16,16,0,0,1,219.52,59.1Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">Properties</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('panel.properties')}</span>
         </button>
         <button
           onclick={() => (activeSidePanel = 'layers')}
@@ -4530,14 +4556,14 @@
           class:text-gray-700={activeSidePanel === 'layers'}
           class:text-gray-600={activeSidePanel !== 'layers'}
           class:hover:bg-gray-200={activeSidePanel !== 'layers'}
-          title="Layers panel"
+          title={$_('panel.layers')}
         >
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
             ><path
               d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">Layers</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('panel.layers')}</span>
         </button>
         <button
           onclick={() => (activeSidePanel = 'animate')}
@@ -4546,7 +4572,7 @@
           class:text-gray-700={activeSidePanel === 'animate'}
           class:text-gray-600={activeSidePanel !== 'animate'}
           class:hover:bg-gray-200={activeSidePanel !== 'animate'}
-          title="Animate panel"
+          title={$_('panel.animate')}
         >
           <svg
             class="w-5 h-5"
@@ -4558,23 +4584,35 @@
             <circle cx="96" cy="128" r="72" stroke-width="16" stroke-dasharray="0.1 27" />
             <circle cx="160" cy="128" r="72" stroke-width="16" />
           </svg>
-          <span class="text-[10px] font-medium leading-none text-gray-500">Animate</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('panel.animate')}</span>
+        </button>
+        <button
+          onclick={() => (settingsOpen = true)}
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+          title={$_('toolbar.settings')}
+        >
+          <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+            ><path
+              d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"
+            /></svg
+          >
+          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.settings')}</span>
         </button>
       </div>
     </div>
     {#if updateAvailableVersion}
       <div class="flex items-center justify-center gap-3 px-4 py-1.5 bg-violet-600 text-white text-xs">
-        <span>twig {updateAvailableVersion} is ready to install</span>
+        <span>{$_('update.banner', { values: { version: updateAvailableVersion } })}</span>
         <button
           onclick={() => window.api?.app?.installUpdate()}
           class="px-2.5 py-0.5 rounded bg-white text-violet-700 font-medium hover:bg-violet-50"
         >
-          Restart & Update
+          {$_('update.restart')}
         </button>
         <button
           onclick={() => (updateAvailableVersion = null)}
           class="ml-1 opacity-70 hover:opacity-100"
-          title="Dismiss"
+          title={$_('update.dismiss')}
         >✕</button>
       </div>
     {/if}
@@ -4624,10 +4662,10 @@
               <button
                 class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-opacity z-10"
                 onclick={() => {
-                  if (confirm('Delete this slide? This cannot be undone.')) deleteSlideById(slideId)
+                  if (confirm(get(_)('slide.delete.confirm'))) deleteSlideById(slideId)
                 }}
-                title="Delete slide"
-                aria-label="Delete slide"
+                title={$_('slide.delete')}
+                aria-label={$_('slide.delete')}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -4654,7 +4692,7 @@
           onclick={addNewSlide}
           class="w-[calc(100%-1rem)] mt-1 p-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-200"
         >
-          + New Slide
+          {$_('slide.new')}
         </button>
       </div>
       <div class="flex-1 p-4 bg-gray-200">

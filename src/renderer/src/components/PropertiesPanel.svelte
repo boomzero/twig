@@ -14,6 +14,7 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
   import type { SlideBackground, ElementAnimations, SlideTransition } from '../lib/types'
+  import { _ } from 'svelte-i18n'
 
   type RichText = {
     isBold: boolean
@@ -156,7 +157,7 @@
 </script>
 
 <div class="p-4 overflow-y-auto flex-1">
-  <h3 class="text-lg font-semibold mb-4">Properties</h3>
+  <h3 class="text-lg font-semibold mb-4">{$_('props.heading')}</h3>
 
   {#if selectedObject}
     <!-- Property controls for the selected object -->
@@ -164,7 +165,7 @@
       {#if selectedObject.type === 'text' && richText}
         <!-- Text formatting controls -->
         <div class="pb-3 border-b border-gray-200">
-          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Text</p>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{$_('props.text')}</p>
           <!-- B / I / U row -->
           <div class="flex gap-1 mb-2">
             <button
@@ -199,14 +200,14 @@
               min="1"
               max="500"
               class="flex-1 h-8 px-2 text-sm border border-gray-300 rounded-md"
-              placeholder="Size"
+              placeholder={$_('props.size.placeholder')}
             />
             <input
               type="color"
               value={richText.fillColor}
               oninput={(e) => richText?.applyStyle({ fill: (e.target as HTMLInputElement).value })}
               class="w-8 h-8 p-0 border-none bg-transparent cursor-pointer"
-              title="Text color"
+              title={$_('props.text_color.title')}
             />
           </div>
           <!-- Font family dropdown -->
@@ -250,7 +251,7 @@
                     value={richText.fontSearchQuery}
                     oninput={(e) =>
                       richText?.setFontSearchQuery((e.target as HTMLInputElement).value)}
-                    placeholder="Search fonts..."
+                    placeholder={$_('props.search_fonts')}
                     class="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white"
                     onkeydown={(e) => e.stopPropagation()}
                   />
@@ -275,7 +276,7 @@
         </div>
       {/if}
       <div>
-        <label for="x" class="block text-sm font-medium text-gray-600">X Position</label>
+        <label for="x" class="block text-sm font-medium text-gray-600">{$_('props.x')}</label>
         <input
           type="number"
           id="x"
@@ -286,7 +287,7 @@
         />
       </div>
       <div>
-        <label for="y" class="block text-sm font-medium text-gray-600">Y Position</label>
+        <label for="y" class="block text-sm font-medium text-gray-600">{$_('props.y')}</label>
         <input
           type="number"
           id="y"
@@ -297,7 +298,7 @@
         />
       </div>
       <div>
-        <label for="width" class="block text-sm font-medium text-gray-600">Width</label>
+        <label for="width" class="block text-sm font-medium text-gray-600">{$_('props.width')}</label>
         <input
           type="number"
           id="width"
@@ -308,7 +309,7 @@
         />
       </div>
       <div>
-        <label for="height" class="block text-sm font-medium text-gray-600">Height</label>
+        <label for="height" class="block text-sm font-medium text-gray-600">{$_('props.height')}</label>
         <input
           type="number"
           id="height"
@@ -319,7 +320,7 @@
         />
       </div>
       <div>
-        <label for="angle" class="block text-sm font-medium text-gray-600">Angle</label>
+        <label for="angle" class="block text-sm font-medium text-gray-600">{$_('props.angle')}</label>
         <input
           type="number"
           id="angle"
@@ -331,7 +332,7 @@
       </div>
       {#if selectedObject.type === 'rect' || selectedObject.type === 'ellipse' || selectedObject.type === 'triangle' || selectedObject.type === 'star' || selectedObject.type === 'arrow'}
         <div>
-          <label for="fill" class="block text-sm font-medium text-gray-600">Fill Color</label>
+          <label for="fill" class="block text-sm font-medium text-gray-600">{$_('props.fill')}</label>
           <input
             type="color"
             id="fill"
@@ -345,11 +346,11 @@
 
       <!-- Animations section -->
       <div class="pt-3 border-t border-gray-200">
-        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Animations</p>
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{$_('props.animations')}</p>
 
         <!-- Build In -->
         <div class="mb-2">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Build In</label>
+          <label class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_in')}</label>
           <select
             class="block w-full rounded border-gray-300 text-xs py-1"
             value={selectedObject.animations?.buildIn?.type ?? 'none'}
@@ -371,13 +372,13 @@
             }}
             onblur={handleAnimationBlur}
           >
-            <option value="none">None</option>
-            <option value="appear">Appear</option>
-            <option value="fade-in">Fade In</option>
+            <option value="none">{$_('anim.none')}</option>
+            <option value="appear">{$_('anim.appear')}</option>
+            <option value="fade-in">{$_('anim.fade_in')}</option>
           </select>
           {#if selectedObject.animations?.buildIn?.type === 'fade-in'}
             <div class="mt-1 flex gap-1">
-              {#each [[DURATION_FAST, 'Fast'], [DURATION_NORMAL, 'Normal'], [DURATION_SLOW, 'Slow']] as [ms, lbl] (ms)}
+              {#each [[DURATION_FAST, $_('anim.fast')], [DURATION_NORMAL, $_('anim.normal')], [DURATION_SLOW, $_('anim.slow')]] as [ms, lbl] (ms)}
                 <button
                   class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildIn
                     .duration === ms
@@ -409,7 +410,7 @@
                 }}
                 onblur={handleAnimationBlur}
                 class="w-16 text-xs border border-gray-300 rounded px-1"
-                title="Duration (ms)"
+                title={$_('anim.duration_ms.title')}
               />
             </div>
           {/if}
@@ -418,7 +419,7 @@
         <!-- Actions (multiple) -->
         <div class="mb-2">
           <div class="flex items-center justify-between mb-1">
-            <label class="block text-xs font-medium text-gray-500">Actions</label>
+            <label class="block text-xs font-medium text-gray-500">{$_('anim.actions')}</label>
             <button
               class="text-xs text-indigo-600 hover:text-indigo-700"
               onclick={() => {
@@ -431,13 +432,13 @@
                   duration: DURATION_NORMAL
                 }
                 emitAnimationChange({ ...cur, actions: [...(cur.actions ?? []), newAction] })
-              }}>+ Add Move</button
+              }}>{$_('anim.add_move')}</button
             >
           </div>
           {#each selectedObject.animations?.actions ?? [] as action (action.id)}
             <div class="mb-2 p-2 border border-gray-200 rounded bg-gray-50">
               <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-blue-600">Move</span>
+                <span class="text-xs font-medium text-blue-600">{$_('anim.move')}</span>
                 <button
                   class="text-xs text-gray-300 hover:text-red-500"
                   onclick={() => {
@@ -448,12 +449,12 @@
                     else delete updated.actions
                     emitAnimationChange(updated)
                   }}
-                  aria-label="Remove action">×</button
+                  aria-label={$_('anim.remove_action.title')}>×</button
                 >
               </div>
               <div class="space-y-1">
                 <div class="flex gap-1 items-center">
-                  <label class="text-xs text-gray-400 w-8">To X</label>
+                  <label class="text-xs text-gray-400 w-8">{$_('anim.to_x')}</label>
                   <input
                     type="number"
                     value={action.toX}
@@ -477,7 +478,7 @@
                   />
                 </div>
                 <div class="flex gap-1 items-center">
-                  <label class="text-xs text-gray-400 w-8">To Y</label>
+                  <label class="text-xs text-gray-400 w-8">{$_('anim.to_y')}</label>
                   <input
                     type="number"
                     value={action.toY}
@@ -501,7 +502,7 @@
                   />
                 </div>
                 <div class="flex gap-1">
-                  {#each [[DURATION_FAST, 'Fast'], [DURATION_NORMAL, 'Normal'], [DURATION_SLOW, 'Slow']] as [ms, lbl] (ms)}
+                  {#each [[DURATION_FAST, $_('anim.fast')], [DURATION_NORMAL, $_('anim.normal')], [DURATION_SLOW, $_('anim.slow')]] as [ms, lbl] (ms)}
                     <button
                       class="flex-1 py-0.5 text-xs rounded border {action.duration === ms
                         ? 'bg-indigo-600 text-white border-indigo-600'
@@ -539,7 +540,7 @@
                     }}
                     onblur={handleAnimationBlur}
                     class="w-16 text-xs border border-gray-300 rounded px-1"
-                    title="Duration (ms)"
+                    title={$_('anim.duration_ms.title')}
                   />
                 </div>
               </div>
@@ -549,7 +550,7 @@
 
         <!-- Build Out -->
         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Build Out</label>
+          <label class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_out')}</label>
           <select
             class="block w-full rounded border-gray-300 text-xs py-1"
             value={selectedObject.animations?.buildOut?.type ?? 'none'}
@@ -571,13 +572,13 @@
             }}
             onblur={handleAnimationBlur}
           >
-            <option value="none">None</option>
-            <option value="disappear">Disappear</option>
-            <option value="fade-out">Fade Out</option>
+            <option value="none">{$_('anim.none')}</option>
+            <option value="disappear">{$_('anim.disappear')}</option>
+            <option value="fade-out">{$_('anim.fade_out')}</option>
           </select>
           {#if selectedObject.animations?.buildOut?.type === 'fade-out'}
             <div class="mt-1 flex gap-1">
-              {#each [[DURATION_FAST, 'Fast'], [DURATION_NORMAL, 'Normal'], [DURATION_SLOW, 'Slow']] as [ms, lbl] (ms)}
+              {#each [[DURATION_FAST, $_('anim.fast')], [DURATION_NORMAL, $_('anim.normal')], [DURATION_SLOW, $_('anim.slow')]] as [ms, lbl] (ms)}
                 <button
                   class="flex-1 py-0.5 text-xs rounded border {selectedObject.animations.buildOut
                     .duration === ms
@@ -609,7 +610,7 @@
                 }}
                 onblur={handleAnimationBlur}
                 class="w-16 text-xs border border-gray-300 rounded px-1"
-                title="Duration (ms)"
+                title={$_('anim.duration_ms.title')}
               />
             </div>
           {/if}
@@ -619,11 +620,11 @@
   {:else}
     <!-- Slide background controls when nothing is selected -->
     <div class="space-y-3">
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Slide Background</p>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">{$_('bg.slide_background')}</p>
 
       <!-- Type selector tabs -->
       <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-        {#each ['solid', 'gradient', 'image'] as t (t)}
+        {#each [['solid', $_('bg.solid')], ['gradient', $_('bg.gradient')], ['image', $_('bg.image')]] as [t, tLabel] (t)}
           <button
             class="flex-1 py-1 {activeTab === t
               ? 'bg-indigo-600 text-white'
@@ -635,14 +636,14 @@
               } else if (t === 'solid' && currentBg?.type !== 'solid') {
                 emitSolid('#ffffff')
               }
-            }}>{t}</button
+            }}>{tLabel}</button
           >
         {/each}
       </div>
 
       {#if activeTab === 'solid'}
         <div>
-          <label class="block text-sm font-medium text-gray-600">Color</label>
+          <label class="block text-sm font-medium text-gray-600">{$_('bg.color')}</label>
           <input
             type="color"
             value={currentBg?.type === 'solid' ? currentBg.color : '#ffffff'}
@@ -653,7 +654,7 @@
       {:else if activeTab === 'gradient'}
         <div class="space-y-2">
           <div>
-            <label class="block text-sm font-medium text-gray-600">Start Color</label>
+            <label class="block text-sm font-medium text-gray-600">{$_('bg.start_color')}</label>
             <input
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5'}
@@ -667,7 +668,7 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600">End Color</label>
+            <label class="block text-sm font-medium text-gray-600">{$_('bg.end_color')}</label>
             <input
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'}
@@ -681,7 +682,7 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600">Angle</label>
+            <label class="block text-sm font-medium text-gray-600">{$_('bg.angle')}</label>
             <div class="flex gap-1 mt-1 flex-wrap">
               {#each [[0, '→'], [90, '↓'], [45, '↘'], [135, '↙'], [180, '←'], [270, '↑']] as [deg, label] (deg)}
                 <button
@@ -708,9 +709,9 @@
             </div>
             <p class="text-xs text-gray-400 truncate">{currentBg.filename ?? 'image'}</p>
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Fit</label>
+              <label class="block text-xs font-medium text-gray-500 mb-1">{$_('bg.fit')}</label>
               <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-                {#each [['stretch', 'Stretch'], ['contain', 'Fit'], ['cover', 'Cover']] as [val, label] (val)}
+                {#each [['stretch', $_('bg.stretch')], ['contain', $_('bg.contain')], ['cover', $_('bg.cover')]] as [val, label] (val)}
                   <button
                     class="flex-1 py-1 {(currentBg.fit ?? 'cover') === val
                       ? 'bg-indigo-600 text-white'
@@ -725,12 +726,12 @@
           <button
             onclick={pickImageBackground}
             class="w-full py-1.5 text-sm rounded-md border border-gray-300 hover:bg-gray-50 text-gray-700"
-            >{currentBg?.type === 'image' ? 'Change Image' : 'Choose Image...'}</button
+            >{currentBg?.type === 'image' ? $_('bg.change_image') : $_('bg.choose_image')}</button
           >
           {#if currentBg?.type === 'image'}
             <button
               onclick={() => emitSolid('#ffffff')}
-              class="w-full py-1 text-xs text-red-500 hover:underline">Remove image</button
+              class="w-full py-1 text-xs text-red-500 hover:underline">{$_('bg.remove_image')}</button
             >
           {/if}
         </div>
@@ -740,20 +741,20 @@
         <button
           onclick={() => onSetAsDefault?.(currentBg ?? null)}
           class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
-          >Set as default for new slides</button
+          >{$_('bg.set_default')}</button
         >
         <button
           onclick={() => onApplyToAll?.(currentBg ?? null)}
           class="w-full py-1.5 text-xs rounded-md border border-gray-300 hover:bg-gray-50 active:bg-gray-100 text-gray-600"
-          >Apply to all slides</button
+          >{$_('bg.apply_all')}</button
         >
       </div>
 
       <!-- Slide transition controls -->
       <div class="border-t border-gray-200 pt-3 space-y-2">
-        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Slide Transition</p>
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">{$_('transition.label')}</p>
         <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-          {#each [['none', 'None'], ['dissolve', 'Dissolve'], ['push', 'Push']] as [val, label] (val)}
+          {#each [['none', $_('transition.none')], ['dissolve', $_('transition.dissolve')], ['push', $_('transition.push')]] as [val, label] (val)}
             <button
               class="flex-1 py-1 {(slideTransition?.type ?? 'none') === val
                 ? 'bg-indigo-600 text-white'
@@ -774,7 +775,7 @@
         {#if slideTransition && slideTransition.type !== 'none'}
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">
-              Duration: {slideTransition.duration.toFixed(2)}s
+              {$_('transition.duration', { values: { duration: slideTransition.duration.toFixed(2) } })}
             </label>
             <input
               type="range"

@@ -19,6 +19,8 @@
 -->
 
 <script lang="ts">
+  import { _ } from 'svelte-i18n'
+
   const {
     x,
     y,
@@ -56,7 +58,7 @@
         onclick={onCopy}
         class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
       >
-        Copy
+        {$_('ctx.copy')}
       </button>
     {/if}
     {#if onCut}
@@ -64,7 +66,7 @@
         onclick={onCut}
         class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
       >
-        Cut
+        {$_('ctx.cut')}
       </button>
     {/if}
     <div class="border-t border-gray-200 my-1"></div>
@@ -75,7 +77,7 @@
       disabled={isAtFront}
       class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      Bring to Front
+      {$_('ctx.front')}
     </button>
     <!--
       "Move Up" is disabled under the same condition as "Bring to Front" (isAtFront) because
@@ -87,21 +89,21 @@
       disabled={isAtFront}
       class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      Move Up
+      {$_('ctx.up')}
     </button>
     <button
       onclick={onMoveDown}
       disabled={isAtBack}
       class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      Move Down
+      {$_('ctx.down')}
     </button>
     <button
       onclick={onSendToBack}
       disabled={isAtBack}
       class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
     >
-      Send to Back
+      {$_('ctx.back')}
     </button>
     <div class="border-t border-gray-200 my-1"></div>
   {/if}
@@ -109,6 +111,6 @@
     onclick={onDelete}
     class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
   >
-    Delete
+    {$_('ctx.delete')}
   </button>
 </div>
