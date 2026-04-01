@@ -30,7 +30,7 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build Windows Store package
-        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win msix --publish never
+        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win appx --publish never
         env:
           WINDOWS_STORE_IDENTITY_NAME: ${{ secrets.WINDOWS_STORE_IDENTITY_NAME }}
           WINDOWS_STORE_PUBLISHER: ${{ secrets.WINDOWS_STORE_PUBLISHER }}
@@ -40,6 +40,6 @@ jobs:
         with:
           name: twig-windows-store
           path: |
-            dist/*.msix
+            dist/*.appx
           if-no-files-found: error
           retention-days: 30

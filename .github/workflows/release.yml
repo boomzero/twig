@@ -28,7 +28,7 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build and publish Windows Store package
-        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win msix --publish always
+        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win appx --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WINDOWS_STORE_IDENTITY_NAME: ${{ secrets.WINDOWS_STORE_IDENTITY_NAME }}

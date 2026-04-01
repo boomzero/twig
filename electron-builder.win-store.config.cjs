@@ -45,12 +45,12 @@ module.exports = {
     executableName: 'twig',
     target: [
       {
-        target: 'msix',
+        target: 'appx',
         arch: ['x64'],
       },
     ],
   },
-  msix,
+  appx: msix,
   mac: {
     bundleShortVersion: '1.0.0',
     bundleVersion: '1.0.14',

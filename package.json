@@ -16,7 +16,7 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && enject run -- electron-builder --dir -c.mac.identity=\"Apple Development: Chenrui Zhu (7UAWP6X9HF)\" -c.mac.notarize=false",
-    "build:win": "npm run build && electron-builder --config electron-builder.win-store.config.cjs --win msix",
+    "build:win": "npm run build && electron-builder --config electron-builder.win-store.config.cjs --win appx",
     "build:win:exe": "npm run build && electron-builder --win",
     "build:mac": "npm run build && enject run -- electron-builder --mac -c.mac.identity=\"Apple Development: Chenrui Zhu (7UAWP6X9HF)\" -c.mac.notarize=false",
     "build:mac:release": "npm run build && enject run -- electron-builder --mac -c.mac.identity=\"Developer ID Application: Chenrui Zhu (65ZLJ987GH)\"",
