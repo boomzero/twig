@@ -14,8 +14,13 @@ const PREFS_PATH = join(app.getPath('userData'), 'twig-prefs.json')
 // In-memory cache — avoids repeated readFileSync on every getPref call
 let cache: Prefs | null = null
 
+function normalizeLocale(value: string | null | undefined): Locale {
+  const normalized = value?.toLowerCase().replace('_', '-')
+  return normalized?.startsWith('zh') ? 'zh' : 'en'
+}
+
 function detectLocale(): Locale {
-  return app.getLocale().startsWith('zh') ? 'zh' : 'en'
+  return normalizeLocale(app.getLocale())
 }
 
 function load(): Prefs {
@@ -23,6 +28,9 @@ function load(): Prefs {
   try {
     if (existsSync(PREFS_PATH)) {
       const saved = JSON.parse(readFileSync(PREFS_PATH, 'utf-8')) as Partial<Prefs>
+      if (saved.locale) {
+        saved.locale = normalizeLocale(saved.locale)
+      }
       // First boot: locale key absent — detect from system and persist
       if (!saved.locale) {
         saved.locale = detectLocale()

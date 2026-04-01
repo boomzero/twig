@@ -27,10 +27,12 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npx electron-builder install-app-deps
 
-      - name: Build and publish Windows app
-        run: npm run build && npx electron-builder --win --publish always
+      - name: Build and publish Windows Store package
+        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win msix --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_STORE_IDENTITY_NAME: ${{ secrets.WINDOWS_STORE_IDENTITY_NAME }}
+          WINDOWS_STORE_PUBLISHER: ${{ secrets.WINDOWS_STORE_PUBLISHER }}
 
   build-mac:
     runs-on: macos-latest

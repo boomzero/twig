@@ -16,7 +16,7 @@
     await changeLocale(l)
   }
 
-  const isMAS = window.api?.app?.isMAS ?? false
+  const isStoreBuild = window.api?.app?.isStoreBuild ?? false
 
   // Auto-update
   let autoUpdate = $state(true)
@@ -38,6 +38,10 @@
 
   async function handleAutoUpdateChange(): Promise<void> {
     await window.api?.prefs?.set('autoUpdate', autoUpdate)
+  }
+
+  async function openPrivacyPolicy(): Promise<void> {
+    await window.api?.app?.openPrivacyPolicy()
   }
 
   // Manual update check
@@ -146,11 +150,29 @@
           </div>
         </section>
 
-        <!-- Divider -->
-        {#if !isMAS}<hr class="border-gray-100" />{/if}
+        <hr class="border-gray-100" />
 
-        <!-- Updates (hidden on Mac App Store builds — updater is not available) -->
-        {#if !isMAS}
+        <!-- Privacy -->
+        <section>
+          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            {$_('settings.privacy')}
+          </h3>
+          <p class="text-sm text-gray-700 mb-3">
+            {$_('settings.privacy_body')}
+          </p>
+          <button
+            onclick={openPrivacyPolicy}
+            class="px-3 py-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md"
+          >
+            {$_('settings.privacy_link')}
+          </button>
+        </section>
+
+        <!-- Divider -->
+        {#if !isStoreBuild}<hr class="border-gray-100" />{/if}
+
+        <!-- Updates (hidden on store-managed builds — updater is not available) -->
+        {#if !isStoreBuild}
         <section>
           <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
             {$_('settings.updates')}

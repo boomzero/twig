@@ -14,6 +14,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
+const isStoreBuild =
+  process.mas === true ||
+  (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true
+
 // ============================================================================
 // API Definitions
 // ============================================================================
@@ -237,8 +241,14 @@ const api = {
     /** Download and install update (used after manual check finds an update). */
     downloadAndInstall: () => ipcRenderer.invoke('app:download-and-install'),
 
+    /** Open the privacy policy in the default browser. */
+    openPrivacyPolicy: () => ipcRenderer.invoke('app:open-privacy-policy'),
+
     /** True when running as a Mac App Store build (update controls should be hidden). */
     isMAS: process.mas === true,
+
+    /** True when updates are handled by a platform store (MAS/AppX). */
+    isStoreBuild,
 
     /** Listen for locale change broadcasts from the main process. */
     onLocaleChanged: (callback: (locale: string) => void) => {

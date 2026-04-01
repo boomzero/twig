@@ -29,10 +29,11 @@ npm start                # Preview production build
 
 ```bash
 npm run build            # Type-check and build for production
-npm run build:mac        # Build for macOS
+npm run build:mac        # Build/sign a local macOS app with Apple Development
+npm run build:mac:release # Build/notarize a release macOS app with Developer ID
 npm run build:win        # Build for Windows
 npm run build:linux      # Build for Linux
-npm run build:unpack     # Build without packaging
+npm run build:unpack     # Build an unpacked local macOS app signed for development
 ```
 
 ### Code Quality

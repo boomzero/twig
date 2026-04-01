@@ -29,15 +29,17 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npx electron-builder install-app-deps
 
-      - name: Build Windows app
-        run: npm run build && npx electron-builder --win --publish never
+      - name: Build Windows Store package
+        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win msix --publish never
+        env:
+          WINDOWS_STORE_IDENTITY_NAME: ${{ secrets.WINDOWS_STORE_IDENTITY_NAME }}
+          WINDOWS_STORE_PUBLISHER: ${{ secrets.WINDOWS_STORE_PUBLISHER }}
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: twig-windows
+          name: twig-windows-store
           path: |
-            dist/*.exe
-            dist/*.msi
+            dist/*.msix
           if-no-files-found: error
           retention-days: 30

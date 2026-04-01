@@ -8,7 +8,7 @@
 import './assets/main.css'
 import { mount } from 'svelte'
 import Debug from './Debug.svelte'
-import { setupI18n } from './lib/i18n'
+import { normalizeLocale, setupI18n } from './lib/i18n'
 import { locale } from 'svelte-i18n'
 
 const savedLocale = (await window.api.prefs.get('locale')) as string | null
@@ -16,7 +16,7 @@ await setupI18n(savedLocale)
 
 // Keep in sync when the user changes language in the main window
 window.api?.app?.onLocaleChanged((newLocale) => {
-  locale.set(newLocale)
+  locale.set(normalizeLocale(newLocale))
 })
 
 const app = mount(Debug, {

@@ -67,10 +67,10 @@ You should see a line like:
 
 ## Step 5: Build with Notarization
 
-Build for macOS:
+Build a release macOS package:
 
 ```bash
-npm run build:mac
+npm run build:mac:release
 ```
 
 The build process will:

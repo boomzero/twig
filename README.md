@@ -54,7 +54,8 @@ cd twig
 npm install
 npm run dev          # development with hot reload
 npm run build        # production build
-npm run build:mac    # package for macOS
+npm run build:mac    # local macOS package signed with Apple Development
+npm run build:mac:release # release macOS package signed + notarized
 npm run build:win    # package for Windows
 npm run build:linux  # package for Linux
 ```

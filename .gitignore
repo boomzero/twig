@@ -13,3 +13,5 @@ logs/
 /defense.tb
 /presenter_notes.md
 build/twig.provisionprofile
+build/twig_dev.provisionprofile
+*.exe

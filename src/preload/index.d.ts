@@ -164,7 +164,9 @@ declare global {
           error?: boolean
         }>
         downloadAndInstall: () => Promise<void>
+        openPrivacyPolicy: () => Promise<void>
         isMAS: boolean
+        isStoreBuild: boolean
         onLocaleChanged: (callback: (locale: string) => void) => () => void
         onUpdateDownloaded: (callback: (version: string) => void) => () => void
       }

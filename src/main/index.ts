@@ -97,6 +97,11 @@ const TEMP_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
  */
 const tempFilePaths = new Set<string>()
 
+const PRIVACY_POLICY_URL = 'https://twig.boomzero.uk/privacy/'
+const isStoreManagedBuild =
+  process.mas === true ||
+  (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true
+
 /**
  * Ensures the temp directory exists and cleans up old orphaned temp files.
  * Called on app startup and when creating new temp databases.
@@ -619,9 +624,28 @@ function createWindow(): void {
     }
   })
 
+  let hasShownWindow = false
+  let showFallbackTimeout: NodeJS.Timeout | null = null
+
+  const showMainWindow = (): void => {
+    if (hasShownWindow || mainWindow.isDestroyed()) return
+    hasShownWindow = true
+    if (showFallbackTimeout) {
+      clearTimeout(showFallbackTimeout)
+      showFallbackTimeout = null
+    }
+    mainWindow.show()
+  }
+
   // Show window only when content is ready to prevent blank white flash
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    showMainWindow()
+  })
+
+  // In MAS/sandboxed builds ready-to-show can fail to fire even though the
+  // renderer has loaded successfully, leaving the app with no visible window.
+  mainWindow.webContents.on('did-finish-load', () => {
+    showFallbackTimeout = setTimeout(showMainWindow, 250)
   })
 
   // Promise-based guard to prevent concurrent close operations
@@ -870,7 +894,7 @@ app.whenReady().then(() => {
     } else if (key === 'autoUpdate' && typeof value === 'boolean') {
       setPref('autoUpdate', value)
       // Apply immediately to the running updater (not just on next launch)
-      if (!process.mas) {
+      if (!isStoreManagedBuild) {
         autoUpdater.autoDownload = value
         autoUpdater.autoInstallOnAppQuit = value
       }
@@ -1632,6 +1656,13 @@ app.whenReady().then(() => {
     return path
   })
 
+  /**
+   * Opens the privacy policy in the user's default browser.
+   */
+  ipcMain.handle('app:open-privacy-policy', async (): Promise<void> => {
+    await shell.openExternal(PRIVACY_POLICY_URL)
+  })
+
   // --------------------------------------------------------------------------
   // Debug Window Handlers
   // --------------------------------------------------------------------------
@@ -1714,10 +1745,10 @@ app.whenReady().then(() => {
   })
 
   // --------------------------------------------------------------------------
-  // Auto-updater (disabled for MAS — the App Store handles updates)
+  // Auto-updater (disabled for store-managed builds — the platform store handles updates)
   // --------------------------------------------------------------------------
 
-  if (!process.mas) {
+  if (!isStoreManagedBuild) {
     const autoUpdateEnabled = getPref('autoUpdate')
 
     // Explicit assignment required — electron-updater defaults both to true internally
