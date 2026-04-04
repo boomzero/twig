@@ -8,5 +8,7 @@
     <true/>
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
+    <key>com.apple.security.files.bookmarks.document-scope</key>
+    <true/>
 </dict>
 </plist>

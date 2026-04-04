@@ -17,6 +17,7 @@ import Database from 'better-sqlite3'
 import * as dbService from './db'
 import type { Slide, FontData } from './db'
 import { getPref, setPref } from './prefs'
+import * as bookmarksService from './bookmarks'
 import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
@@ -889,6 +890,10 @@ app.whenReady().then(() => {
   // Ensure the temp directory exists and clean up stale temp files from previous sessions.
   ensureTempDir()
 
+  // Restore access to previously-opened files via stored security-scoped bookmarks.
+  // No-op on non-MAS builds.
+  bookmarksService.startAccessingStoredBookmarks()
+
   // Set app user model ID for Windows
   electronApp.setAppUserModelId('com.electron')
 
@@ -962,12 +967,20 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('dialog:show-open-dialog', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
-    const { filePaths } = await dialog.showOpenDialog(window!, {
+    const result = await dialog.showOpenDialog(window!, {
       title: tDialog('dialog.open.title'),
       properties: ['openFile'],
-      filters: [{ name: tDialog('dialog.filter.twig'), extensions: ['tb'] }]
+      filters: [{ name: tDialog('dialog.filter.twig'), extensions: ['tb'] }],
+      securityScopedBookmarks: process.mas === true
     })
-    return filePaths && filePaths.length > 0 ? filePaths[0] : null
+    const { filePaths, bookmarks } = result
+    if (filePaths && filePaths.length > 0) {
+      if (process.mas && bookmarks && bookmarks.length > 0) {
+        bookmarksService.saveBookmark(filePaths[0], bookmarks[0])
+      }
+      return filePaths[0]
+    }
+    return null
   })
 
   /**
@@ -976,11 +989,16 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('dialog:show-save-dialog', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender)
-    const { filePath } = await dialog.showSaveDialog(window!, {
+    const result = await dialog.showSaveDialog(window!, {
       title: tDialog('dialog.save.title'),
       defaultPath: 'presentation.tb',
-      filters: [{ name: tDialog('dialog.filter.twig'), extensions: ['tb'] }]
+      filters: [{ name: tDialog('dialog.filter.twig'), extensions: ['tb'] }],
+      securityScopedBookmarks: process.mas === true
     })
+    const { filePath, bookmark } = result
+    if (filePath && process.mas && bookmark) {
+      bookmarksService.saveBookmark(filePath, bookmark)
+    }
     return filePath
   })
 
@@ -1381,10 +1399,11 @@ app.whenReady().then(() => {
             }
           }
         } catch (renameError) {
-          // If cross-device move (EXDEV), fall back to copy+delete
+          // If cross-device move (EXDEV) or sandbox permission error (EPERM/EACCES on
+          // macOS MAS when renaming out of the app container), fall back to copy+delete.
           const errCode = (renameError as NodeJS.ErrnoException).code
-          if (errCode === 'EXDEV') {
-            console.log('Cross-device move detected, using copy+delete fallback')
+          if (errCode === 'EXDEV' || errCode === 'EPERM' || errCode === 'EACCES') {
+            console.log('Rename blocked (cross-device or sandbox permission), using copy+delete fallback')
 
             // Verify source database integrity before copying
             try {
@@ -1918,6 +1937,9 @@ async function cleanupResources(): Promise<void> {
       }
     }
     tempFilePaths.clear()
+
+    // Release all security-scoped resource access (MAS builds only)
+    bookmarksService.stopAccessingAllBookmarks()
 
     // Clean up temp directory
     try {
