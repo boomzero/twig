@@ -1808,7 +1808,7 @@ app.whenReady().then(() => {
     ipcMain.handle('app:check-for-updates', async () => {
       try {
         const result = await autoUpdater.checkForUpdates()
-        if (!result) return 'up-to-date'
+        if (!result?.isUpdateAvailable) return 'up-to-date'
         return 'checking'
       } catch (error) {
         safeLog(`Auto-update check failed: ${formatError(error)}`, 'warn')
@@ -1828,10 +1828,8 @@ app.whenReady().then(() => {
       autoUpdater.autoDownload = false
       try {
         const result = await autoUpdater.checkForUpdates()
-        if (!result?.updateInfo) return { available: false }
-        const current = app.getVersion()
-        const available = result.updateInfo.version !== current
-        return { available, version: result.updateInfo.version }
+        if (!result?.isUpdateAvailable) return { available: false }
+        return { available: true, version: result.updateInfo.version }
       } catch (error) {
         safeLog(`Manual auto-update check failed: ${formatError(error)}`, 'warn')
         return { available: false, error: true }
