@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.0-rc.12] - 2026-04-05
+
+### Added
+
+- Windows Store (MSIX) build support and store distribution improvements
+- Startup loading UI
+
+### Fixed
+
+- macOS App Sandbox: WAL journal mode, rename fallback, and security-scoped bookmarks so saved files remain accessible across sessions
+- Auto-updater: trust `result.isUpdateAvailable` directly instead of re-deriving availability from version strings
+- Auto-updater release channel resolution
+- DB hardening (foreign keys, trusted schema, integrity checks on open)
+
 ## [1.0.0-rc.11] - 2026-03-28
 
 ### Added
