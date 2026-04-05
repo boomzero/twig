@@ -382,6 +382,14 @@ function safeLog(message: string, level: 'log' | 'warn' | 'error' = 'log'): void
   }
 }
 
+/** Format unknown thrown values for diagnostic logging. */
+function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack || error.message
+  }
+  return String(error)
+}
+
 /**
  * Closes and removes a database connection from the cache.
  * This should be called before overwriting or deleting a database file.
@@ -1774,6 +1782,13 @@ app.whenReady().then(() => {
   if (!isStoreManagedBuild) {
     const autoUpdateEnabled = getPref('autoUpdate')
 
+    // Public releases are published on GitHub's default "latest" channel even while the
+    // app version still uses rc.* semver. If we let electron-updater infer prerelease
+    // mode from the app version, it switches to the Atom feed path and can resolve a tag
+    // that doesn't actually have update artifacts attached. Keep update checks pinned to
+    // the published latest release metadata instead.
+    autoUpdater.allowPrerelease = false
+
     // Explicit assignment required — electron-updater defaults both to true internally
     autoUpdater.autoDownload = autoUpdateEnabled
     autoUpdater.autoInstallOnAppQuit = autoUpdateEnabled
@@ -1795,7 +1810,8 @@ app.whenReady().then(() => {
         const result = await autoUpdater.checkForUpdates()
         if (!result) return 'up-to-date'
         return 'checking'
-      } catch {
+      } catch (error) {
+        safeLog(`Auto-update check failed: ${formatError(error)}`, 'warn')
         return 'error'
       }
     })
@@ -1816,7 +1832,8 @@ app.whenReady().then(() => {
         const current = app.getVersion()
         const available = result.updateInfo.version !== current
         return { available, version: result.updateInfo.version }
-      } catch {
+      } catch (error) {
+        safeLog(`Manual auto-update check failed: ${formatError(error)}`, 'warn')
         return { available: false, error: true }
       } finally {
         autoUpdater.autoDownload = prev
@@ -1834,6 +1851,7 @@ app.whenReady().then(() => {
         autoUpdater.once('update-downloaded', onDownloaded)
         autoUpdater.downloadUpdate().catch((err) => {
           autoUpdater.removeListener('update-downloaded', onDownloaded)
+          safeLog(`Auto-update download failed: ${formatError(err)}`, 'warn')
           reject(err)
         })
       })
@@ -1841,7 +1859,9 @@ app.whenReady().then(() => {
 
     // Silent background check on startup (errors are silently ignored)
     if (!is.dev && autoUpdateEnabled) {
-      autoUpdater.checkForUpdates().catch(() => {})
+      autoUpdater.checkForUpdates().catch((error) => {
+        safeLog(`Background auto-update check failed: ${formatError(error)}`, 'warn')
+      })
     }
   }
 })
