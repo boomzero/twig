@@ -180,7 +180,8 @@ function getDbConnection(filePath: string): Database.Database {
   }
 
   // Check if file exists and validate it's a SQLite database (if it exists)
-  if (fs.existsSync(filePath)) {
+  const fileExists = fs.existsSync(filePath)
+  if (fileExists) {
     let fd: number | undefined
     try {
       // Read the first 16 bytes to check for SQLite magic header
@@ -236,6 +237,12 @@ function getDbConnection(filePath: string): Database.Database {
   }
 
   try {
+    dbService.configureDatabaseConnection(db)
+
+    if (fileExists) {
+      verifyDatabaseQuickCheck(db, filePath)
+    }
+
     dbService.initializeDatabase(db)
 
     // Implement LRU eviction: if cache is full, close least recently used connection
@@ -323,28 +330,44 @@ function verifyDatabaseIntegrity(filePath: string, context: string): void {
   const testDb = new Database(filePath, { readonly: true })
 
   try {
-    const integrityResult = testDb.pragma('integrity_check')
-
-    // Robust validation of pragma result
-    if (!Array.isArray(integrityResult)) {
-      throw new Error(
-        `Integrity check returned non-array result: ${JSON.stringify(integrityResult)}`
-      )
-    }
-
-    if (integrityResult.length === 0) {
-      throw new Error('Integrity check returned empty array')
-    }
-
-    const firstResult = integrityResult[0] as { integrity_check?: string }
-    if (!firstResult || firstResult.integrity_check !== 'ok') {
-      throw new Error(`Integrity check failed: ${JSON.stringify(integrityResult)}`)
-    }
+    dbService.configureDatabaseConnection(testDb)
+    verifyPragmaCheck(testDb.pragma('integrity_check'), 'integrity_check')
   } finally {
     testDb.close()
   }
 
   safeLog(`Database integrity verified (${context}): ${filePath}`)
+}
+
+/**
+ * Validates the output shape for SQLite integrity-style PRAGMAs.
+ */
+function verifyPragmaCheck(result: unknown, pragmaName: 'integrity_check' | 'quick_check'): void {
+  if (!Array.isArray(result)) {
+    throw new Error(`${pragmaName} returned non-array result: ${JSON.stringify(result)}`)
+  }
+
+  if (result.length === 0) {
+    throw new Error(`${pragmaName} returned empty array`)
+  }
+
+  const firstRow = result[0] as Record<string, unknown> | undefined
+  const pragmaValue = firstRow?.[pragmaName]
+  if (pragmaValue !== 'ok') {
+    throw new Error(`${pragmaName} failed: ${JSON.stringify(result)}`)
+  }
+}
+
+/**
+ * Runs a lightweight consistency check when opening an existing presentation.
+ *
+ * Note: this is intentionally called after {@link dbService.configureDatabaseConnection},
+ * which sets mmap_size = 0. SQLite's quick_check does not require mmap-backed I/O and
+ * still detects corruption correctly with mmap disabled.
+ */
+function verifyDatabaseQuickCheck(db: Database.Database, filePath: string): void {
+  verifyPragmaCheck(db.pragma('quick_check'), 'quick_check')
+  safeLog(`Database quick_check verified on open: ${filePath}`)
 }
 
 /**

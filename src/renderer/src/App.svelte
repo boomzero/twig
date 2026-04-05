@@ -57,6 +57,7 @@
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
+  import LoadingScreen, { type LoadingPhase } from './components/LoadingScreen.svelte'
   import { PressedKeys } from 'runed'
   import { _ } from 'svelte-i18n'
   import { get } from 'svelte/store'
@@ -134,6 +135,7 @@
 
   // Settings modal
   let settingsOpen = $state(false)
+  let loadingScreenPhase = $state<LoadingPhase>('booting')
 
   // Active side panel — only one can be open at a time
   type SidePanel = 'properties' | 'layers' | 'animate'
@@ -1340,19 +1342,34 @@
     return (): void => window.removeEventListener('pointerup', resetBgGate)
   })
 
+  function dismissBootSplash(): void {
+    document.body.dataset.appReady = 'true'
+    const splash = document.getElementById('boot-splash')
+    if (splash) {
+      // 240ms > 180ms CSS transition — intentional buffer so the element
+      // is not removed mid-fade on slow machines.
+      window.setTimeout(() => splash.remove(), 240)
+    }
+  }
+
   onMount(async () => {
+    dismissBootSplash()
     await loadSystemFonts()
 
     // Check if the app was launched by double-clicking a .tb file
     const launchFile = await window.api?.app?.getFileToOpen()
     if (launchFile) {
+      loadingScreenPhase = 'opening'
       await loadPresentation(launchFile)
     } else {
+      loadingScreenPhase = 'creating'
       await handleNewPresentation()
     }
+    loadingScreenPhase = 'booting'
 
     // Handle .tb files opened while the app is already running
     unsubscribeOpenFile = window.api?.app?.onOpenFile(async (filePath) => {
+      loadingScreenPhase = 'opening'
       await loadPresentation(filePath)
     })
 
@@ -2618,6 +2635,7 @@
    * Checks for unsaved changes before proceeding.
    */
   async function handleNewPresentation(): Promise<void> {
+    loadingScreenPhase = 'creating'
     let retryCount = 0
     const maxRetries = 3
     let userInitiatedRetries = 0
@@ -2722,6 +2740,7 @@
   async function handleOpen(): Promise<void> {
     const filePath = await window.api.dialog.showOpenDialog()
     if (filePath) {
+      loadingScreenPhase = 'opening'
       try {
         // Flush any pending saves before switching presentations
         await flushPendingSave()
@@ -2828,6 +2847,7 @@
       // Try to recover original state if we changed files
       if (originalFilePath && appState.currentFilePath !== originalFilePath) {
         try {
+          loadingScreenPhase = 'opening'
           await loadPresentation(originalFilePath)
           if (originalSlideId) {
             await loadSlide(originalSlideId)
@@ -4699,6 +4719,13 @@
         <div class="flex items-center justify-center h-full overflow-auto">
           <div class="bg-white shadow-lg relative">
             <canvas bind:this={canvasEl} width="960" height="540"></canvas>
+            {#if loadingState.isLoadingSlide}
+              <div class="absolute inset-0 z-30 flex items-center justify-center bg-white/72 backdrop-blur-[2px]">
+                <div class="rounded-[28px] border border-white/80 bg-[#f7f6f3]/95 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.5)]">
+                  <LoadingScreen phase="switching" compact={true} />
+                </div>
+              </div>
+            {/if}
             {#if slideTransitionOverlaySrc}
               <img
                 src={slideTransitionOverlaySrc}
@@ -4905,7 +4932,5 @@
     </div>
   </div>
 {:else}
-  <div class="flex items-center justify-center h-screen">
-    <p class="text-lg text-gray-500">Starting...</p>
-  </div>
+  <LoadingScreen phase={loadingScreenPhase} />
 {/if}

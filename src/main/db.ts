@@ -118,6 +118,24 @@ function serializeJson<T>(value: T | undefined): string | null {
   return value !== undefined ? JSON.stringify(value) : null
 }
 
+/**
+ * Applies per-connection SQLite hardening before any application queries run.
+ *
+ * better-sqlite3 already enables SQLITE_DBCONFIG_DEFENSIVE internally, so this
+ * layers on the remaining protections that are relevant when `.tb` files may
+ * come from untrusted sources.
+ */
+export function configureDatabaseConnection(db: Database): void {
+  db.pragma('foreign_keys = ON')
+  db.pragma('trusted_schema = OFF')
+  db.pragma('cell_size_check = ON')
+  db.pragma('mmap_size = 0')
+
+  if (!db.readonly) {
+    db.pragma('secure_delete = ON')
+  }
+}
+
 // ============================================================================
 // Database Schema Management
 // ============================================================================
@@ -133,9 +151,6 @@ function serializeJson<T>(value: T | undefined): string | null {
  * @param db - The SQLite database connection to initialize
  */
 export function initializeDatabase(db: Database): void {
-  // Enable foreign key enforcement (SQLite defaults this to OFF per connection)
-  db.pragma('foreign_keys = ON')
-
   db.exec(`
     CREATE TABLE IF NOT EXISTS slides (
       id TEXT PRIMARY KEY,
