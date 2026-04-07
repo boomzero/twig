@@ -53,7 +53,6 @@ mas:
   artifactName: ${name}-${version}-mas.${ext}
   extendInfo:
     NSDocumentsFolderUsageDescription: twig needs access to your Documents folder to open and save presentations.
-    NSDownloadsFolderUsageDescription: twig needs access to your Downloads folder to open and save presentations.
     CFBundleLocalizations:
       - en
       - zh-CN

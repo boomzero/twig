@@ -1971,16 +1971,12 @@ app.on('before-quit', () => {
 
 /**
  * Clean up resources when all windows are closed.
+ * For this single-window app, quit on all platforms (including macOS)
+ * when the main window is closed, per MAS guideline 4.
  */
 app.on('window-all-closed', async () => {
   await cleanupResources()
-
-  // Quit the app after cleanup
-  // On macOS, this is only reached when user explicitly quits (Cmd+Q)
-  // because isQuitting is tracked
-  if (process.platform !== 'darwin' || isQuitting) {
-    app.quit()
-  }
+  app.quit()
 })
 
 /**
