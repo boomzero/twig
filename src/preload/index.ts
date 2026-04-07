@@ -219,6 +219,15 @@ const api = {
     /** Returns the .tb file path passed via OS file association (consumed once) */
     getFileToOpen: () => ipcRenderer.invoke('app:get-file-to-open'),
 
+    /** Listen for the main process requesting the settings modal to open (e.g. menu item) */
+    onOpenSettings: (callback: () => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('app:open-settings', handler)
+      return (): void => {
+        ipcRenderer.removeListener('app:open-settings', handler)
+      }
+    },
+
     /** Listen for open-file events sent while the app is already running */
     onOpenFile: (callback: (filePath: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, filePath: string): void =>
