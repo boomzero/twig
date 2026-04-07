@@ -8,7 +8,7 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents, Menu } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -883,6 +883,71 @@ if (process.platform !== 'darwin') {
 }
 
 // ============================================================================
+// Application Menu (macOS)
+// ============================================================================
+
+/**
+ * Sets up the macOS application menu.
+ * On macOS the system menu bar is always visible, so a proper menu with
+ * a Window submenu is required — otherwise there is no way to reopen a
+ * window after it has been closed (MAS Guideline 4).
+ */
+function setupMacAppMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => createWindow()
+        },
+        { type: 'separator' },
+        { role: 'close' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'Window',
+      role: 'window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' }
+      ]
+    }
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// ============================================================================
 // Application Lifecycle
 // ============================================================================
 
@@ -896,6 +961,12 @@ app.whenReady().then(() => {
 
   // Set app user model ID for Windows
   electronApp.setAppUserModelId('com.electron')
+
+  // Set up macOS application menu (required for MAS: Window menu lets users
+  // reopen windows and the menu bar remains usable when no windows are open)
+  if (process.platform === 'darwin') {
+    setupMacAppMenu()
+  }
 
   // Enable dev tools shortcuts optimization
   app.on('browser-window-created', (_, window) => {
@@ -1971,12 +2042,16 @@ app.on('before-quit', () => {
 
 /**
  * Clean up resources when all windows are closed.
- * For this single-window app, quit on all platforms (including macOS)
- * when the main window is closed, per MAS guideline 4.
  */
 app.on('window-all-closed', async () => {
   await cleanupResources()
-  app.quit()
+
+  // Quit the app after cleanup
+  // On macOS, this is only reached when user explicitly quits (Cmd+Q)
+  // because isQuitting is tracked
+  if (process.platform !== 'darwin' || isQuitting) {
+    app.quit()
+  }
 })
 
 /**
