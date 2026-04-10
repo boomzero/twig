@@ -279,6 +279,7 @@
   let bgCheckpointPushed = false // gates background-change history to first event per drag
   let transitionCheckpointPushed = false // gates transition-change history to first event per drag
   let slideTransitionOverlaySrc = $state<string | null>(null)
+  let isRestoringHistory = false
 
   // Copy/paste state
   let updateAvailableVersion = $state<string | null>(null)
@@ -294,18 +295,14 @@
   // Reactive booleans for toolbar disabled state.
   // historyRevision is read to subscribe to stack mutations; appState.currentSlide?.id
   // is also tracked so canUndo/canRedo update immediately on slide switch.
-  const canUndo = $derived(
-    (() => {
-      void historyRevision
-      return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
-    })()
-  )
-  const canRedo = $derived(
-    (() => {
-      void historyRevision
-      return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
-    })()
-  )
+  const canUndo = $derived.by(() => {
+    void historyRevision
+    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.undo.length ?? 0) > 0
+  })
+  const canRedo = $derived.by(() => {
+    void historyRevision
+    return (historyBySlideId.get(appState.currentSlide?.id ?? '')?.redo.length ?? 0) > 0
+  })
 
   // Auto-save status indicator
   // 'idle'   — data is persisted, no recent activity (shows relative timestamp)
@@ -576,26 +573,55 @@
   }
 
   function restoreSnapshot(snapshot: SlideSnapshot): void {
-    if (!appState.currentSlide) return
-    appState.currentSlide.elements = snapshot.elements.map((el) => {
+    const currentSlide = appState.currentSlide
+    if (!currentSlide) return
+
+    isRestoringHistory = true
+    activeTextObject?.off('selection:changed', handleTextSelectionChange)
+    activeTextObject = null
+    wasEditing = false
+    lastTextSelectionRange = null
+    expandedMovePathElementId = null
+    fabCanvas?.discardActiveObject()
+
+    const restoredElements = snapshot.elements.map((el) => {
       if (el.type === 'image') {
         return { ...el, src: imageAssets.get(el.id) } as TwigElement
       }
       return { ...el } as TwigElement
     })
-    appState.currentSlide.background = snapshot.background
+
+    const restoredBackground = snapshot.background
       ? (JSON.parse(JSON.stringify(snapshot.background)) as SlideBackground)
       : undefined
-    appState.currentSlide.animationOrder = normalizeAnimationOrder({
-      ...appState.currentSlide,
-      animationOrder: JSON.parse(JSON.stringify(snapshot.animationOrder ?? []))
-    })
-    appState.currentSlide.transition = snapshot.transition
+    const restoredTransition = snapshot.transition
       ? (JSON.parse(JSON.stringify(snapshot.transition)) as SlideTransition)
       : undefined
+    const restoredAnimationOrder = JSON.parse(JSON.stringify(snapshot.animationOrder ?? []))
+
+    appState.currentSlide = {
+      ...currentSlide,
+      elements: restoredElements,
+      background: restoredBackground,
+      animationOrder: normalizeAnimationOrder({
+        ...currentSlide,
+        elements: restoredElements,
+        background: restoredBackground,
+        animationOrder: restoredAnimationOrder,
+        transition: restoredTransition
+      }),
+      transition: restoredTransition
+    }
     appState.selectedObjectId = null
-    fabCanvas?.discardActiveObject()
-    // The $effect watching appState.currentSlide triggers renderCanvasFromState() automatically
+    if (fabCanvas) {
+      renderCanvasFromState()
+        .catch((err) => console.error('Canvas render failed during history restore:', err))
+        .finally(() => {
+          isRestoringHistory = false
+        })
+    } else {
+      isRestoringHistory = false
+    }
   }
 
   function performUndo(): void {
@@ -2241,6 +2267,10 @@
    * Updates app state and manages rich text editor visibility.
    */
   function handleSelection(event: { selected?: TwigFabricObject[] }): void {
+    if (isRestoringHistory) {
+      return
+    }
+
     const selection = event.selected?.[0] as MovePathOverlayFabricObject | undefined
     if (selection?.overlayRole === 'move-path-ghost') {
       return
@@ -2304,6 +2334,10 @@
    * Handles selection cleared event - resets selection state.
    */
   function handleSelectionCleared(): void {
+    if (isRestoringHistory) {
+      return
+    }
+
     if (movePathDragState) {
       return
     }

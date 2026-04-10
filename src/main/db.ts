@@ -151,9 +151,7 @@ export function configureDatabaseConnection(db: Database): void {
  * @param db - The SQLite database connection to initialize
  */
 export function initializeDatabase(db: Database): void {
-  // Use WAL journal mode: avoids creating a -journal sibling file (which the
-  // macOS App Sandbox blocks), and instead uses -wal/-shm files that Apple
-  // explicitly permits for sandboxed apps with user-selected file access.
+  // Use WAL journal mode for normal runtime operation.
   db.pragma('journal_mode = WAL')
   // NORMAL is the recommended synchronous setting for WAL mode.
   db.pragma('synchronous = NORMAL')

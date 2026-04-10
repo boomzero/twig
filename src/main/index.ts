@@ -8,7 +8,16 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents, Menu } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  powerMonitor,
+  webContents,
+  Menu
+} from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -97,11 +106,84 @@ const TEMP_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
  * Used to clean up temp files on app shutdown.
  */
 const tempFilePaths = new Set<string>()
+const masShadowCopies = new Map<string, string>()
 
 const PRIVACY_POLICY_URL = 'https://twig.boomzero.uk/privacy/'
 const isStoreManagedBuild =
   process.mas === true ||
   (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true
+
+function isMasExternalFilePath(filePath: string): boolean {
+  return process.mas && !filePath.startsWith(TEMP_DIR)
+}
+
+function getMasShadowPath(filePath: string): string {
+  if (!isMasExternalFilePath(filePath)) {
+    return filePath
+  }
+
+  const existingShadowPath = masShadowCopies.get(filePath)
+  if (existingShadowPath && fs.existsSync(existingShadowPath)) {
+    return existingShadowPath
+  }
+  if (existingShadowPath) {
+    masShadowCopies.delete(filePath)
+    tempFilePaths.delete(existingShadowPath)
+  }
+
+  ensureMasFileAccess(filePath)
+  ensureTempDir()
+  const shadowPath = join(TEMP_DIR, `shadow-${crypto.randomUUID()}.tb`)
+  if (fs.existsSync(filePath)) {
+    fs.copyFileSync(filePath, shadowPath)
+    safeLog(`[db] created MAS shadow copy ${shadowPath} for ${filePath}`)
+  } else {
+    safeLog(`[db] reserved MAS shadow path ${shadowPath} for ${filePath}`)
+  }
+  tempFilePaths.add(shadowPath)
+  masShadowCopies.set(filePath, shadowPath)
+  return shadowPath
+}
+
+function getRuntimeDbPath(filePath: string): string {
+  return isMasExternalFilePath(filePath) ? getMasShadowPath(filePath) : filePath
+}
+
+function syncMasShadowCopy(filePath: string): void {
+  const shadowPath = masShadowCopies.get(filePath)
+  if (!shadowPath) {
+    return
+  }
+
+  const db = connectionCache.get(filePath)
+  if (db) {
+    db.pragma('wal_checkpoint(TRUNCATE)')
+  }
+
+  ensureMasFileAccess(filePath)
+  fs.copyFileSync(shadowPath, filePath)
+  safeLog(`[db] synced MAS shadow copy ${shadowPath} -> ${filePath}`)
+}
+
+function disposeMasShadowCopy(filePath: string): void {
+  const shadowPath = masShadowCopies.get(filePath)
+  if (!shadowPath) {
+    return
+  }
+
+  masShadowCopies.delete(filePath)
+  tempFilePaths.delete(shadowPath)
+
+  for (const candidatePath of [shadowPath, `${shadowPath}-wal`, `${shadowPath}-shm`]) {
+    try {
+      if (fs.existsSync(candidatePath)) {
+        fs.unlinkSync(candidatePath)
+      }
+    } catch (error) {
+      safeLog(`Failed to delete MAS shadow file ${candidatePath}: ${formatError(error)}`, 'warn')
+    }
+  }
+}
 
 /**
  * Ensures the temp directory exists and cleans up old orphaned temp files.
@@ -169,6 +251,10 @@ const accessOrder: string[] = []
  * @throws Error if the file is not a valid SQLite database
  */
 function getDbConnection(filePath: string): Database.Database {
+  ensureMasFileAccess(filePath)
+  const runtimePath = getRuntimeDbPath(filePath)
+  safeLog(`[db] opening connection for ${filePath} (runtime=${runtimePath})`)
+
   // Return cached connection if available
   if (connectionCache.has(filePath)) {
     // Update access order - move to end (most recently used)
@@ -181,12 +267,13 @@ function getDbConnection(filePath: string): Database.Database {
   }
 
   // Check if file exists and validate it's a SQLite database (if it exists)
-  const fileExists = fs.existsSync(filePath)
+  const fileExists = fs.existsSync(runtimePath)
+  safeLog(`[db] file exists=${fileExists} path=${runtimePath} logical=${filePath}`)
   if (fileExists) {
     let fd: number | undefined
     try {
       // Read the first 16 bytes to check for SQLite magic header
-      fd = fs.openSync(filePath, 'r')
+      fd = fs.openSync(runtimePath, 'r')
       const buffer = Buffer.alloc(16)
       fs.readSync(fd, buffer, 0, 16, 0)
 
@@ -195,7 +282,7 @@ function getDbConnection(filePath: string): Database.Database {
 
       if (!fileHeader.startsWith('SQLite format 3')) {
         throw new Error(
-          `File ${filePath} is not a valid SQLite database. Please select a valid twig presentation file.`
+          `File ${runtimePath} is not a valid SQLite database. Please select a valid twig presentation file.`
         )
       }
     } catch (error) {
@@ -221,27 +308,33 @@ function getDbConnection(filePath: string): Database.Database {
   // Create new connection, initialize schema, and cache it.
   // If the path is under TEMP_DIR, recreate the directory in case it was
   // deleted externally (e.g. after the system woke from sleep).
-  if (filePath.startsWith(TEMP_DIR)) {
+  if (runtimePath.startsWith(TEMP_DIR)) {
     ensureTempDir()
   }
 
   let db: Database.Database
   try {
-    db = new Database(filePath)
+    db = new Database(runtimePath)
   } catch (error) {
     if (error instanceof Error && error.message.includes('not a database')) {
       throw new Error(
-        `File ${filePath} is not a valid SQLite database. Please select a valid twig presentation file.`
+        `File ${runtimePath} is not a valid SQLite database. Please select a valid twig presentation file.`
       )
     }
+    safeLog(
+      `[db] Database constructor failed for ${filePath} (runtime=${runtimePath}): ${formatError(error)}`,
+      'error'
+    )
     throw error
   }
 
   try {
     dbService.configureDatabaseConnection(db)
 
-    if (fileExists) {
-      verifyDatabaseQuickCheck(db, filePath)
+    if (fileExists && !shouldSkipExternalIntegrityChecks(runtimePath)) {
+      verifyDatabaseQuickCheck(db, runtimePath)
+    } else if (fileExists) {
+      safeLog(`[db] skipping quick_check for MAS external file ${runtimePath}`, 'warn')
     }
 
     dbService.initializeDatabase(db)
@@ -251,8 +344,7 @@ function getDbConnection(filePath: string): Database.Database {
       const lruPath = accessOrder.shift() // Remove least recently used
       if (lruPath && connectionCache.has(lruPath)) {
         try {
-          connectionCache.get(lruPath)!.close()
-          connectionCache.delete(lruPath)
+          closeDbConnection(lruPath, 'none')
           safeLog(`Closed LRU database connection: ${lruPath}`)
         } catch (closeError) {
           console.error(`Error closing LRU connection for ${lruPath}:`, closeError)
@@ -328,6 +420,11 @@ async function retryFileOperation<T>(operation: () => T, maxRetries: number = 5)
  * @throws Error if integrity check fails or returns unexpected format
  */
 function verifyDatabaseIntegrity(filePath: string, context: string): void {
+  if (shouldSkipExternalIntegrityChecks(filePath)) {
+    safeLog(`[db] skipping integrity_check for MAS external file ${filePath} (${context})`, 'warn')
+    return
+  }
+  ensureMasFileAccess(filePath)
   const testDb = new Database(filePath, { readonly: true })
 
   try {
@@ -371,6 +468,10 @@ function verifyDatabaseQuickCheck(db: Database.Database, filePath: string): void
   safeLog(`Database quick_check verified on open: ${filePath}`)
 }
 
+function shouldSkipExternalIntegrityChecks(filePath: string): boolean {
+  return process.mas && !filePath.startsWith(TEMP_DIR)
+}
+
 /**
  * Safely logs a message, ignoring errors if console is unavailable (e.g., during shutdown).
  * This prevents crashes when logging during application exit.
@@ -392,6 +493,17 @@ function formatError(error: unknown): string {
 }
 
 /**
+ * Re-activates a stored security-scoped bookmark before touching a user-selected
+ * file in MAS builds. Temp files live under the app container and do not need it.
+ */
+function ensureMasFileAccess(filePath: string): void {
+  if (!process.mas) return
+  if (filePath.startsWith(TEMP_DIR)) return
+  const hasAccess = bookmarksService.ensureAccess(filePath)
+  safeLog(`[bookmarks] ensureMasFileAccess path=${filePath} active=${hasAccess}`)
+}
+
+/**
  * Closes and removes a database connection from the cache.
  * This should be called before overwriting or deleting a database file.
  *
@@ -402,12 +514,22 @@ function closeDbConnection(
   filePath: string,
   checkpointMode: 'none' | 'passive' | 'truncate' = 'none'
 ): void {
+  const hasShadowCopy = masShadowCopies.has(filePath)
+
   if (connectionCache.has(filePath)) {
     try {
       const db = connectionCache.get(filePath)!
 
-      // Force WAL checkpoint to ensure all data is written to the main file
-      if (checkpointMode !== 'none') {
+      if (hasShadowCopy) {
+        try {
+          syncMasShadowCopy(filePath)
+        } catch (checkpointError) {
+          safeLog(
+            `Failed to sync MAS shadow copy for ${filePath}: ${formatError(checkpointError)}`,
+            'warn'
+          )
+        }
+      } else if (checkpointMode !== 'none') {
         try {
           const mode = checkpointMode === 'passive' ? 'PASSIVE' : 'TRUNCATE'
           db.pragma(`wal_checkpoint(${mode})`)
@@ -431,6 +553,10 @@ function closeDbConnection(
       accessOrder.splice(index, 1)
     }
   }
+
+  if (hasShadowCopy) {
+    disposeMasShadowCopy(filePath)
+  }
 }
 
 /**
@@ -443,9 +569,21 @@ function closeDbConnection(
  * @param filePath - Absolute path to the .tb file
  * @param fn - Database operation to run
  */
-function withDbConnection<T>(filePath: string, fn: (db: Database.Database) => T): T {
+function withDbConnection<T>(
+  filePath: string,
+  fn: (db: Database.Database) => T,
+  options: { syncShadowBack?: boolean } = {}
+): T {
+  const runOperation = (): T => {
+    const result = fn(getDbConnection(filePath))
+    if (options.syncShadowBack) {
+      syncMasShadowCopy(filePath)
+    }
+    return result
+  }
+
   try {
-    return fn(getDbConnection(filePath))
+    return runOperation()
   } catch (error) {
     if ((error as { code?: string }).code === 'SQLITE_READONLY_DBMOVED') {
       // Stale connection (file was moved/renamed while the connection was open).
@@ -455,7 +593,7 @@ function withDbConnection<T>(filePath: string, fn: (db: Database.Database) => T)
         `Retrying after stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`,
         'warn'
       )
-      return fn(getDbConnection(filePath))
+      return runOperation()
     }
     throw error
   }
@@ -928,6 +1066,7 @@ app.on('open-file', (event, path) => {
   event.preventDefault()
   if (path.endsWith('.tb')) {
     fileToOpen = path
+    ensureMasFileAccess(path)
     const window = getMainWindow()
     if (window) {
       focusMainWindow(window)
@@ -1044,6 +1183,8 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  createApplicationMenu()
+
   // Close all cached database connections before the system sleeps so that
   // connections are never stale after wake (SQLITE_READONLY_DBMOVED).
   powerMonitor.on('suspend', () => {
@@ -1116,9 +1257,13 @@ app.whenReady().then(() => {
       securityScopedBookmarks: process.mas === true
     })
     const { filePaths, bookmarks } = result
+    safeLog(
+      `[dialog] open result paths=${filePaths?.length ?? 0} bookmarks=${bookmarks?.length ?? 0}`
+    )
     if (filePaths && filePaths.length > 0) {
       if (process.mas && bookmarks && bookmarks.length > 0) {
         bookmarksService.saveBookmark(filePaths[0], bookmarks[0])
+        bookmarksService.ensureAccess(filePaths[0])
       }
       return filePaths[0]
     }
@@ -1235,7 +1380,9 @@ app.whenReady().then(() => {
   ipcMain.handle('db:create-slide', (_event, filePath: string): Slide => {
     try {
       validateFilePath(filePath)
-      return withDbConnection(filePath, (db) => dbService.createSlide(db))
+      return withDbConnection(filePath, (db) => dbService.createSlide(db), {
+        syncShadowBack: true
+      })
     } catch (error) {
       console.error('Error in db:create-slide:', error)
       throw error
@@ -1249,7 +1396,9 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       validateSlideId(slide.id)
-      withDbConnection(filePath, (db) => dbService.saveSlide(db, slide))
+      withDbConnection(filePath, (db) => dbService.saveSlide(db, slide), {
+        syncShadowBack: true
+      })
     } catch (error) {
       console.error('Error in db:save-slide:', error)
       throw error
@@ -1265,7 +1414,9 @@ app.whenReady().then(() => {
       try {
         validateFilePath(filePath)
         validateSlideId(slideId)
-        withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail))
+        withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail), {
+          syncShadowBack: true
+        })
       } catch (error) {
         console.error('Error in db:save-thumbnail:', error)
         throw error
@@ -1301,7 +1452,9 @@ app.whenReady().then(() => {
     (_event, filePath: string, key: string, value: string | null): void => {
       try {
         validateFilePath(filePath)
-        withDbConnection(filePath, (db) => dbService.setSetting(db, key, value))
+        withDbConnection(filePath, (db) => dbService.setSetting(db, key, value), {
+          syncShadowBack: true
+        })
       } catch (error) {
         console.error('Error in db:set-setting:', error)
         throw error
@@ -1314,7 +1467,9 @@ app.whenReady().then(() => {
     (_event, filePath: string, background: dbService.SlideBackground | null): void => {
       try {
         validateFilePath(filePath)
-        withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background))
+        withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background), {
+          syncShadowBack: true
+        })
       } catch (error) {
         console.error('Error in db:apply-background-to-all:', error)
         throw error
@@ -1326,7 +1481,9 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       validateSlideId(slideId)
-      withDbConnection(filePath, (db) => dbService.deleteSlide(db, slideId))
+      withDbConnection(filePath, (db) => dbService.deleteSlide(db, slideId), {
+        syncShadowBack: true
+      })
     } catch (error) {
       console.error('Error in db:delete-slide:', error)
       throw error
@@ -1337,7 +1494,9 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       for (const id of orderedIds) validateSlideId(id)
-      withDbConnection(filePath, (db) => dbService.reorderSlides(db, orderedIds))
+      withDbConnection(filePath, (db) => dbService.reorderSlides(db, orderedIds), {
+        syncShadowBack: true
+      })
     } catch (error) {
       console.error('Error in db:reorder-slides:', error)
       throw error
@@ -1351,6 +1510,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:save-as', (_event, filePath: string, slides: Slide[]): void => {
     try {
       validateFilePath(filePath)
+      ensureMasFileAccess(filePath)
       // Validate all slide IDs
       for (const slide of slides) {
         validateSlideId(slide.id)
@@ -1382,8 +1542,9 @@ app.whenReady().then(() => {
       }
 
       // Create a new database and save all slides in a single transaction
-      const db = getDbConnection(filePath)
-      dbService.saveAllSlides(db, slides)
+      withDbConnection(filePath, (db) => dbService.saveAllSlides(db, slides), {
+        syncShadowBack: true
+      })
     } catch (error) {
       console.error('Error in db:save-as:', error)
       throw error
@@ -1492,6 +1653,8 @@ app.whenReady().then(() => {
       try {
         validateFilePath(sourcePath)
         validateFilePath(destPath)
+        ensureMasFileAccess(sourcePath)
+        ensureMasFileAccess(destPath)
 
         // Verify source file exists
         if (!fs.existsSync(sourcePath)) {
@@ -1632,6 +1795,8 @@ app.whenReady().then(() => {
       try {
         validateFilePath(sourcePath)
         validateFilePath(destPath)
+        ensureMasFileAccess(sourcePath)
+        ensureMasFileAccess(destPath)
 
         // Prevent data loss by checking if source and destination are the same path
         // Use normalize to handle trailing slashes and relative path segments
@@ -1771,7 +1936,9 @@ app.whenReady().then(() => {
           format,
           variant
         }
-        withDbConnection(filePath, (db) => dbService.addFont(db, font))
+        withDbConnection(filePath, (db) => dbService.addFont(db, font), {
+          syncShadowBack: true
+        })
       } catch (error) {
         console.error('Error in fonts:embed-font:', error)
         throw error
