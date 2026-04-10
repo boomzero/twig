@@ -34,6 +34,48 @@ jobs:
         env:
           WINDOWS_STORE_IDENTITY_NAME: ${{ secrets.WINDOWS_STORE_IDENTITY_NAME }}
           WINDOWS_STORE_PUBLISHER: ${{ secrets.WINDOWS_STORE_PUBLISHER }}
+          WINDOWS_STORE_PUBLISHER_DISPLAY_NAME: ${{ secrets.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME }}
+
+      - name: Validate AppX manifest metadata
+        shell: pwsh
+        env:
+          WINDOWS_STORE_PUBLISHER_DISPLAY_NAME: ${{ secrets.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME }}
+        run: |
+          $appx = Get-ChildItem dist\*.appx | Select-Object -First 1
+          if (-not $appx) {
+            throw "No AppX artifact found in dist"
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($appx.FullName)
+          try {
+            $entry = $zip.GetEntry('AppxManifest.xml')
+            if (-not $entry) {
+              throw "AppxManifest.xml not found in $($appx.Name)"
+            }
+
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            try {
+              [xml]$manifest = $reader.ReadToEnd()
+            } finally {
+              $reader.Dispose()
+            }
+          } finally {
+            $zip.Dispose()
+          }
+
+          $expectedDisplayName = if ($env:WINDOWS_STORE_PUBLISHER_DISPLAY_NAME) {
+            $env:WINDOWS_STORE_PUBLISHER_DISPLAY_NAME
+          } else {
+            '朱晨瑞'
+          }
+          $actualDisplayName = $manifest.Package.Properties.PublisherDisplayName
+
+          if ($actualDisplayName -ne $expectedDisplayName) {
+            throw "PublisherDisplayName mismatch. Expected '$expectedDisplayName' but found '$actualDisplayName'."
+          }
+
+          Write-Host "Validated PublisherDisplayName: $actualDisplayName"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
