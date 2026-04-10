@@ -1183,7 +1183,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  createApplicationMenu()
+  setupMacAppMenu()
 
   // Close all cached database connections before the system sleeps so that
   // connections are never stale after wake (SQLITE_READONLY_DBMOVED).
