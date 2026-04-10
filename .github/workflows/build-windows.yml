@@ -31,15 +31,9 @@ jobs:
 
       - name: Build Windows Store package
         run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win appx --publish never
-        env:
-          WINDOWS_STORE_IDENTITY_NAME: ${{ secrets.WINDOWS_STORE_IDENTITY_NAME }}
-          WINDOWS_STORE_PUBLISHER: ${{ secrets.WINDOWS_STORE_PUBLISHER }}
-          WINDOWS_STORE_PUBLISHER_DISPLAY_NAME: ${{ secrets.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME }}
 
       - name: Validate AppX manifest metadata
         shell: pwsh
-        env:
-          WINDOWS_STORE_PUBLISHER_DISPLAY_NAME: ${{ secrets.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME }}
         run: |
           $appx = Get-ChildItem dist\*.appx | Select-Object -First 1
           if (-not $appx) {
@@ -64,18 +58,51 @@ jobs:
             $zip.Dispose()
           }
 
-          $expectedDisplayName = if ($env:WINDOWS_STORE_PUBLISHER_DISPLAY_NAME) {
+          $expectedIdentityName = if ($env:WINDOWS_STORE_IDENTITY_NAME) {
+            $env:WINDOWS_STORE_IDENTITY_NAME
+          } else {
+            'FF08CC69.TwigPresentationEditor'
+          }
+          $expectedPublisher = if ($env:WINDOWS_STORE_PUBLISHER) {
+            $env:WINDOWS_STORE_PUBLISHER
+          } else {
+            'CN=76F716C7-82A7-4940-8AF7-087E05524817'
+          }
+          $expectedDisplayName = if ($env:WINDOWS_STORE_DISPLAY_NAME) {
+            $env:WINDOWS_STORE_DISPLAY_NAME
+          } else {
+            'Twig Presentation Editor'
+          }
+          $expectedPublisherDisplayName = if ($env:WINDOWS_STORE_PUBLISHER_DISPLAY_NAME) {
             $env:WINDOWS_STORE_PUBLISHER_DISPLAY_NAME
           } else {
             '朱晨瑞'
           }
-          $actualDisplayName = $manifest.Package.Properties.PublisherDisplayName
 
-          if ($actualDisplayName -ne $expectedDisplayName) {
-            throw "PublisherDisplayName mismatch. Expected '$expectedDisplayName' but found '$actualDisplayName'."
+          $mismatches = @()
+
+          if ($manifest.Package.Identity.Name -ne $expectedIdentityName) {
+            $mismatches += "Identity.Name expected '$expectedIdentityName' but found '$($manifest.Package.Identity.Name)'"
+          }
+          if ($manifest.Package.Identity.Publisher -ne $expectedPublisher) {
+            $mismatches += "Identity.Publisher expected '$expectedPublisher' but found '$($manifest.Package.Identity.Publisher)'"
+          }
+          if ($manifest.Package.Properties.DisplayName -ne $expectedDisplayName) {
+            $mismatches += "Properties.DisplayName expected '$expectedDisplayName' but found '$($manifest.Package.Properties.DisplayName)'"
+          }
+          if ($manifest.Package.Properties.PublisherDisplayName -ne $expectedPublisherDisplayName) {
+            $mismatches += "Properties.PublisherDisplayName expected '$expectedPublisherDisplayName' but found '$($manifest.Package.Properties.PublisherDisplayName)'"
           }
 
-          Write-Host "Validated PublisherDisplayName: $actualDisplayName"
+          if ($mismatches.Count -gt 0) {
+            throw ($mismatches -join "`n")
+          }
+
+          Write-Host "Validated Store metadata:"
+          Write-Host "  Identity.Name=$($manifest.Package.Identity.Name)"
+          Write-Host "  Identity.Publisher=$($manifest.Package.Identity.Publisher)"
+          Write-Host "  Properties.DisplayName=$($manifest.Package.Properties.DisplayName)"
+          Write-Host "  Properties.PublisherDisplayName=$($manifest.Package.Properties.PublisherDisplayName)"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

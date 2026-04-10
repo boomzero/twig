@@ -1,20 +1,22 @@
+const displayName =
+  process.env.WINDOWS_STORE_DISPLAY_NAME || 'Twig Presentation Editor'
 const publisherDisplayName =
   process.env.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME || '朱晨瑞'
+const identityName =
+  process.env.WINDOWS_STORE_IDENTITY_NAME || 'FF08CC69.TwigPresentationEditor'
+const publisher =
+  process.env.WINDOWS_STORE_PUBLISHER || 'CN=76F716C7-82A7-4940-8AF7-087E05524817'
+const applicationId =
+  process.env.WINDOWS_STORE_APPLICATION_ID || 'TwigPresentationEditor'
 
 const msix = {
   artifactName: '${name}-${version}.${ext}',
-  displayName: 'twig',
+  displayName,
   publisherDisplayName,
-  applicationId: 'twig',
+  identityName,
+  publisher,
+  applicationId,
   languages: ['en-US', 'zh-CN'],
-}
-
-if (process.env.WINDOWS_STORE_IDENTITY_NAME) {
-  msix.identityName = process.env.WINDOWS_STORE_IDENTITY_NAME
-}
-
-if (process.env.WINDOWS_STORE_PUBLISHER) {
-  msix.publisher = process.env.WINDOWS_STORE_PUBLISHER
 }
 
 module.exports = {
