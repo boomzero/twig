@@ -1330,6 +1330,7 @@
   let unsubscribePresentationReady: (() => void) | undefined
   let unsubscribeOpenFile: (() => void) | undefined
   let unsubscribeUpdateDownloaded: (() => void) | undefined
+  let unsubscribeOpenSettings: (() => void) | undefined
 
   // Reset background and transition checkpoint gates on pointer release so the next drag
   // session gets its own undo entry.
@@ -1419,6 +1420,11 @@
       updateAvailableVersion = version
     })
 
+    // Open settings modal when triggered from the native app menu (macOS Cmd+,)
+    unsubscribeOpenSettings = window.api?.app?.onOpenSettings(() => {
+      settingsOpen = true
+    })
+
     // Listen for window close event - flush pending saves before closing
     unsubscribeBeforeClose = window.api?.lifecycle?.onBeforeClose(async () => {
       await flushPendingSave()
@@ -1457,6 +1463,7 @@
     unsubscribePresentationReady?.()
     unsubscribeOpenFile?.()
     unsubscribeUpdateDownloaded?.()
+    unsubscribeOpenSettings?.()
 
     // Unregister flush save callback
     unregisterFlushSave()

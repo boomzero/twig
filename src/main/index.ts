@@ -8,7 +8,7 @@
  * - Database connection caching and management
  */
 
-import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, powerMonitor, webContents, Menu } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -643,8 +643,60 @@ function getSystemFonts(): SystemFont[] {
  * Creates and configures the main application window.
  * Sets up window properties, event handlers, and loads the renderer content.
  */
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+let mainWindow: BrowserWindow | null = null
+
+function getMainWindow(): BrowserWindow | null {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow
+  }
+
+  mainWindow = null
+  return null
+}
+
+function focusMainWindow(window: BrowserWindow): void {
+  if (window.isDestroyed()) return
+  if (window.isMinimized()) {
+    window.restore()
+  }
+  window.show()
+  window.focus()
+}
+
+function showOrCreateMainWindow(): BrowserWindow {
+  const existingWindow = getMainWindow()
+  if (existingWindow) {
+    focusMainWindow(existingWindow)
+    return existingWindow
+  }
+
+  return createWindow()
+}
+
+function openSettingsInMainWindow(): void {
+  const existingWindow = getMainWindow()
+  if (existingWindow) {
+    focusMainWindow(existingWindow)
+    existingWindow.webContents.send('app:open-settings')
+    return
+  }
+
+  const window = createWindow()
+  window.webContents.once('did-finish-load', () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('app:open-settings')
+    }
+  })
+}
+
+function createWindow(): BrowserWindow {
+  const existingWindow = getMainWindow()
+  if (existingWindow) {
+    focusMainWindow(existingWindow)
+    return existingWindow
+  }
+
+  const window = new BrowserWindow({
     width: 1440,
     height: 900,
     show: false, // Don't show until ready-to-show event (prevents visual flash)
@@ -655,28 +707,29 @@ function createWindow(): void {
       sandbox: false // Required for better-sqlite3 native module
     }
   })
+  mainWindow = window
 
   let hasShownWindow = false
   let showFallbackTimeout: NodeJS.Timeout | null = null
 
   const showMainWindow = (): void => {
-    if (hasShownWindow || mainWindow.isDestroyed()) return
+    if (hasShownWindow || window.isDestroyed()) return
     hasShownWindow = true
     if (showFallbackTimeout) {
       clearTimeout(showFallbackTimeout)
       showFallbackTimeout = null
     }
-    mainWindow.show()
+    window.show()
   }
 
   // Show window only when content is ready to prevent blank white flash
-  mainWindow.on('ready-to-show', () => {
+  window.on('ready-to-show', () => {
     showMainWindow()
   })
 
   // In MAS/sandboxed builds ready-to-show can fail to fire even though the
   // renderer has loaded successfully, leaving the app with no visible window.
-  mainWindow.webContents.on('did-finish-load', () => {
+  window.webContents.on('did-finish-load', () => {
     showFallbackTimeout = setTimeout(showMainWindow, 250)
   })
 
@@ -685,7 +738,7 @@ function createWindow(): void {
   let closePromise: Promise<void> | null = null
 
   // Prevent window from closing until pending saves are flushed
-  mainWindow.on('close', (event) => {
+  window.on('close', (event) => {
     // Always prevent default close - we'll destroy manually when ready
     event.preventDefault()
 
@@ -708,8 +761,8 @@ function createWindow(): void {
         }
 
         // Close window if not already destroyed
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.destroy()
+        if (!window.isDestroyed()) {
+          window.destroy()
         }
 
         resolve()
@@ -723,12 +776,12 @@ function createWindow(): void {
       }
 
       // Ask renderer to flush pending saves
-      mainWindow.webContents.send('lifecycle:before-close')
+      window.webContents.send('lifecycle:before-close')
 
       // Listen for flush complete (only from the main window)
       const flushCompleteHandler = (_event: Electron.IpcMainEvent): void => {
         // Validate that the message came from the main window
-        if (_event.sender !== mainWindow.webContents) {
+        if (_event.sender !== window.webContents) {
           console.warn('Received lifecycle:flush-complete from non-main window, ignoring')
           return
         }
@@ -749,17 +802,25 @@ function createWindow(): void {
   })
 
   // Open external links in the system browser instead of within the app
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  window.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
   // Load the app content (different paths for dev vs production)
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    window.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    window.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  window.on('closed', () => {
+    if (mainWindow === window) {
+      mainWindow = null
+    }
+  })
+
+  return window
 }
 
 /**
@@ -844,10 +905,7 @@ function createPresentationWindow(): void {
 
   presentationWindow.on('closed', () => {
     // Notify main window that presentation was closed
-    const mainWindow = BrowserWindow.getAllWindows().find(
-      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
-    )
-    mainWindow?.webContents.send('presentation:window-closed')
+    getMainWindow()?.webContents.send('presentation:window-closed')
     presentationWindow = null
   })
 
@@ -870,9 +928,13 @@ app.on('open-file', (event, path) => {
   event.preventDefault()
   if (path.endsWith('.tb')) {
     fileToOpen = path
-    // If the main window is already up, send immediately
-    const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
-    win?.webContents.send('app:open-file', path)
+    const window = getMainWindow()
+    if (window) {
+      focusMainWindow(window)
+      window.webContents.send('app:open-file', path)
+    } else if (app.isReady()) {
+      createWindow()
+    }
   }
 })
 
@@ -880,6 +942,80 @@ app.on('open-file', (event, path) => {
 if (process.platform !== 'darwin') {
   const argFile = process.argv.slice(1).find((a) => a.endsWith('.tb'))
   if (argFile) fileToOpen = argFile
+}
+
+// ============================================================================
+// Application Menu (macOS)
+// ============================================================================
+
+/**
+ * Sets up the macOS application menu.
+ * On macOS the system menu bar is always visible, so a proper menu with
+ * a Window submenu is required — otherwise there is no way to reopen a
+ * window after it has been closed (MAS Guideline 4).
+ */
+function setupMacAppMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Settings…',
+          accelerator: 'Cmd+,',
+          click: () => {
+            openSettingsInMainWindow()
+          }
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'File',
+      submenu: [
+        { role: 'close' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'Window',
+      role: 'window',
+      submenu: [
+        {
+          label: 'Show Main Window',
+          click: () => {
+            showOrCreateMainWindow()
+          }
+        },
+        { type: 'separator' },
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' }
+      ]
+    }
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 // ============================================================================
@@ -896,6 +1032,12 @@ app.whenReady().then(() => {
 
   // Set app user model ID for Windows
   electronApp.setAppUserModelId('com.electron')
+
+  // Set up macOS application menu (required for MAS: Window menu lets users
+  // reopen windows and the menu bar remains usable when no windows are open)
+  if (process.platform === 'darwin') {
+    setupMacAppMenu()
+  }
 
   // Enable dev tools shortcuts optimization
   app.on('browser-window-created', (_, window) => {
@@ -1687,9 +1829,9 @@ app.whenReady().then(() => {
   // Create the main window
   createWindow()
 
-  // On macOS, re-create window when dock icon is clicked and no windows are open
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  // On macOS, restore the primary editor window when the dock icon is clicked.
+  app.on('activate', () => {
+    showOrCreateMainWindow()
   })
 
   // --------------------------------------------------------------------------
@@ -1740,12 +1882,10 @@ app.whenReady().then(() => {
    * Forwards the request to the main window.
    */
   ipcMain.on('debug:request-state', () => {
-    const mainWindow = BrowserWindow.getAllWindows().find(
-      (win) => win !== debugWindow && !win.isDestroyed()
-    )
-    if (mainWindow) {
+    const window = getMainWindow()
+    if (window) {
       // Ask main window to send its state
-      mainWindow.webContents.send('debug:request-state-from-main')
+      window.webContents.send('debug:request-state-from-main')
     }
   })
 
@@ -1773,10 +1913,7 @@ app.whenReady().then(() => {
 
   /** Forward navigation requests from presentation window to main window. */
   ipcMain.on('presentation:navigate', (_event, direction: string) => {
-    const mainWindow = BrowserWindow.getAllWindows().find(
-      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
-    )
-    mainWindow?.webContents.send('presentation:navigate-request', direction)
+    getMainWindow()?.webContents.send('presentation:navigate-request', direction)
   })
 
   /** Forward exit request from presentation window to main window. */
@@ -1788,10 +1925,7 @@ app.whenReady().then(() => {
 
   /** Presentation window signals it's ready — forward to main window so it sends initial state. */
   ipcMain.on('presentation:ready', () => {
-    const mainWindow = BrowserWindow.getAllWindows().find(
-      (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
-    )
-    mainWindow?.webContents.send('presentation:window-ready')
+    getMainWindow()?.webContents.send('presentation:window-ready')
   })
 
   // --------------------------------------------------------------------------
@@ -1814,10 +1948,7 @@ app.whenReady().then(() => {
 
     /** Notify the main window that a new version is downloaded and ready. */
     function notifyUpdateReady(version: string): void {
-      const mainWindow = BrowserWindow.getAllWindows().find(
-        (win) => win !== presentationWindow && win !== debugWindow && !win.isDestroyed()
-      )
-      mainWindow?.webContents.send('app:update-downloaded', version)
+      getMainWindow()?.webContents.send('app:update-downloaded', version)
     }
 
     autoUpdater.on('update-downloaded', (info) => {
@@ -1906,9 +2037,8 @@ let cleanupCompleted = false
 let isQuitting = false
 
 /**
- * Cleans up all database connections and temp files.
- * Called on app shutdown and when all windows are closed.
- * Uses promise-based guard to prevent concurrent cleanup attempts.
+ * Cleans up all database connections and temp files during app shutdown.
+ * Uses a promise-based guard to prevent concurrent cleanup attempts.
  */
 async function cleanupResources(): Promise<void> {
   // If cleanup already completed, don't run again
@@ -1970,17 +2100,16 @@ app.on('before-quit', () => {
 })
 
 /**
- * Clean up resources when all windows are closed.
+ * Clean up resources when the app is actually exiting.
  */
 app.on('window-all-closed', async () => {
-  await cleanupResources()
-
-  // Quit the app after cleanup
-  // On macOS, this is only reached when user explicitly quits (Cmd+Q)
-  // because isQuitting is tracked
-  if (process.platform !== 'darwin' || isQuitting) {
-    app.quit()
+  if (process.platform === 'darwin' && !isQuitting) {
+    safeLog('All windows closed on macOS; app remains active until explicit quit')
+    return
   }
+
+  await cleanupResources()
+  app.quit()
 })
 
 /**

@@ -155,6 +155,7 @@ declare global {
       }
       app: {
         getFileToOpen: () => Promise<string | null>
+        onOpenSettings: (callback: () => void) => () => void
         onOpenFile: (callback: (filePath: string) => void) => () => void
         checkForUpdates: () => Promise<'checking' | 'up-to-date' | 'error'>
         installUpdate: () => Promise<void>
