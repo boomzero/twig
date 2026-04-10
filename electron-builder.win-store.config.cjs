@@ -1,7 +1,10 @@
+const publisherDisplayName =
+  process.env.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME || '朱晨瑞'
+
 const msix = {
   artifactName: '${name}-${version}.${ext}',
   displayName: 'twig',
-  publisherDisplayName: 'Chenrui Zhu',
+  publisherDisplayName,
   applicationId: 'twig',
   languages: ['en-US', 'zh-CN'],
 }
