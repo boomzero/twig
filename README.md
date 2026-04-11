@@ -7,6 +7,12 @@
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555?style=flat-square)](#installation)
 
+<br/>
+
+<a href="https://apps.apple.com/us/app/twig-presentation-editor/id6761291348">
+  <img src="resources/mac-app-store-badge.svg" alt="Download on the Mac App Store" height="40" />
+</a>
+
 </div>
 
 ---
@@ -38,7 +44,7 @@ Grab the latest build from [Releases](https://github.com/boomzero/twig/releases)
 
 | Platform | File |
 |----------|------|
-| macOS | `.dmg` |
+| macOS | `.dmg` or Mac App Store |
 | Windows | `.exe` / `.msi` |
 | Linux | `.AppImage` / `.deb` |
 
