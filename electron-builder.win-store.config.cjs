@@ -16,6 +16,8 @@ const msix = {
   identityName,
   publisher,
   applicationId,
+  // electron-builder resolves AppX tile assets from build/appx/*.png.
+  backgroundColor: '#282B33',
   languages: ['en-US', 'zh-CN'],
 }
 
