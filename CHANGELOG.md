@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.0] - 2026-04-12
+
+### Summary
+
+First stable release. Twig is now available on the Mac App Store.
+
 ## [1.0.0-rc.12] - 2026-04-05
 
 ### Added
