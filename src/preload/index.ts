@@ -294,6 +294,9 @@ const api = {
 
   // Window lifecycle
   lifecycle: {
+    /** Signal that the renderer has registered its close-request handler */
+    signalCloseReady: () => ipcRenderer.send('lifecycle:close-ready'),
+
     /** Called by main process when the user requests to close the main window */
     onCloseRequested: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, requestId: unknown): void =>

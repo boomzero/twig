@@ -1471,6 +1471,7 @@
       const decision = (await handleCloseRequest()) ? 'proceed' : 'cancel'
       window.api?.lifecycle?.respondToCloseRequest(requestId, decision)
     })
+    window.api?.lifecycle?.signalCloseReady()
   })
 
   /**

@@ -177,6 +177,7 @@ declare global {
         set: (key: 'locale' | 'autoUpdate', value: string | boolean) => Promise<void>
       }
       lifecycle: {
+        signalCloseReady: () => void
         onCloseRequested: (callback: (requestId: number) => void) => () => void
         respondToCloseRequest: (requestId: number, decision: 'proceed' | 'cancel') => void
       }

@@ -2,13 +2,14 @@ import type { BrowserWindow, IpcMain, IpcMainEvent, WebContents } from 'electron
 
 export const CLOSE_REQUEST_CHANNEL = 'lifecycle:close-requested'
 export const CLOSE_RESPONSE_CHANNEL = 'lifecycle:close-response'
+export const CLOSE_READY_CHANNEL = 'lifecycle:close-ready'
 export type CloseDecision = 'proceed' | 'cancel'
 
 interface CloseEventLike {
   preventDefault(): void
 }
 
-type WebContentsLike = Pick<WebContents, 'send' | 'once' | 'removeListener'>
+type WebContentsLike = Pick<WebContents, 'send' | 'on' | 'once' | 'removeListener'>
 type WindowLike = Pick<BrowserWindow, 'destroy' | 'isDestroyed'> & {
   webContents: WebContentsLike
 }
@@ -40,6 +41,22 @@ export function createWindowCloseController(options: WindowCloseControllerOption
 
   let closePromise: Promise<void> | null = null
   let nextRequestId = 0
+  let isRendererReadyForCloseRequests = false
+
+  const rendererReadyHandler = (event: IpcEventLike): void => {
+    if (event.sender === window.webContents) {
+      isRendererReadyForCloseRequests = true
+    }
+  }
+
+  ipcMain.on(CLOSE_READY_CHANNEL, rendererReadyHandler)
+  window.webContents.on('did-start-loading', () => {
+    isRendererReadyForCloseRequests = false
+  })
+  window.webContents.once('destroyed', () => {
+    isRendererReadyForCloseRequests = false
+    ipcMain.removeListener(CLOSE_READY_CHANNEL, rendererReadyHandler)
+  })
 
   function isDecision(value: unknown): value is CloseDecision {
     return value === 'proceed' || value === 'cancel'
@@ -53,6 +70,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
       }
 
       const requestId = ++nextRequestId
+      const rendererWasReadyForClose = isRendererReadyForCloseRequests
       let timeoutId: NodeJS.Timeout | null = null
       let settled = false
       const { webContents } = window
@@ -90,17 +108,25 @@ export function createWindowCloseController(options: WindowCloseControllerOption
       }
 
       const rendererGoneHandler = (): void => {
-        logger.warn('Renderer exited during close confirmation; canceling close')
-        settle('cancel')
+        logger.warn(
+          rendererWasReadyForClose
+            ? 'Renderer exited during close confirmation; canceling close'
+            : 'Renderer exited before close confirmation was available; closing window locally'
+        )
+        settle(rendererWasReadyForClose ? 'cancel' : 'proceed')
       }
 
       const destroyedHandler = (): void => {
-        settle('cancel')
+        settle(rendererWasReadyForClose ? 'cancel' : 'proceed')
       }
 
       timeoutId = setTimeout(() => {
-        logger.warn('Close confirmation timed out; canceling close')
-        settle('cancel')
+        logger.warn(
+          rendererWasReadyForClose
+            ? 'Close confirmation timed out; canceling close'
+            : 'Close confirmation never became available; closing window locally'
+        )
+        settle(rendererWasReadyForClose ? 'cancel' : 'proceed')
       }, timeoutMs)
 
       ipcMain.on(CLOSE_RESPONSE_CHANNEL, responseHandler)
@@ -111,7 +137,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
         webContents.send(CLOSE_REQUEST_CHANNEL, requestId)
       } catch (error) {
         logger.warn(`Failed to request close confirmation: ${String(error)}`)
-        settle('cancel')
+        settle(rendererWasReadyForClose ? 'cancel' : 'proceed')
       }
     })
   }

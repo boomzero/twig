@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  CLOSE_READY_CHANNEL,
   CLOSE_REQUEST_CHANNEL,
   CLOSE_RESPONSE_CHANNEL,
   createWindowCloseController
@@ -56,6 +57,9 @@ function createHarness(initiallyQuitting = false) {
     quitApp,
     controller,
     event,
+    signalRendererReady: () => {
+      ipcMain.emit(CLOSE_READY_CHANNEL, { sender: window.webContents })
+    },
     getIsQuitting: () => isQuitting
   }
 }
@@ -66,8 +70,9 @@ describe('windowCloseController', () => {
   })
 
   it('destroys the window and re-triggers quit when the renderer approves close', async () => {
-    const { controller, event, window, ipcMain, quitApp } = createHarness(true)
+    const { controller, event, window, ipcMain, quitApp, signalRendererReady } = createHarness(true)
 
+    signalRendererReady()
     controller.handleClose(event)
     expect(event.preventDefault).toHaveBeenCalledOnce()
     expect(window.webContents.sentMessages).toEqual([{ channel: CLOSE_REQUEST_CHANNEL, args: [1] }])
@@ -80,8 +85,17 @@ describe('windowCloseController', () => {
   })
 
   it('keeps the window open and resets quit intent when the renderer cancels', async () => {
-    const { controller, event, window, ipcMain, setIsQuitting, getIsQuitting } = createHarness(true)
+    const {
+      controller,
+      event,
+      window,
+      ipcMain,
+      setIsQuitting,
+      getIsQuitting,
+      signalRendererReady
+    } = createHarness(true)
 
+    signalRendererReady()
     controller.handleClose(event)
     ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 1, 'cancel')
     await Promise.resolve()
@@ -91,10 +105,22 @@ describe('windowCloseController', () => {
     expect(getIsQuitting()).toBe(false)
   })
 
-  it('cancels close on timeout instead of force-closing the window', async () => {
+  it('falls back to a local close when the renderer never becomes close-ready', async () => {
     vi.useFakeTimers()
-    const { controller, event, window, setIsQuitting } = createHarness(true)
+    const { controller, event, window, quitApp } = createHarness(true)
 
+    controller.handleClose(event)
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(window.destroy).toHaveBeenCalledOnce()
+    expect(quitApp).toHaveBeenCalledOnce()
+  })
+
+  it('cancels close on timeout after the renderer becomes close-ready', async () => {
+    vi.useFakeTimers()
+    const { controller, event, window, setIsQuitting, signalRendererReady } = createHarness(true)
+
+    signalRendererReady()
     controller.handleClose(event)
     await vi.advanceTimersByTimeAsync(1_000)
 
@@ -102,9 +128,21 @@ describe('windowCloseController', () => {
     expect(setIsQuitting).toHaveBeenCalledWith(false)
   })
 
-  it('cancels close when the renderer process disappears mid-handshake', async () => {
-    const { controller, event, window, setIsQuitting } = createHarness(true)
+  it('falls back to a local close when the renderer crashes before it becomes close-ready', async () => {
+    const { controller, event, window, quitApp } = createHarness(true)
 
+    controller.handleClose(event)
+    window.webContents.emit('render-process-gone')
+    await Promise.resolve()
+
+    expect(window.destroy).toHaveBeenCalledOnce()
+    expect(quitApp).toHaveBeenCalledOnce()
+  })
+
+  it('cancels close when the renderer process disappears mid-handshake after it is close-ready', async () => {
+    const { controller, event, window, setIsQuitting, signalRendererReady } = createHarness(true)
+
+    signalRendererReady()
     controller.handleClose(event)
     window.webContents.emit('render-process-gone')
     await Promise.resolve()
@@ -113,9 +151,10 @@ describe('windowCloseController', () => {
     expect(setIsQuitting).toHaveBeenCalledWith(false)
   })
 
-  it('cancels close when the webContents is destroyed mid-handshake', async () => {
-    const { controller, event, window, setIsQuitting } = createHarness(true)
+  it('cancels close when the webContents is destroyed mid-handshake after it is close-ready', async () => {
+    const { controller, event, window, setIsQuitting, signalRendererReady } = createHarness(true)
 
+    signalRendererReady()
     controller.handleClose(event)
     window.webContents.emit('destroyed')
     await Promise.resolve()
@@ -126,8 +165,9 @@ describe('windowCloseController', () => {
 
   it('ignores stale responses from an earlier timed-out close request', async () => {
     vi.useFakeTimers()
-    const { controller, event, window, ipcMain } = createHarness(true)
+    const { controller, event, window, ipcMain, signalRendererReady } = createHarness(true)
 
+    signalRendererReady()
     controller.handleClose(event)
     expect(window.webContents.sentMessages).toEqual([{ channel: CLOSE_REQUEST_CHANNEL, args: [1] }])
 
