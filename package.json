@@ -11,6 +11,9 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "svelte-check": "svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "npm run typecheck:node && npm run svelte-check",
+    "test": "node ./scripts/run-tests.mjs run",
+    "test:watch": "node ./scripts/run-tests.mjs watch",
+    "test:ci": "node ./scripts/run-tests.mjs ci",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
@@ -54,6 +57,7 @@
     "eslint": "^9.39.3",
     "eslint-plugin-svelte": "^3.15.0",
     "node-abi": "^4.26.0",
+    "node-gyp": "11.4.2",
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^3.5.0",
     "runed": "^0.37.1",
@@ -61,6 +65,7 @@
     "svelte-check": "^4.4.4",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^4.1.4"
   }
 }
