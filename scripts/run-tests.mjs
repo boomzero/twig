@@ -5,8 +5,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const mode = process.argv[2] === 'watch' ? 'watch' : 'run'
-const rootDir = dirname(fileURLToPath(import.meta.url))
-const repoDir = resolve(rootDir, '..')
+const scriptsDir = dirname(fileURLToPath(import.meta.url))
+const repoDir = resolve(scriptsDir, '..')
 let child = null
 let cleanupStarted = false
 let exitCode = 1
@@ -104,7 +104,7 @@ process.on('SIGTERM', () => forwardSignal('SIGTERM'))
 
 async function main() {
   console.warn(
-    '[tests] Do not run `npm test` and `npm run dev` simultaneously; ABI rebuilds swap the better-sqlite3 native binding.'
+    '[tests] Do not run `npm test` and `npm run dev` simultaneously; ABI rebuilds swap the better-sqlite3 native binding. The restore step rebuilds Electron headers from the network, so a failed restore invalidates the run even if tests passed.'
   )
 
   const rebuildForNode = await runCommand('npm', ['rebuild', 'better-sqlite3'])

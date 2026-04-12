@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  fontDataToBase64,
-  normalizeFontBytes,
-  type FontBytes
-} from '../../../src/renderer/src/lib/fontUtils'
+import { fontDataToBase64, normalizeFontBytes, type FontBytes } from '@renderer/lib/fontUtils'
 
 describe('src/renderer/src/lib/fontUtils.ts', () => {
   it('normalizes supported font byte shapes into Uint8Array', () => {

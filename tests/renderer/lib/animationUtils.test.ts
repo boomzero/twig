@@ -4,8 +4,8 @@ import {
   insertAnimationStep,
   isValidAnimationOrder,
   normalizeAnimationOrder
-} from '../../../src/renderer/src/lib/animationUtils'
-import type { Slide, TwigElement } from '../../../src/renderer/src/lib/types'
+} from '@renderer/lib/animationUtils'
+import type { Slide, TwigElement } from '@renderer/lib/types'
 
 function makeElement(id: string, animations?: TwigElement['animations']): TwigElement {
   return {

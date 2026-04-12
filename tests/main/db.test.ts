@@ -151,13 +151,42 @@ describe('src/main/db.ts', () => {
 
     saveSlide(db, updatedSlide)
 
-    expect(getSlide(db, slide.id)).toEqual(updatedSlide)
+    expect(getSlide(db, slide.id)).toEqual(toStoredSlideShape(updatedSlide))
     const count = db
       .prepare('SELECT COUNT(*) AS total FROM elements WHERE slide_id = ?')
       .get(slide.id) as {
       total: number
     }
     expect(count.total).toBe(1)
+  })
+
+  it('saves multiple slides atomically with saveAllSlides', () => {
+    const first = makeSlide({ id: 'slide-a' })
+    const second = makeSlide({
+      id: 'slide-b',
+      elements: [
+        {
+          id: 'el-second',
+          type: 'rect',
+          x: 50,
+          y: 60,
+          width: 200,
+          height: 100,
+          angle: 5,
+          fill: '#334455',
+          zIndex: 0
+        }
+      ],
+      animationOrder: [],
+      background: { type: 'solid', color: '#ffeeaa' },
+      transition: { type: 'push', duration: 0.8 }
+    })
+
+    saveAllSlides(db, [first, second])
+
+    expect(getSlideIds(db)).toEqual([first.id, second.id])
+    expect(getSlide(db, first.id)).toEqual(toStoredSlideShape(first))
+    expect(getSlide(db, second.id)).toEqual(toStoredSlideShape(second))
   })
 
   it('keeps slide ordering compact across create, delete, reorder, and background updates', () => {
