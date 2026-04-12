@@ -1467,9 +1467,9 @@
     })
 
     // Listen for close requests from the main process
-    unsubscribeCloseRequested = window.api?.lifecycle?.onCloseRequested(async () => {
+    unsubscribeCloseRequested = window.api?.lifecycle?.onCloseRequested(async (requestId) => {
       const decision = (await handleCloseRequest()) ? 'proceed' : 'cancel'
-      window.api?.lifecycle?.respondToCloseRequest(decision)
+      window.api?.lifecycle?.respondToCloseRequest(requestId, decision)
     })
   })
 
@@ -2847,7 +2847,14 @@
         }
 
         cancelPendingPersistence()
-        await window.api.db.deleteTemp(decision.abandonedTempPath)
+        try {
+          await window.api.db.deleteTemp(decision.abandonedTempPath)
+        } catch (cleanupError) {
+          console.error(
+            `Failed to delete temp file during close for ${decision.abandonedTempPath}:`,
+            cleanupError
+          )
+        }
         return true
       } catch (error) {
         console.error('Failed to resolve close request:', error)

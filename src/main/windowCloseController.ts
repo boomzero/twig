@@ -39,6 +39,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
   } = options
 
   let closePromise: Promise<void> | null = null
+  let nextRequestId = 0
 
   function isDecision(value: unknown): value is CloseDecision {
     return value === 'proceed' || value === 'cancel'
@@ -51,6 +52,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
         return
       }
 
+      const requestId = ++nextRequestId
       let timeoutId: NodeJS.Timeout | null = null
       let settled = false
       const { webContents } = window
@@ -72,8 +74,16 @@ export function createWindowCloseController(options: WindowCloseControllerOption
         resolve(decision)
       }
 
-      const responseHandler = (event: IpcEventLike, decision: unknown): void => {
-        if (event.sender !== webContents || !isDecision(decision)) {
+      const responseHandler = (
+        event: IpcEventLike,
+        responseRequestId: unknown,
+        decision: unknown
+      ): void => {
+        if (
+          event.sender !== webContents ||
+          responseRequestId !== requestId ||
+          !isDecision(decision)
+        ) {
           return
         }
         settle(decision)
@@ -98,7 +108,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
       webContents.once('destroyed', destroyedHandler)
 
       try {
-        webContents.send(CLOSE_REQUEST_CHANNEL)
+        webContents.send(CLOSE_REQUEST_CHANNEL, requestId)
       } catch (error) {
         logger.warn(`Failed to request close confirmation: ${String(error)}`)
         settle('cancel')

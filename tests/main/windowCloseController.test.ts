@@ -7,10 +7,10 @@ import {
 } from '../../src/main/windowCloseController'
 
 class FakeWebContents extends EventEmitter {
-  sentChannels: string[] = []
+  sentMessages: Array<{ channel: string; args: unknown[] }> = []
 
-  send(channel: string): void {
-    this.sentChannels.push(channel)
+  send(channel: string, ...args: unknown[]): void {
+    this.sentMessages.push({ channel, args })
   }
 }
 
@@ -70,9 +70,9 @@ describe('windowCloseController', () => {
 
     controller.handleClose(event)
     expect(event.preventDefault).toHaveBeenCalledOnce()
-    expect(window.webContents.sentChannels).toEqual([CLOSE_REQUEST_CHANNEL])
+    expect(window.webContents.sentMessages).toEqual([{ channel: CLOSE_REQUEST_CHANNEL, args: [1] }])
 
-    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 'proceed')
+    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 1, 'proceed')
     await Promise.resolve()
 
     expect(window.destroy).toHaveBeenCalledOnce()
@@ -83,7 +83,7 @@ describe('windowCloseController', () => {
     const { controller, event, window, ipcMain, setIsQuitting, getIsQuitting } = createHarness(true)
 
     controller.handleClose(event)
-    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 'cancel')
+    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 1, 'cancel')
     await Promise.resolve()
 
     expect(window.destroy).not.toHaveBeenCalled()
@@ -122,5 +122,29 @@ describe('windowCloseController', () => {
 
     expect(window.destroy).not.toHaveBeenCalled()
     expect(setIsQuitting).toHaveBeenCalledWith(false)
+  })
+
+  it('ignores stale responses from an earlier timed-out close request', async () => {
+    vi.useFakeTimers()
+    const { controller, event, window, ipcMain } = createHarness(true)
+
+    controller.handleClose(event)
+    expect(window.webContents.sentMessages).toEqual([{ channel: CLOSE_REQUEST_CHANNEL, args: [1] }])
+
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    controller.handleClose(event)
+    expect(window.webContents.sentMessages).toEqual([
+      { channel: CLOSE_REQUEST_CHANNEL, args: [1] },
+      { channel: CLOSE_REQUEST_CHANNEL, args: [2] }
+    ])
+
+    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 1, 'proceed')
+    await Promise.resolve()
+    expect(window.destroy).not.toHaveBeenCalled()
+
+    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 2, 'cancel')
+    await Promise.resolve()
+    expect(window.destroy).not.toHaveBeenCalled()
   })
 })

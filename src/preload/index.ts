@@ -296,7 +296,8 @@ const api = {
   lifecycle: {
     /** Called by main process when the user requests to close the main window */
     onCloseRequested: (callback) => {
-      const listener = (): void => callback()
+      const listener = (_event: Electron.IpcRendererEvent, requestId: unknown): void =>
+        callback(requestId as number)
       ipcRenderer.on('lifecycle:close-requested', listener)
       return (): void => {
         ipcRenderer.removeListener('lifecycle:close-requested', listener)
@@ -304,8 +305,8 @@ const api = {
     },
 
     /** Reply to the pending close request with either proceed or cancel */
-    respondToCloseRequest: (decision: 'proceed' | 'cancel') =>
-      ipcRenderer.send('lifecycle:close-response', decision)
+    respondToCloseRequest: (requestId: number, decision: 'proceed' | 'cancel') =>
+      ipcRenderer.send('lifecycle:close-response', requestId, decision)
   }
 }
 
