@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const mode = process.argv[2] === 'watch' ? 'watch' : 'run'
 const scriptsDir = dirname(fileURLToPath(import.meta.url))
 const repoDir = resolve(scriptsDir, '..')
+const nodeGypBin = resolve(repoDir, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
 let child = null
 let cleanupStarted = false
 let exitCode = 1
@@ -32,9 +33,9 @@ async function restoreElectronAbi() {
 
   const result = await new Promise((resolveCommand) => {
     const proc = spawn(
-      'npx',
+      process.execPath,
       [
-        'node-gyp',
+        nodeGypBin,
         'rebuild',
         '--release',
         '--runtime=electron',
