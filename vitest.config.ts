@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Native addons like better-sqlite3 are more stable in forked workers than threads.
     pool: 'forks',
     restoreMocks: true
   }

@@ -13,7 +13,7 @@
     "typecheck": "npm run typecheck:node && npm run svelte-check",
     "test": "node ./scripts/run-tests.mjs run",
     "test:watch": "node ./scripts/run-tests.mjs watch",
-    "test:ci": "vitest run",
+    "test:ci": "node ./scripts/run-tests.mjs ci",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",

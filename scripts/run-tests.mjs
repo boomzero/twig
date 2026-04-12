@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const mode = process.argv[2] === 'watch' ? 'watch' : 'run'
+const isCiMode = process.argv[2] === 'ci'
+const vitestMode = process.argv[2] === 'watch' ? 'watch' : 'run'
 const scriptsDir = dirname(fileURLToPath(import.meta.url))
 const repoDir = resolve(scriptsDir, '..')
 const nodeGypBin = resolve(repoDir, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
@@ -14,14 +15,14 @@ let exitCode = 1
 let exitSignal = null
 
 function runCommand(command, args) {
-  return new Promise((resolve) => {
+  return new Promise((resolvePromise) => {
     const proc = spawn(command, args, {
       stdio: 'inherit',
       shell: process.platform === 'win32'
     })
 
     proc.once('exit', (code, signal) => {
-      resolve({ code: code ?? 1, signal: signal ?? null })
+      resolvePromise({ code: code ?? 1, signal: signal ?? null })
     })
   })
 }
@@ -63,7 +64,7 @@ async function restoreElectronAbi() {
 }
 
 async function cleanup() {
-  if (cleanupStarted) return
+  if (cleanupStarted || isCiMode) return
   cleanupStarted = true
 
   try {
@@ -80,8 +81,8 @@ async function finish() {
   await cleanup()
 
   if (exitSignal) {
-    process.removeAllListeners('SIGINT')
-    process.removeAllListeners('SIGTERM')
+    process.removeListener('SIGINT', handleSigint)
+    process.removeListener('SIGTERM', handleSigterm)
     process.kill(process.pid, exitSignal)
     return
   }
@@ -100,32 +101,36 @@ function forwardSignal(signal) {
   void finish()
 }
 
-process.on('SIGINT', () => forwardSignal('SIGINT'))
-process.on('SIGTERM', () => forwardSignal('SIGTERM'))
+const handleSigint = () => forwardSignal('SIGINT')
+const handleSigterm = () => forwardSignal('SIGTERM')
+process.on('SIGINT', handleSigint)
+process.on('SIGTERM', handleSigterm)
 
 async function main() {
-  console.warn(
-    '[tests] Do not run `npm test` and `npm run dev` simultaneously; ABI rebuilds swap the better-sqlite3 native binding. The restore step rebuilds Electron headers from the network, so a failed restore invalidates the run even if tests passed.'
-  )
+  if (!isCiMode) {
+    console.warn(
+      '[tests] Do not run `npm test` and `npm run dev` simultaneously; ABI rebuilds swap the better-sqlite3 native binding. The restore step rebuilds Electron headers from the network, so a failed restore invalidates the run even if tests passed.'
+    )
 
-  const rebuildForNode = await runCommand('npm', ['rebuild', 'better-sqlite3'])
-  if (rebuildForNode.signal) {
-    exitSignal = rebuildForNode.signal
-    return
-  }
-  if (rebuildForNode.code !== 0) {
-    exitCode = rebuildForNode.code
-    return
+    const rebuildForNode = await runCommand('npm', ['rebuild', 'better-sqlite3'])
+    if (rebuildForNode.signal) {
+      exitSignal = rebuildForNode.signal
+      return
+    }
+    if (rebuildForNode.code !== 0) {
+      exitCode = rebuildForNode.code
+      return
+    }
   }
 
-  child = spawn('npx', ['vitest', mode], {
+  child = spawn('npx', ['vitest', vitestMode], {
     stdio: 'inherit',
     shell: process.platform === 'win32'
   })
 
-  const result = await new Promise((resolve) => {
+  const result = await new Promise((resolvePromise) => {
     child.once('exit', (code, signal) => {
-      resolve({ code: code ?? 1, signal: signal ?? null })
+      resolvePromise({ code: code ?? 1, signal: signal ?? null })
     })
   })
 

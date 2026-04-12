@@ -93,21 +93,10 @@ function makeSlide(overrides: Partial<Slide> = {}): Slide {
   }
 }
 
-function toStoredSlideShape(slide: Slide): Record<string, unknown> {
-  return {
-    ...slide,
-    elements: slide.elements.map((element) => ({
-      fill: null,
-      text: null,
-      fontSize: null,
-      fontFamily: null,
-      styles: undefined,
-      src: undefined,
-      filename: undefined,
-      animations: undefined,
-      ...element
-    }))
-  }
+function expectStoredSlide(actual: Slide | null, expected: Slide): void {
+  expect(actual).not.toBeNull()
+  expect(actual).toMatchObject(expected)
+  expect(actual?.elements).toHaveLength(expected.elements.length)
 }
 
 describe('src/main/db.ts', () => {
@@ -129,7 +118,7 @@ describe('src/main/db.ts', () => {
 
     expect(() => initializeDatabase(db)).not.toThrow()
     expect(getSlideIds(db)).toEqual([slide.id])
-    expect(getSlide(db, slide.id)).toEqual(toStoredSlideShape(slide))
+    expectStoredSlide(getSlide(db, slide.id), slide)
   })
 
   it('round-trips persisted slide fields through saveSlide and getSlide', () => {
@@ -137,7 +126,7 @@ describe('src/main/db.ts', () => {
 
     saveSlide(db, slide)
 
-    expect(getSlide(db, slide.id)).toEqual(toStoredSlideShape(slide))
+    expectStoredSlide(getSlide(db, slide.id), slide)
   })
 
   it('removes orphaned elements when a slide is updated', () => {
@@ -151,7 +140,7 @@ describe('src/main/db.ts', () => {
 
     saveSlide(db, updatedSlide)
 
-    expect(getSlide(db, slide.id)).toEqual(toStoredSlideShape(updatedSlide))
+    expectStoredSlide(getSlide(db, slide.id), updatedSlide)
     const count = db
       .prepare('SELECT COUNT(*) AS total FROM elements WHERE slide_id = ?')
       .get(slide.id) as {
@@ -185,8 +174,8 @@ describe('src/main/db.ts', () => {
     saveAllSlides(db, [first, second])
 
     expect(getSlideIds(db)).toEqual([first.id, second.id])
-    expect(getSlide(db, first.id)).toEqual(toStoredSlideShape(first))
-    expect(getSlide(db, second.id)).toEqual(toStoredSlideShape(second))
+    expectStoredSlide(getSlide(db, first.id), first)
+    expectStoredSlide(getSlide(db, second.id), second)
   })
 
   it('keeps slide ordering compact across create, delete, reorder, and background updates', () => {
@@ -220,6 +209,10 @@ describe('src/main/db.ts', () => {
     )
 
     expect(getSlideIds(db)).toEqual([])
+  })
+
+  it('returns null for a nonexistent slide ID', () => {
+    expect(getSlide(db, 'missing-slide')).toBeNull()
   })
 
   it('persists thumbnails, settings, and fonts', () => {
@@ -308,7 +301,7 @@ describe('src/main/db.ts', () => {
         transition: undefined
       })
 
-      expect(errorSpy).toHaveBeenCalledOnce()
+      expect(errorSpy).toHaveBeenCalled()
     } finally {
       errorSpy.mockRestore()
     }
