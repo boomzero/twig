@@ -27,6 +27,7 @@ import * as dbService from './db'
 import type { Slide, FontData } from './db'
 import { getPref, setPref } from './prefs'
 import * as bookmarksService from './bookmarks'
+import { createWindowCloseController } from './windowCloseController'
 import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
@@ -871,72 +872,21 @@ function createWindow(): BrowserWindow {
     showFallbackTimeout = setTimeout(showMainWindow, 250)
   })
 
-  // Promise-based guard to prevent concurrent close operations
-  const FLUSH_TIMEOUT_MS = 5000
-  let closePromise: Promise<void> | null = null
+  const closeController = createWindowCloseController({
+    window,
+    ipcMain,
+    timeoutMs: 30000,
+    getIsQuitting: () => isQuitting,
+    setIsQuitting: (value) => {
+      isQuitting = value
+    },
+    quitApp: () => {
+      app.quit()
+    }
+  })
 
-  // Prevent window from closing until pending saves are flushed
   window.on('close', (event) => {
-    // Always prevent default close - we'll destroy manually when ready
-    event.preventDefault()
-
-    // If close already in progress, ignore
-    if (closePromise) return
-
-    closePromise = new Promise<void>((resolve) => {
-      let flushTimeoutId: NodeJS.Timeout | null = null
-      let isResolved = false
-
-      // Function to safely close the window
-      const performClose = (): void => {
-        if (isResolved) return // Already closed
-        isResolved = true
-
-        // Clean up timeout if it exists
-        if (flushTimeoutId) {
-          clearTimeout(flushTimeoutId)
-          flushTimeoutId = null
-        }
-
-        // Close window if not already destroyed
-        if (!window.isDestroyed()) {
-          window.destroy()
-        }
-
-        resolve()
-
-        // On macOS, event.preventDefault() in the close handler cancels the quit
-        // sequence. After destroying the window, we must explicitly re-trigger quit
-        // so the user doesn't have to press Cmd+Q twice.
-        if (isQuitting) {
-          app.quit()
-        }
-      }
-
-      // Ask renderer to flush pending saves
-      window.webContents.send('lifecycle:before-close')
-
-      // Listen for flush complete (only from the main window)
-      const flushCompleteHandler = (_event: Electron.IpcMainEvent): void => {
-        // Validate that the message came from the main window
-        if (_event.sender !== window.webContents) {
-          console.warn('Received lifecycle:flush-complete from non-main window, ignoring')
-          return
-        }
-        ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
-        performClose()
-      }
-      ipcMain.once('lifecycle:flush-complete', flushCompleteHandler)
-
-      // Set timeout for flush operation
-      flushTimeoutId = setTimeout(() => {
-        console.warn('Flush timeout - forcing window close')
-        // Remove the listener since we're closing anyway
-        ipcMain.removeListener('lifecycle:flush-complete', flushCompleteHandler)
-        flushTimeoutId = null
-        performClose()
-      }, FLUSH_TIMEOUT_MS)
-    })
+    closeController.handleClose(event)
   })
 
   // Open external links in the system browser instead of within the app
@@ -1119,9 +1069,7 @@ function setupMacAppMenu(): void {
     },
     {
       label: 'File',
-      submenu: [
-        { role: 'close' }
-      ]
+      submenu: [{ role: 'close' }]
     },
     {
       label: 'Edit',
@@ -1299,7 +1247,12 @@ app.whenReady().then(() => {
     const { filePaths } = await dialog.showOpenDialog(window!, {
       title: tDialog('dialog.image.title'),
       properties: ['openFile'],
-      filters: [{ name: tDialog('dialog.filter.image'), extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] }]
+      filters: [
+        {
+          name: tDialog('dialog.filter.image'),
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp']
+        }
+      ]
     })
 
     if (!filePaths || filePaths.length === 0) {
@@ -1609,6 +1562,16 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('db:is-bootstrap-presentation', (_event, filePath: string): boolean => {
+    try {
+      validateFilePath(filePath)
+      return withDbConnection(filePath, (db) => dbService.isBootstrapPresentation(db))
+    } catch (error) {
+      console.error('Error in db:is-bootstrap-presentation:', error)
+      throw error
+    }
+  })
+
   /**
    * Deletes a temporary database file.
    * Used for cleanup when temp file creation succeeds but initialization fails.
@@ -1708,7 +1671,9 @@ app.whenReady().then(() => {
           // macOS MAS when renaming out of the app container), fall back to copy+delete.
           const errCode = (renameError as NodeJS.ErrnoException).code
           if (errCode === 'EXDEV' || errCode === 'EPERM' || errCode === 'EACCES') {
-            console.log('Rename blocked (cross-device or sandbox permission), using copy+delete fallback')
+            console.log(
+              'Rename blocked (cross-device or sandbox permission), using copy+delete fallback'
+            )
 
             // Verify source database integrity before copying
             try {

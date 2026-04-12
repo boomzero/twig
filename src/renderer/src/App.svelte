@@ -57,10 +57,16 @@
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
+  import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
   import LoadingScreen, { type LoadingPhase } from './components/LoadingScreen.svelte'
   import { PressedKeys } from 'runed'
   import { _ } from 'svelte-i18n'
   import { get } from 'svelte/store'
+  import {
+    decideTempPresentationDisposition,
+    switchPresentationWithTempGuard,
+    type TempPresentationPromptChoice
+  } from './lib/tempPresentationGuard'
 
   // ============================================================================
   // Shape Geometry Helpers
@@ -135,7 +141,10 @@
 
   // Settings modal
   let settingsOpen = $state(false)
+  let tempPresentationGuardOpen = $state(false)
   let loadingScreenPhase = $state<LoadingPhase>('booting')
+  let tempPresentationGuardResolver: ((choice: TempPresentationPromptChoice) => void) | null = null
+  let activePresentationTransitionPromise: Promise<void> | null = null
 
   // Active side panel — only one can be open at a time
   type SidePanel = 'properties' | 'layers' | 'animate'
@@ -1349,7 +1358,7 @@
   /**
    * Initialize the app on mount by creating a new presentation.
    */
-  let unsubscribeBeforeClose: (() => void) | undefined
+  let unsubscribeCloseRequested: (() => void) | undefined
   let unsubscribeStateRequest: (() => void) | undefined
   let unsubscribePresentationNavigate: (() => void) | undefined
   let unsubscribePresentationClosed: (() => void) | undefined
@@ -1386,18 +1395,24 @@
     // Check if the app was launched by double-clicking a .tb file
     const launchFile = await window.api?.app?.getFileToOpen()
     if (launchFile) {
-      loadingScreenPhase = 'opening'
-      await loadPresentation(launchFile)
+      await openPresentationAtPath(launchFile)
     } else {
-      loadingScreenPhase = 'creating'
-      await handleNewPresentation()
+      await createNewPresentationInternal()
     }
     loadingScreenPhase = 'booting'
 
     // Handle .tb files opened while the app is already running
     unsubscribeOpenFile = window.api?.app?.onOpenFile(async (filePath) => {
-      loadingScreenPhase = 'opening'
-      await loadPresentation(filePath)
+      try {
+        await runGuardedPresentationTransition(async () => {
+          await openPresentationAtPath(filePath)
+          return { completed: true, mutatedState: true }
+        })
+      } catch (error) {
+        console.error('Failed to open presentation from OS event:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        alert(`Failed to open presentation: ${errorMessage}`)
+      }
     })
 
     // Expose state and utility functions to window for console debugging
@@ -1451,10 +1466,10 @@
       settingsOpen = true
     })
 
-    // Listen for window close event - flush pending saves before closing
-    unsubscribeBeforeClose = window.api?.lifecycle?.onBeforeClose(async () => {
-      await flushPendingSave()
-      window.api?.lifecycle?.flushComplete()
+    // Listen for close requests from the main process
+    unsubscribeCloseRequested = window.api?.lifecycle?.onCloseRequested(async () => {
+      const decision = (await handleCloseRequest()) ? 'proceed' : 'cancel'
+      window.api?.lifecycle?.respondToCloseRequest(decision)
     })
   })
 
@@ -1482,7 +1497,7 @@
     }
 
     // Unsubscribe from IPC event listeners
-    unsubscribeBeforeClose?.()
+    unsubscribeCloseRequested?.()
     unsubscribeStateRequest?.()
     unsubscribePresentationNavigate?.()
     unsubscribePresentationClosed?.()
@@ -1493,6 +1508,8 @@
 
     // Unregister flush save callback
     unregisterFlushSave()
+    tempPresentationGuardResolver?.('cancel')
+    tempPresentationGuardResolver = null
   })
 
   /** Keep the window title in sync with the open file. */
@@ -2671,11 +2688,178 @@
   // File Operations
   // ============================================================================
 
+  function resolveTempPresentationGuard(choice: TempPresentationPromptChoice): void {
+    const resolve = tempPresentationGuardResolver
+    tempPresentationGuardResolver = null
+    tempPresentationGuardOpen = false
+    resolve?.(choice)
+  }
+
+  function promptToAbandonTempPresentation(): Promise<TempPresentationPromptChoice> {
+    if (tempPresentationGuardResolver) {
+      return Promise.resolve('cancel')
+    }
+
+    tempPresentationGuardOpen = true
+    return new Promise((resolve) => {
+      tempPresentationGuardResolver = resolve
+    })
+  }
+
+  function cancelPendingPersistence(): void {
+    if (saveTimeoutId) {
+      clearTimeout(saveTimeoutId)
+      saveTimeoutId = null
+    }
+    if (thumbnailTimeoutId) {
+      clearTimeout(thumbnailTimeoutId)
+      thumbnailTimeoutId = null
+    }
+  }
+
+  async function restorePresentationState(
+    filePath: string,
+    slideId: string | null = null
+  ): Promise<void> {
+    clearAllHistory()
+    imageElementCache.clear()
+    prefetchedSlideIds.clear()
+    loadingScreenPhase = 'opening'
+    await loadPresentation(filePath)
+
+    if (slideId && slideId !== appState.currentSlide?.id && appState.slideIds.includes(slideId)) {
+      await loadSlide(slideId)
+    }
+
+    setSaveStatus('saved')
+    prefetchAllSlideImages().catch(() => {})
+  }
+
+  async function openPresentationAtPath(filePath: string): Promise<boolean> {
+    loadingScreenPhase = 'opening'
+    clearAllHistory()
+    imageElementCache.clear()
+    prefetchedSlideIds.clear()
+    await loadPresentation(filePath)
+    setSaveStatus('saved')
+    prefetchAllSlideImages().catch(() => {})
+    return true
+  }
+
+  async function withPresentationTransitionLock<T>(action: () => Promise<T>): Promise<T> {
+    const previous = activePresentationTransitionPromise
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    activePresentationTransitionPromise = current
+
+    try {
+      if (previous) {
+        await previous
+      }
+      return await action()
+    } finally {
+      release()
+      if (activePresentationTransitionPromise === current) {
+        activePresentationTransitionPromise = null
+      }
+    }
+  }
+
+  interface PresentationTransitionAttempt {
+    completed: boolean
+    mutatedState: boolean
+  }
+
+  async function runGuardedPresentationTransition(
+    replacePresentation: () => Promise<PresentationTransitionAttempt>
+  ): Promise<boolean> {
+    return withPresentationTransitionLock(() =>
+      switchPresentationWithTempGuard({
+        currentFilePath: appState.currentFilePath,
+        isTempFile: appState.isTempFile,
+        flushPendingSave,
+        isBootstrapPresentation: (filePath) => window.api.db.isBootstrapPresentation(filePath),
+        promptToAbandonTemp: promptToAbandonTempPresentation,
+        saveTempPresentation: saveCurrentPresentationAs,
+        replacePresentation: async (_decision) => {
+          // Snapshot after the guard resolves because choosing "Save" may move
+          // a temp presentation to a new on-disk location.
+          const restoreFilePath = appState.currentFilePath
+          const restoreSlideId = appState.currentSlide?.id ?? null
+
+          try {
+            const transition = await replacePresentation()
+
+            if (!transition.completed && transition.mutatedState && restoreFilePath) {
+              try {
+                await restorePresentationState(restoreFilePath, restoreSlideId)
+              } catch (restoreError) {
+                console.error(
+                  'Failed to restore previous presentation after canceled switch:',
+                  restoreError
+                )
+              }
+            }
+
+            return transition.completed
+          } catch (error) {
+            if (restoreFilePath) {
+              try {
+                await restorePresentationState(restoreFilePath, restoreSlideId)
+              } catch (restoreError) {
+                console.error(
+                  'Failed to restore previous presentation after switch error:',
+                  restoreError
+                )
+              }
+            }
+            throw error
+          }
+        },
+        deleteTempPresentation: (filePath) => window.api.db.deleteTemp(filePath),
+        onDeleteTempFailure: (filePath, error) => {
+          console.error(`Failed to delete abandoned temp file ${filePath}:`, error)
+        }
+      })
+    )
+  }
+
+  async function handleCloseRequest(): Promise<boolean> {
+    return withPresentationTransitionLock(async () => {
+      try {
+        const decision = await decideTempPresentationDisposition({
+          currentFilePath: appState.currentFilePath,
+          isTempFile: appState.isTempFile,
+          flushPendingSave,
+          isBootstrapPresentation: (filePath) => window.api.db.isBootstrapPresentation(filePath),
+          promptToAbandonTemp: promptToAbandonTempPresentation,
+          saveTempPresentation: saveCurrentPresentationAs
+        })
+
+        if (!decision.proceed) {
+          return false
+        }
+
+        if (!decision.abandonedTempPath) {
+          return true
+        }
+
+        cancelPendingPersistence()
+        await window.api.db.deleteTemp(decision.abandonedTempPath)
+        return true
+      } catch (error) {
+        console.error('Failed to resolve close request:', error)
+        return false
+      }
+    })
+  }
+
   /**
    * Creates a new, unsaved presentation with one blank slide in a temp database.
-   * Checks for unsaved changes before proceeding.
    */
-  async function handleNewPresentation(): Promise<void> {
+  async function createNewPresentationInternal(): Promise<boolean> {
     loadingScreenPhase = 'creating'
     let retryCount = 0
     const maxRetries = 3
@@ -2686,9 +2870,6 @@
       let tempPath: string | null = null
 
       try {
-        // Flush any pending saves before switching presentations
-        await flushPendingSave()
-
         clearAllHistory()
 
         // Clear current slide to prevent any accidental saves to new database
@@ -2718,7 +2899,7 @@
 
         console.log('Created new presentation with temp database:', tempPath)
         setSaveStatus('saved')
-        return // Success!
+        return true
       } catch (error) {
         console.error(
           `Failed to create new presentation (attempt ${retryCount + 1}/${maxRetries}):`,
@@ -2759,12 +2940,12 @@
                 'Unable to create a new presentation after multiple attempts. ' +
                   'Please check your system resources and try again later.'
               )
-              return
+              return false
             }
             retryCount = 0 // Reset and try again
           } else {
             // User gave up - leave them with current state (if any)
-            return
+            return false
           }
         } else {
           // Wait before retrying
@@ -2772,31 +2953,46 @@
         }
       }
     }
+
+    return false
+  }
+
+  /**
+   * Creates a new, unsaved presentation with one blank slide in a temp database.
+   * Checks for temp presentation destruction before proceeding.
+   */
+  async function handleNewPresentation(): Promise<void> {
+    try {
+      await runGuardedPresentationTransition(async () => ({
+        completed: await createNewPresentationInternal(),
+        mutatedState: true
+      }))
+    } catch (error) {
+      console.error('Failed to create new presentation:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to create new presentation: ${errorMessage}`)
+    }
   }
 
   /**
    * Opens a file dialog and loads the selected presentation.
-   * Checks for unsaved changes before proceeding.
+   * Checks for temp presentation destruction before proceeding.
    */
   async function handleOpen(): Promise<void> {
-    const filePath = await window.api.dialog.showOpenDialog()
-    if (filePath) {
-      loadingScreenPhase = 'opening'
-      try {
-        // Flush any pending saves before switching presentations
-        await flushPendingSave()
+    try {
+      await runGuardedPresentationTransition(async () => {
+        const filePath = await window.api.dialog.showOpenDialog()
+        if (!filePath) {
+          return { completed: false, mutatedState: false }
+        }
 
-        clearAllHistory()
-        imageElementCache.clear()
-        prefetchedSlideIds.clear()
-        await loadPresentation(filePath)
-        setSaveStatus('saved')
-        prefetchAllSlideImages().catch(() => {})
-      } catch (error) {
-        console.error('Failed to open presentation:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        alert(`Failed to open presentation: ${errorMessage}`)
-      }
+        await openPresentationAtPath(filePath)
+        return { completed: true, mutatedState: true }
+      })
+    } catch (error) {
+      console.error('Failed to open presentation:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to open presentation: ${errorMessage}`)
     }
   }
 
@@ -2808,7 +3004,7 @@
   async function handleSave(): Promise<void> {
     // If this is a temp file (unsaved presentation), delegate to Save As
     if (appState.isTempFile) {
-      await handleSaveAs()
+      await saveCurrentPresentationAs()
       return
     }
 
@@ -2822,7 +3018,7 @@
    * For temp files, moves the database. For saved files, copies the database.
    * Prevents concurrent save operations using promise lock.
    */
-  async function handleSaveAs(): Promise<void> {
+  async function saveCurrentPresentationAs(): Promise<boolean> {
     // Save original state in case we need to recover from an error
     const originalFilePath = appState.currentFilePath
     const originalSlideId = appState.currentSlide?.id
@@ -2832,18 +3028,14 @@
         throw new Error('No current file path')
       }
 
-      // Cancel any pending debounced thumbnail so it doesn't fire mid-move with the old path
-      if (thumbnailTimeoutId) {
-        clearTimeout(thumbnailTimeoutId)
-        thumbnailTimeoutId = null
-      }
+      cancelPendingPersistence()
 
       // Save current slide to database first to flush all edits
       await performSave(true)
 
       // Show save dialog
       const newPath = await window.api.dialog.showSaveDialog()
-      if (!newPath) return
+      if (!newPath) return false
 
       // Remember which slide we're currently viewing so we can restore it
       const currentSlideId = appState.currentSlide?.id
@@ -2880,6 +3072,7 @@
       }
 
       console.log(`Saved presentation to ${resultPath}`)
+      return true
     } catch (error) {
       console.error('Save As operation failed:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -2897,7 +3090,13 @@
           console.error('Failed to recover original state:', recoveryError)
         }
       }
+
+      return false
     }
+  }
+
+  async function handleSaveAs(): Promise<void> {
+    await saveCurrentPresentationAs()
   }
 
   /**
@@ -3928,15 +4127,28 @@
   }
 
   async function handlePaste(event: ClipboardEvent): Promise<void> {
-    console.log('[paste] fired', { target: event.target, activeTextEditing: activeTextObject?.isEditing })
+    console.log('[paste] fired', {
+      target: event.target,
+      activeTextEditing: activeTextObject?.isEditing
+    })
     if (shouldBypassClipboard(event)) {
-      console.log('[paste] bypassed — target:', event.target, 'isEditing:', activeTextObject?.isEditing)
+      console.log(
+        '[paste] bypassed — target:',
+        event.target,
+        'isEditing:',
+        activeTextObject?.isEditing
+      )
       return
     }
 
     // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
-    console.log('[paste] raw length:', raw.length, 'isTwigPayload:', raw.includes('__twig_clipboard__'))
+    console.log(
+      '[paste] raw length:',
+      raw.length,
+      'isTwigPayload:',
+      raw.includes('__twig_clipboard__')
+    )
     let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
     try {
       parsed = JSON.parse(raw)
@@ -4249,6 +4461,12 @@
 />
 
 <SettingsModal bind:open={settingsOpen} />
+<TempPresentationGuardModal
+  open={tempPresentationGuardOpen}
+  onSave={() => resolveTempPresentationGuard('save')}
+  onDiscard={() => resolveTempPresentationGuard('discard')}
+  onCancel={() => resolveTempPresentationGuard('cancel')}
+/>
 
 {#if appState.currentSlide}
   <div class="flex flex-col h-screen font-sans" role="application">
@@ -4366,7 +4584,9 @@
             <line x1="152" y1="72" x2="96" y2="72" />
           </g>
         </svg>
-        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.save_as')}</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500"
+          >{$_('toolbar.save_as')}</span
+        >
       </button>
 
       <div class="h-8 w-px bg-gray-300 mx-1"></div>
@@ -4442,7 +4662,10 @@
             {$_('status.saved')}
           </span>
         {:else if saveStatus === 'error'}
-          <span class="flex items-center gap-1 text-xs text-red-500" title={$_('status.save_failed')}>
+          <span
+            class="flex items-center gap-1 text-xs text-red-500"
+            title={$_('status.save_failed')}
+          >
             <!-- Phosphor WarningCircle -->
             <svg class="w-3 h-3" viewBox="0 0 256 256" fill="currentColor"
               ><path
@@ -4482,14 +4705,18 @@
               d="M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.stop')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('toolbar.stop')}</span
+          >
         {:else}
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
             ><path
               d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.play')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('toolbar.play')}</span
+          >
         {/if}
       </button>
       <button
@@ -4502,7 +4729,8 @@
             d="M144,92a12,12,0,1,1,12,12A12,12,0,0,1,144,92ZM100,80a12,12,0,1,0,12,12A12,12,0,0,0,100,80Zm116,64A87.76,87.76,0,0,1,213,167l22.24,9.72A8,8,0,0,1,232,192a7.89,7.89,0,0,1-3.2-.67L207.38,182a88,88,0,0,1-158.76,0L27.2,191.33A7.89,7.89,0,0,1,24,192a8,8,0,0,1-3.2-15.33L43,167A87.76,87.76,0,0,1,40,144v-8H16a8,8,0,0,1,0-16H40v-8a87.76,87.76,0,0,1,3-23L20.8,79.33a8,8,0,1,1,6.4-14.66L48.62,74a88,88,0,0,1,158.76,0l21.42-9.36a8,8,0,0,1,6.4,14.66L213,89.05a87.76,87.76,0,0,1,3,23v8h24a8,8,0,0,1,0,16H216ZM56,120H200v-8a72,72,0,0,0-144,0Zm64,95.54V136H56v8A72.08,72.08,0,0,0,120,215.54ZM200,144v-8H136v79.54A72.08,72.08,0,0,0,200,144Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.debug')}</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.debug')}</span
+        >
       </button>
 
       <div class="h-8 w-px bg-gray-300 mx-1"></div>
@@ -4532,7 +4760,9 @@
               d="M71.59,61.47a8,8,0,0,0-15.18,0l-40,120A8,8,0,0,0,24,192h80a8,8,0,0,0,7.59-10.53ZM35.1,176,64,89.3,92.9,176ZM208,76a52,52,0,1,0-52,52A52.06,52.06,0,0,0,208,76Zm-88,0a36,36,0,1,1,36,36A36,36,0,0,1,120,76Zm104,68H136a8,8,0,0,0-8,8v56a8,8,0,0,0,8,8h88a8,8,0,0,0,8-8V152A8,8,0,0,0,224,144Zm-8,56H144V160h72Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.shape')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('toolbar.shape')}</span
+          >
         </button>
         {#if showShapePicker}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -4541,38 +4771,65 @@
             onmouseleave={() => (showShapePicker = false)}
           >
             <button
-              onclick={() => { addRectangle(); showShapePicker = false }}
+              onclick={() => {
+                addRectangle()
+                showShapePicker = false
+              }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="6" width="20" height="12" rx="1"/></svg>
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+                ><rect x="2" y="6" width="20" height="12" rx="1" /></svg
+              >
               {$_('shape.rect')}
             </button>
             <button
-              onclick={() => { addEllipse(); showShapePicker = false }}
+              onclick={() => {
+                addEllipse()
+                showShapePicker = false
+              }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><ellipse cx="12" cy="12" rx="10" ry="7"/></svg>
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+                ><ellipse cx="12" cy="12" rx="10" ry="7" /></svg
+              >
               {$_('shape.ellipse')}
             </button>
             <button
-              onclick={() => { addTriangle(); showShapePicker = false }}
+              onclick={() => {
+                addTriangle()
+                showShapePicker = false
+              }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,3 22,21 2,21"/></svg>
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+                ><polygon points="12,3 22,21 2,21" /></svg
+              >
               {$_('shape.triangle')}
             </button>
             <button
-              onclick={() => { addStar(); showShapePicker = false }}
+              onclick={() => {
+                addStar()
+                showShapePicker = false
+              }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+                ><polygon
+                  points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+                /></svg
+              >
               {$_('shape.star')}
             </button>
             <button
-              onclick={() => { addArrow(); showShapePicker = false }}
+              onclick={() => {
+                addArrow()
+                showShapePicker = false
+              }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><polygon points="2,9 14,9 14,5 22,12 14,19 14,15 2,15"/></svg>
+              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+                ><polygon points="2,9 14,9 14,5 22,12 14,19 14,15 2,15" /></svg
+              >
               {$_('shape.arrow')}
             </button>
           </div>
@@ -4588,7 +4845,8 @@
             d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"
           /></svg
         >
-        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.media')}</span>
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.media')}</span
+        >
       </button>
 
       <!-- Panel toggles — pushed to the far right -->
@@ -4608,7 +4866,9 @@
               d="M230.64,25.36a32,32,0,0,0-45.26,0q-.21.21-.42.45L131.55,88.22,121,77.64a24,24,0,0,0-33.95,0l-76.69,76.7a8,8,0,0,0,0,11.31l80,80a8,8,0,0,0,11.31,0L178.36,169a24,24,0,0,0,0-33.95l-10.58-10.57L230.19,71c.15-.14.31-.28.45-.43A32,32,0,0,0,230.64,25.36ZM96,228.69,79.32,212l22.34-22.35a8,8,0,0,0-11.31-11.31L68,200.68,55.32,188l22.34-22.35a8,8,0,0,0-11.31-11.31L44,176.68,27.31,160,72,115.31,140.69,184ZM219.52,59.1l-68.71,58.81a8,8,0,0,0-.46,11.74L167,146.34a8,8,0,0,1,0,11.31l-15,15L83.32,104l15-15a8,8,0,0,1,11.31,0l16.69,16.69a8,8,0,0,0,11.74-.46L196.9,36.48A16,16,0,0,1,219.52,59.1Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('panel.properties')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('panel.properties')}</span
+          >
         </button>
         <button
           onclick={() => (activeSidePanel = 'layers')}
@@ -4624,7 +4884,9 @@
               d="M230.91,172A8,8,0,0,1,228,182.91l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,36,169.09l92,53.65,92-53.65A8,8,0,0,1,230.91,172ZM220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09ZM24,80a8,8,0,0,1,4-6.91l96-56a8,8,0,0,1,8.06,0l96,56a8,8,0,0,1,0,13.82l-96,56a8,8,0,0,1-8.06,0l-96-56A8,8,0,0,1,24,80Zm23.88,0L128,126.74,208.12,80,128,33.26Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('panel.layers')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('panel.layers')}</span
+          >
         </button>
         <button
           onclick={() => (activeSidePanel = 'animate')}
@@ -4645,7 +4907,9 @@
             <circle cx="96" cy="128" r="72" stroke-width="16" stroke-dasharray="0.1 27" />
             <circle cx="160" cy="128" r="72" stroke-width="16" />
           </svg>
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('panel.animate')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('panel.animate')}</span
+          >
         </button>
         <button
           onclick={() => (settingsOpen = true)}
@@ -4657,12 +4921,16 @@
               d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"
             /></svg
           >
-          <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.settings')}</span>
+          <span class="text-[10px] font-medium leading-none text-gray-500"
+            >{$_('toolbar.settings')}</span
+          >
         </button>
       </div>
     </div>
     {#if updateAvailableVersion}
-      <div class="flex items-center justify-center gap-3 px-4 py-1.5 bg-violet-600 text-white text-xs">
+      <div
+        class="flex items-center justify-center gap-3 px-4 py-1.5 bg-violet-600 text-white text-xs"
+      >
         <span>{$_('update.banner', { values: { version: updateAvailableVersion } })}</span>
         <button
           onclick={() => window.api?.app?.installUpdate()}
@@ -4673,8 +4941,8 @@
         <button
           onclick={() => (updateAvailableVersion = null)}
           class="ml-1 opacity-70 hover:opacity-100"
-          title={$_('update.dismiss')}
-        >✕</button>
+          title={$_('update.dismiss')}>✕</button
+        >
       </div>
     {/if}
     <div class="flex flex-1 overflow-hidden">
@@ -4761,8 +5029,12 @@
           <div class="bg-white shadow-lg relative">
             <canvas bind:this={canvasEl} width="960" height="540"></canvas>
             {#if loadingState.isLoadingSlide}
-              <div class="absolute inset-0 z-30 flex items-center justify-center bg-white/72 backdrop-blur-[2px]">
-                <div class="rounded-[28px] border border-white/80 bg-[#f7f6f3]/95 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.5)]">
+              <div
+                class="absolute inset-0 z-30 flex items-center justify-center bg-white/72 backdrop-blur-[2px]"
+              >
+                <div
+                  class="rounded-[28px] border border-white/80 bg-[#f7f6f3]/95 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.5)]"
+                >
                   <LoadingScreen phase="switching" compact={true} />
                 </div>
               </div>

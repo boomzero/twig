@@ -814,6 +814,69 @@ export function getThumbnails(db: Database): Record<string, string> {
 }
 
 /**
+ * Returns whether the database is still the untouched bootstrap presentation:
+ * exactly one blank slide, no extra assets/settings, and no user-authored metadata.
+ *
+ * Thumbnails are intentionally ignored because they are generated automatically.
+ */
+export function isBootstrapPresentation(db: Database): boolean {
+  const slideCount = (db.prepare('SELECT COUNT(*) AS total FROM slides').get() as { total: number })
+    .total
+  if (slideCount !== 1) {
+    return false
+  }
+
+  const slideRow = db
+    .prepare('SELECT id, background, animation_order, transition FROM slides LIMIT 1')
+    .get() as
+    | {
+        id: string
+        background: string | null
+        animation_order: string | null
+        transition: string | null
+      }
+    | undefined
+  if (!slideRow) {
+    return false
+  }
+
+  if (slideRow.background !== null || slideRow.transition !== null) {
+    return false
+  }
+
+  if (slideRow.animation_order !== null) {
+    try {
+      const animationOrder = JSON.parse(slideRow.animation_order)
+      if (!Array.isArray(animationOrder) || animationOrder.length > 0) {
+        return false
+      }
+    } catch {
+      return false
+    }
+  }
+
+  const elementCount = (
+    db.prepare('SELECT COUNT(*) AS total FROM elements WHERE slide_id = ?').get(slideRow.id) as {
+      total: number
+    }
+  ).total
+  if (elementCount !== 0) {
+    return false
+  }
+
+  const fontCount = (db.prepare('SELECT COUNT(*) AS total FROM fonts').get() as { total: number })
+    .total
+  if (fontCount !== 0) {
+    return false
+  }
+
+  const settingsCount = (
+    db.prepare('SELECT COUNT(*) AS total FROM settings').get() as { total: number }
+  ).total
+  return settingsCount === 0
+}
+
+/**
  * Adds or updates a font in the database.
  * If a font with the same family and variant exists, it will be replaced.
  *

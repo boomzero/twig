@@ -12,6 +12,7 @@ import {
   getSlide,
   getSlideIds,
   getThumbnails,
+  isBootstrapPresentation,
   initializeDatabase,
   reorderSlides,
   saveAllSlides,
@@ -194,6 +195,88 @@ describe('src/main/db.ts', () => {
     applyBackgroundToAllSlides(db, { type: 'solid', color: '#123456' })
     expect(getSlide(db, first.id)?.background).toEqual({ type: 'solid', color: '#123456' })
     expect(getSlide(db, third.id)?.background).toEqual({ type: 'solid', color: '#123456' })
+  })
+
+  it('recognizes the untouched bootstrap presentation and ignores thumbnails', () => {
+    const slide = createSlide(db)
+
+    expect(isBootstrapPresentation(db)).toBe(true)
+
+    saveThumbnail(db, slide.id, 'data:image/jpeg;base64,thumb')
+    expect(isBootstrapPresentation(db)).toBe(true)
+  })
+
+  it('returns false once the presentation has more than one slide', () => {
+    createSlide(db)
+    createSlide(db)
+
+    expect(isBootstrapPresentation(db)).toBe(false)
+  })
+
+  it('returns false when the bootstrap slide has elements', () => {
+    saveSlide(
+      db,
+      makeSlide({
+        id: 'slide-bootstrap-modified',
+        background: undefined,
+        animationOrder: [],
+        transition: undefined
+      })
+    )
+
+    expect(isBootstrapPresentation(db)).toBe(false)
+  })
+
+  it('returns false when the bootstrap slide has a background or transition', () => {
+    const slide = createSlide(db)
+    saveSlide(
+      db,
+      makeSlide({
+        id: slide.id,
+        elements: [],
+        background: { type: 'solid', color: '#101010' },
+        animationOrder: [],
+        transition: { type: 'push', duration: 0.6 }
+      })
+    )
+
+    expect(isBootstrapPresentation(db)).toBe(false)
+  })
+
+  it('returns false when the bootstrap slide has animation steps', () => {
+    const slide = createSlide(db)
+    saveSlide(
+      db,
+      makeSlide({
+        id: slide.id,
+        elements: [],
+        background: undefined,
+        transition: undefined,
+        animationOrder: [{ elementId: 'ghost', category: 'buildIn' }]
+      })
+    )
+
+    expect(isBootstrapPresentation(db)).toBe(false)
+  })
+
+  it('returns false when fonts or settings exist in the presentation', () => {
+    createSlide(db)
+    addFont(db, {
+      id: 'font-bootstrap',
+      fontFamily: 'Demo Sans',
+      fontData: Buffer.from([1, 2, 3]),
+      format: 'ttf',
+      variant: 'normal-normal'
+    })
+
+    expect(isBootstrapPresentation(db)).toBe(false)
+
+    db.close()
+    db = createDb()
+    createSlide(db)
+    setSetting(db, 'default_background', '{"type":"solid","color":"#ffffff"}')
+
+    expect(isBootstrapPresentation(db)).toBe(false)
   })
 
   it('rejects duplicate slide IDs in saveAllSlides and leaves the database untouched', () => {
