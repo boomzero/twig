@@ -2,9 +2,22 @@
 
 ## [1.0.0] - 2026-04-12
 
-### Summary
-
 First stable release. Twig is now available on the Mac App Store.
+
+### Added
+
+- Core Vitest test harness
+- Mac App Store badge and macOS platform details in README
+- Custom AppX logo assets for Windows Store
+
+### Fixed
+
+- Mac App Store sandbox file access handling
+- Mac App Review issues for MAS submission
+- Stale `createApplicationMenu` call replaced with `setupMacAppMenu`
+- Windows release and Store packaging split correctly
+- Store package metadata alignment
+- MSIX publisher display name sourced from environment variable
 
 ## [1.0.0-rc.12] - 2026-04-05
 
