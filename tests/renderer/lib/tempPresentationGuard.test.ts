@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  closePresentationWithTempGuard,
   decideTempPresentationDisposition,
   switchPresentationWithTempGuard,
   type TempPresentationPromptChoice
@@ -114,5 +115,65 @@ describe('tempPresentationGuard', () => {
 
     expect(result).toBe(false)
     expect(deleteTempPresentation).not.toHaveBeenCalled()
+  })
+
+  it('allows closing anyway when close preparation fails and the user confirms', async () => {
+    const options = createGuardOptions({ isTempFile: false })
+    const error = new Error('disk full')
+    options.flushPendingSave.mockRejectedValue(error)
+    const cancelPendingPersistence = vi.fn()
+    const promptToForceCloseOnError = vi.fn().mockResolvedValue(true)
+
+    const result = await closePresentationWithTempGuard({
+      ...options,
+      cancelPendingPersistence,
+      deleteTempPresentation: vi.fn(),
+      promptToForceCloseOnError
+    })
+
+    expect(result).toBe(true)
+    expect(promptToForceCloseOnError).toHaveBeenCalledWith(error)
+    expect(cancelPendingPersistence).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the window open when close preparation fails and the user cancels', async () => {
+    const options = createGuardOptions({ isTempFile: false })
+    const error = new Error('permission denied')
+    options.flushPendingSave.mockRejectedValue(error)
+    const cancelPendingPersistence = vi.fn()
+    const promptToForceCloseOnError = vi.fn().mockResolvedValue(false)
+    const onClosePreparationFailure = vi.fn()
+
+    const result = await closePresentationWithTempGuard({
+      ...options,
+      cancelPendingPersistence,
+      deleteTempPresentation: vi.fn(),
+      promptToForceCloseOnError,
+      onClosePreparationFailure
+    })
+
+    expect(result).toBe(false)
+    expect(onClosePreparationFailure).toHaveBeenCalledWith(error)
+    expect(cancelPendingPersistence).not.toHaveBeenCalled()
+  })
+
+  it('does not block close when deleting an abandoned temp file fails', async () => {
+    const options = createGuardOptions({ promptChoice: 'discard' })
+    const deleteError = new Error('unlink failed')
+    const cancelPendingPersistence = vi.fn()
+    const deleteTempPresentation = vi.fn().mockRejectedValue(deleteError)
+    const onDeleteTempFailure = vi.fn()
+
+    const result = await closePresentationWithTempGuard({
+      ...options,
+      cancelPendingPersistence,
+      deleteTempPresentation,
+      promptToForceCloseOnError: vi.fn(),
+      onDeleteTempFailure
+    })
+
+    expect(result).toBe(true)
+    expect(cancelPendingPersistence).toHaveBeenCalledOnce()
+    expect(onDeleteTempFailure).toHaveBeenCalledWith('/tmp/current.tb', deleteError)
   })
 })

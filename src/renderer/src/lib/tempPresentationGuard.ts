@@ -20,6 +20,14 @@ interface PresentationSwitchOptions extends TempPresentationGuardOptions {
   onDeleteTempFailure?: (filePath: string, error: unknown) => void
 }
 
+interface ClosePresentationOptions extends TempPresentationGuardOptions {
+  cancelPendingPersistence: () => void
+  deleteTempPresentation: (filePath: string) => Promise<void>
+  promptToForceCloseOnError: (error: unknown) => Promise<boolean>
+  onClosePreparationFailure?: (error: unknown) => void
+  onDeleteTempFailure?: (filePath: string, error: unknown) => void
+}
+
 export async function decideTempPresentationDisposition(
   options: TempPresentationGuardOptions
 ): Promise<TempPresentationDecision> {
@@ -78,6 +86,41 @@ export async function switchPresentationWithTempGuard(
     } catch (error) {
       options.onDeleteTempFailure?.(decision.abandonedTempPath, error)
     }
+  }
+
+  return true
+}
+
+export async function closePresentationWithTempGuard(
+  options: ClosePresentationOptions
+): Promise<boolean> {
+  let decision: TempPresentationDecision
+
+  try {
+    decision = await decideTempPresentationDisposition(options)
+  } catch (error) {
+    options.onClosePreparationFailure?.(error)
+    const shouldForceClose = await options.promptToForceCloseOnError(error)
+    if (shouldForceClose) {
+      options.cancelPendingPersistence()
+    }
+    return shouldForceClose
+  }
+
+  if (!decision.proceed) {
+    return false
+  }
+
+  if (!decision.abandonedTempPath) {
+    return true
+  }
+
+  options.cancelPendingPersistence()
+
+  try {
+    await options.deleteTempPresentation(decision.abandonedTempPath)
+  } catch (error) {
+    options.onDeleteTempFailure?.(decision.abandonedTempPath, error)
   }
 
   return true

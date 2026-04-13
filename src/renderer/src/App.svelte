@@ -57,13 +57,14 @@
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
+  import CloseFailureModal from './components/CloseFailureModal.svelte'
   import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
   import LoadingScreen, { type LoadingPhase } from './components/LoadingScreen.svelte'
   import { PressedKeys } from 'runed'
   import { _ } from 'svelte-i18n'
   import { get } from 'svelte/store'
   import {
-    decideTempPresentationDisposition,
+    closePresentationWithTempGuard,
     switchPresentationWithTempGuard,
     type TempPresentationPromptChoice
   } from './lib/tempPresentationGuard'
@@ -142,8 +143,11 @@
   // Settings modal
   let settingsOpen = $state(false)
   let tempPresentationGuardOpen = $state(false)
+  let closeFailureGuardOpen = $state(false)
+  let closeFailureGuardMessage = $state('')
   let loadingScreenPhase = $state<LoadingPhase>('booting')
   let tempPresentationGuardResolver: ((choice: TempPresentationPromptChoice) => void) | null = null
+  let closeFailureGuardResolver: ((shouldClose: boolean) => void) | null = null
   let activePresentationTransitionPromise: Promise<void> | null = null
 
   // Active side panel — only one can be open at a time
@@ -1511,6 +1515,8 @@
     unregisterFlushSave()
     tempPresentationGuardResolver?.('cancel')
     tempPresentationGuardResolver = null
+    closeFailureGuardResolver?.(false)
+    closeFailureGuardResolver = null
   })
 
   /** Keep the window title in sync with the open file. */
@@ -2707,6 +2713,27 @@
     })
   }
 
+  function resolveCloseFailureGuard(shouldClose: boolean): void {
+    const resolve = closeFailureGuardResolver
+    closeFailureGuardResolver = null
+    closeFailureGuardOpen = false
+    closeFailureGuardMessage = ''
+    resolve?.(shouldClose)
+  }
+
+  function promptToForceCloseAfterFailure(error: unknown): Promise<boolean> {
+    if (closeFailureGuardResolver) {
+      return Promise.resolve(false)
+    }
+
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    closeFailureGuardMessage = errorMessage || 'Unknown error'
+    closeFailureGuardOpen = true
+    return new Promise((resolve) => {
+      closeFailureGuardResolver = resolve
+    })
+  }
+
   function cancelPendingPersistence(): void {
     if (saveTimeoutId) {
       clearTimeout(saveTimeoutId)
@@ -2828,40 +2855,25 @@
   }
 
   async function handleCloseRequest(): Promise<boolean> {
-    return withPresentationTransitionLock(async () => {
-      try {
-        const decision = await decideTempPresentationDisposition({
-          currentFilePath: appState.currentFilePath,
-          isTempFile: appState.isTempFile,
-          flushPendingSave,
-          isBootstrapPresentation: (filePath) => window.api.db.isBootstrapPresentation(filePath),
-          promptToAbandonTemp: promptToAbandonTempPresentation,
-          saveTempPresentation: saveCurrentPresentationAs
-        })
-
-        if (!decision.proceed) {
-          return false
+    return withPresentationTransitionLock(() =>
+      closePresentationWithTempGuard({
+        currentFilePath: appState.currentFilePath,
+        isTempFile: appState.isTempFile,
+        flushPendingSave,
+        isBootstrapPresentation: (filePath) => window.api.db.isBootstrapPresentation(filePath),
+        promptToAbandonTemp: promptToAbandonTempPresentation,
+        saveTempPresentation: saveCurrentPresentationAs,
+        cancelPendingPersistence,
+        deleteTempPresentation: (filePath) => window.api.db.deleteTemp(filePath),
+        promptToForceCloseOnError: promptToForceCloseAfterFailure,
+        onClosePreparationFailure: (error) => {
+          console.error('Failed to resolve close request:', error)
+        },
+        onDeleteTempFailure: (filePath, error) => {
+          console.error(`Failed to delete temp file during close for ${filePath}:`, error)
         }
-
-        if (!decision.abandonedTempPath) {
-          return true
-        }
-
-        cancelPendingPersistence()
-        try {
-          await window.api.db.deleteTemp(decision.abandonedTempPath)
-        } catch (cleanupError) {
-          console.error(
-            `Failed to delete temp file during close for ${decision.abandonedTempPath}:`,
-            cleanupError
-          )
-        }
-        return true
-      } catch (error) {
-        console.error('Failed to resolve close request:', error)
-        return false
-      }
-    })
+      })
+    )
   }
 
   /**
@@ -4474,6 +4486,12 @@
   onSave={() => resolveTempPresentationGuard('save')}
   onDiscard={() => resolveTempPresentationGuard('discard')}
   onCancel={() => resolveTempPresentationGuard('cancel')}
+/>
+<CloseFailureModal
+  open={closeFailureGuardOpen}
+  errorMessage={closeFailureGuardMessage}
+  onCloseAnyway={() => resolveCloseFailureGuard(true)}
+  onCancel={() => resolveCloseFailureGuard(false)}
 />
 
 {#if appState.currentSlide}
