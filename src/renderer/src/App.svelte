@@ -382,6 +382,12 @@
       await savePromise
     }
 
+    // Rich-text edits live on the active Fabric object while editing. Flush the
+    // latest content/styles back into slide state before we snapshot for saving.
+    if (activeTextObject?.id) {
+      updateStateFromObject(activeTextObject as TwigFabricObject)
+    }
+
     // Snapshot state before any async operation to prevent race conditions
     // (currentFilePath could change while we're awaiting savePromise)
     const filePath = appState.currentFilePath
@@ -2131,6 +2137,19 @@
     }
   }
 
+  function syncTextEditState(obj: Textbox | null | undefined): void {
+    if (!obj?.id || !appState.currentSlide) return
+
+    const elementInState = appState.currentSlide.elements.find((el) => el.id === obj.id)
+    if (!elementInState || elementInState.type !== 'text') return
+
+    elementInState.text = obj.text
+    elementInState.fontSize = obj.fontSize
+    elementInState.fontFamily = obj.fontFamily
+    elementInState.fill = obj.fill as string
+    elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
+  }
+
   /**
    * Syncs property panel changes (x, y, width, height, angle, fill) from state
    * back to the live Fabric object, then schedules a save.
@@ -2371,6 +2390,8 @@
   function handleTextChanged(event: { target?: TwigFabricObject }): void {
     const target = event.target
     if (!(target instanceof Textbox)) return
+    syncTextEditState(target)
+    scheduleSave()
     scheduleThumbnailCapture()
   }
 
@@ -2512,10 +2533,9 @@
     }
 
     fabCanvas?.renderAll()
-
-    // Note: Do NOT update state here - it triggers the $effect which re-renders the canvas
-    // and loses the text selection/cursor. State is synced when editing finishes via the
-    // object:modified event handler, which calls updateStateFromObject().
+    syncTextEditState(activeTextObject)
+    scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   /** Toggles bold formatting on the selected text */
