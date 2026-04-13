@@ -92,6 +92,7 @@ declare global {
         closeConnection: (filePath: string) => Promise<void>
         createTemp: () => Promise<string>
         isTempFile: (filePath: string) => Promise<boolean>
+        isBootstrapPresentation: (filePath: string) => Promise<boolean>
         saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
         copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
         deleteTemp: (filePath: string) => Promise<void>
@@ -176,8 +177,9 @@ declare global {
         set: (key: 'locale' | 'autoUpdate', value: string | boolean) => Promise<void>
       }
       lifecycle: {
-        onBeforeClose: (callback: () => void) => () => void
-        flushComplete: () => void
+        signalCloseReady: () => void
+        onCloseRequested: (callback: (requestId: number) => void) => () => void
+        respondToCloseRequest: (requestId: number, decision: 'proceed' | 'cancel') => void
       }
     }
   }

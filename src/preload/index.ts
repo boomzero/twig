@@ -65,6 +65,10 @@ const api = {
     /** Check if a file path is a temporary file */
     isTempFile: (filePath) => ipcRenderer.invoke('db:is-temp-file', filePath),
 
+    /** Check whether a presentation is still the untouched bootstrap temp document */
+    isBootstrapPresentation: (filePath) =>
+      ipcRenderer.invoke('db:is-bootstrap-presentation', filePath),
+
     /** Move a temp database to a user-chosen location (Save) */
     saveToLocation: (sourcePath, destPath) =>
       ipcRenderer.invoke('db:save-to-location', sourcePath, destPath),
@@ -261,8 +265,7 @@ const api = {
 
     /** Listen for locale change broadcasts from the main process. */
     onLocaleChanged: (callback: (locale: string) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, locale: string): void =>
-        callback(locale)
+      const handler = (_event: Electron.IpcRendererEvent, locale: string): void => callback(locale)
       ipcRenderer.on('locale:changed', handler)
       return (): void => {
         ipcRenderer.removeListener('locale:changed', handler)
@@ -291,17 +294,22 @@ const api = {
 
   // Window lifecycle
   lifecycle: {
-    /** Called by main process before window closes to flush pending saves */
-    onBeforeClose: (callback) => {
-      const listener = (): void => callback()
-      ipcRenderer.on('lifecycle:before-close', listener)
+    /** Signal that the renderer has registered its close-request handler */
+    signalCloseReady: () => ipcRenderer.send('lifecycle:close-ready'),
+
+    /** Called by main process when the user requests to close the main window */
+    onCloseRequested: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, requestId: unknown): void =>
+        callback(requestId as number)
+      ipcRenderer.on('lifecycle:close-requested', listener)
       return (): void => {
-        ipcRenderer.removeListener('lifecycle:before-close', listener)
+        ipcRenderer.removeListener('lifecycle:close-requested', listener)
       }
     },
 
-    /** Notify main process that flush is complete */
-    flushComplete: () => ipcRenderer.send('lifecycle:flush-complete')
+    /** Reply to the pending close request with either proceed or cancel */
+    respondToCloseRequest: (requestId: number, decision: 'proceed' | 'cancel') =>
+      ipcRenderer.send('lifecycle:close-response', requestId, decision)
   }
 }
 
