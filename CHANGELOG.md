@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.1] - 2026-04-13
+
+### Added
+
+- Temp presentation destruction guard: unsaved presentations now prompt to save before closing, quitting, or opening another file (#44)
+- Renderer-driven close handshake replacing the old force-close save flush (#44)
+- Close failure modal for graceful error recovery when shutdown save fails (#44)
+- Unit tests for window close controller, temp presentation guard, and DB bootstrap detection (#44)
+
+### Fixed
+
+- Rich text style edits (bold, italic, etc.) on animated text not persisting after autosave (#45)
+- Active text object content and styles now flushed into slide state before save serialization (#45)
+
+### Changed
+
+- Removed `.vscode` directory from the repository
+
 ## [1.0.0] - 2026-04-12
 
 First stable release. Twig is now available on the Mac App Store.
