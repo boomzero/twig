@@ -2237,6 +2237,7 @@
     }
     renderMovePathOverlay()
     scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   // ============================================================================
@@ -4055,6 +4056,7 @@
     compactZIndexes()
     applyZOrderToCanvas()
     scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   function layerSendToBack(id: string): void {
@@ -4067,6 +4069,7 @@
     compactZIndexes()
     applyZOrderToCanvas()
     scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   function layerMoveUp(id: string): void {
@@ -4082,6 +4085,7 @@
     compactZIndexes()
     applyZOrderToCanvas()
     scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   function layerMoveDown(id: string): void {
@@ -4097,6 +4101,7 @@
     compactZIndexes()
     applyZOrderToCanvas()
     scheduleSave()
+    scheduleThumbnailCapture()
   }
 
   // ============================================================================
@@ -5164,6 +5169,7 @@
             onLayerChange={() => {
               applyZOrderToCanvas()
               scheduleSave()
+              scheduleThumbnailCapture()
             }}
             onSelect={(id) => {
               if (!fabCanvas) return
@@ -5241,6 +5247,7 @@
                 await applySlideBackground(plain)
                 fabCanvas!.renderAll()
                 scheduleSave()
+                scheduleThumbnailCapture()
               }
             }}
             onSetAsDefault={async (bg) => {
