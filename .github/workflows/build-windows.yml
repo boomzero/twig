@@ -29,8 +29,11 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npx electron-builder install-app-deps
 
-      - name: Build Windows Store package
-        run: npm run build && npx electron-builder --config electron-builder.win-store.config.cjs --win appx --publish never
+      - name: Build app
+        run: npm run build
+
+      - name: Build Windows Store package (.appx)
+        run: npx electron-builder --config electron-builder.win-store.config.cjs --win appx --publish never
 
       - name: Validate AppX manifest metadata
         shell: pwsh
@@ -104,11 +107,35 @@ jobs:
           Write-Host "  Properties.DisplayName=$($manifest.Package.Properties.DisplayName)"
           Write-Host "  Properties.PublisherDisplayName=$($manifest.Package.Properties.PublisherDisplayName)"
 
-      - name: Upload Windows artifacts
+      - name: Upload Windows Store package
         uses: actions/upload-artifact@v4
         with:
-          name: twig-windows-store
+          name: twig-windows-appx
           path: |
             dist/*.appx
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build Windows installer (.exe)
+        run: npx electron-builder --win --publish never
+
+      - name: Validate Windows installer artifact
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
+          if (-not $exe) {
+            throw "No EXE artifact found in dist"
+          }
+
+          Write-Host "Validated installer artifact:"
+          Write-Host "  Name=$($exe.Name)"
+          Write-Host "  Size=$([Math]::Round($exe.Length / 1MB, 2)) MB"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: twig-windows-exe
+          path: |
+            dist/*.exe
           if-no-files-found: error
           retention-days: 30

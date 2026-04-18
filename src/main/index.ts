@@ -1084,6 +1084,26 @@ function setupMacAppMenu(): void {
       ]
     },
     {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Snap to Guides',
+          type: 'checkbox',
+          checked: getPref('snapToGuides'),
+          click: () => {
+            const next = !getPref('snapToGuides')
+            setPref('snapToGuides', next)
+            getMainWindow()?.webContents.send('snap:changed', next)
+            setupMacAppMenu()
+          }
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' }
+      ]
+    },
+    {
       label: 'Window',
       role: 'window',
       submenu: [
@@ -1150,7 +1170,9 @@ app.whenReady().then(() => {
   // Global Preferences Handlers
   // --------------------------------------------------------------------------
 
-  ipcMain.handle('prefs:get', (_event, key: string) => getPref(key as 'locale' | 'autoUpdate'))
+  ipcMain.handle('prefs:get', (_event, key: string) =>
+    getPref(key as 'locale' | 'autoUpdate' | 'snapToGuides')
+  )
   ipcMain.handle('prefs:set', (_event, key: string, value: unknown) => {
     if (key === 'locale' && (value === 'en' || value === 'zh')) {
       setPref('locale', value)
@@ -1165,6 +1187,12 @@ app.whenReady().then(() => {
         autoUpdater.autoDownload = value
         autoUpdater.autoInstallOnAppQuit = value
       }
+    } else if (key === 'snapToGuides' && typeof value === 'boolean') {
+      setPref('snapToGuides', value)
+      // Only the main editor window owns the interactive canvas
+      getMainWindow()?.webContents.send('snap:changed', value)
+      // Rebuild the menu so the checkbox state stays in sync
+      if (process.platform === 'darwin') setupMacAppMenu()
     }
     // Unknown key or invalid value type: silently ignore
   })

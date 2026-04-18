@@ -172,10 +172,16 @@ declare global {
         isStoreBuild: boolean
         onLocaleChanged: (callback: (locale: string) => void) => () => void
         onUpdateDownloaded: (callback: (version: string) => void) => () => void
+        onSnapChanged: (callback: (enabled: boolean) => void) => () => void
       }
       prefs: {
-        get: (key: 'locale' | 'autoUpdate') => Promise<string | boolean | null>
-        set: (key: 'locale' | 'autoUpdate', value: string | boolean) => Promise<void>
+        get: (
+          key: 'locale' | 'autoUpdate' | 'snapToGuides'
+        ) => Promise<string | boolean | null>
+        set: (
+          key: 'locale' | 'autoUpdate' | 'snapToGuides',
+          value: string | boolean
+        ) => Promise<void>
       }
       lifecycle: {
         signalCloseReady: () => void

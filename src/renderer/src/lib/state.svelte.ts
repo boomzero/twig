@@ -77,7 +77,10 @@ export const appState = $state({
   isPresentingMode: false,
 
   /** Map of slideId → thumbnail data URI (JPEG, loaded from DB on startup) */
-  thumbnails: {} as Record<string, string>
+  thumbnails: {} as Record<string, string>,
+
+  /** Whether alignment-guide snapping is enabled (mirrors main-owned `snapToGuides` pref) */
+  snapEnabled: true
 })
 
 /**
