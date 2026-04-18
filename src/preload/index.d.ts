@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { Slide, SlideBackground } from '../renderer/src/lib/types'
+import type { ArrowShape, Slide, SlideBackground } from '../renderer/src/lib/types'
 
 /**
  * Represents a system font with its family name and file path
@@ -70,6 +70,7 @@ export interface DebugState {
       src?: string
       filename?: string
       zIndex: number
+      arrowShape?: ArrowShape
     }>
   } | null
 }

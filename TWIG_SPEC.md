@@ -17,6 +17,7 @@ A `.tb` file is a standard SQLite database that stores a twig presentation. You 
    - 4.3 [AnimationStep\[\] (animation\_order)](#43-animationstep-animation_order)
    - 4.4 [ElementAnimations (animations)](#44-elementanimations-animations)
    - 4.5 [Fabric.js rich-text styles](#45-fabricjs-rich-text-styles)
+   - 4.6 [Arrow shape (shape_params)](#46-arrow-shape-shape_params)
 5. [Clipboard interop format](#5-clipboard-interop-format)
 6. [Element ID naming convention](#6-element-id-naming-convention)
 7. [Z-index rules](#7-z-index-rules)
@@ -62,7 +63,8 @@ CREATE TABLE elements (
   filename    TEXT,                  -- original filename hint (image elements only)
   z_index     INTEGER NOT NULL       -- render order; higher = in front
                 DEFAULT 0,
-  animations  TEXT                   -- JSON ElementAnimations (optional)
+  animations  TEXT,                  -- JSON ElementAnimations (optional)
+  shape_params TEXT                  -- JSON shape-specific params (arrow only; see §4.6)
 );
 
 -- Embedded font files — store these so presentations are self-contained.
@@ -122,7 +124,7 @@ All element types share the **common fields**: `id`, `slide_id`, `type`, `x`, `y
 | `ellipse`  | —                         | `fill`, `animations`       |
 | `triangle` | —                         | `fill`, `animations`       |
 | `star`     | —                         | `fill`, `animations`       |
-| `arrow`    | —                         | `fill`, `animations`       |
+| `arrow`    | —                         | `fill`, `animations`, `shape_params` (see §4.6) |
 | `text`     | `text`, `fontSize`, `fontFamily` | `fill` (text color), `styles`, `animations` |
 | `image`    | `src`                     | `filename`, `animations`   |
 
@@ -325,6 +327,36 @@ Supported per-character style properties (fabric.js IText):
 | `linethrough` | `true`                | Strikethrough          |
 
 For plain uniform text, leave `styles` as `NULL` — it is more efficient and easier to generate.
+
+### 4.6 Arrow shape (shape_params)
+
+Stored in `elements.shape_params`. `NULL` is equivalent to the default ratios below and is preferred for rows that have never been customized. Only meaningful when `elements.type = 'arrow'`; ignored for all other types.
+
+```json
+{
+  "headWidthRatio": 1.0,
+  "headLengthRatio": 0.4,
+  "shaftThicknessRatio": 0.4
+}
+```
+
+The arrow is rendered as a 7-point block polygon recomputed from the element's `width` (`w`), `height` (`h`), and these three ratios:
+
+```
+headW   = h * headWidthRatio            // head base span (vertical)
+headL   = w * headLengthRatio           // head horizontal extent
+shaftT  = headW * shaftThicknessRatio   // shaft thickness
+```
+
+| Field                 | Range       | Default | Meaning                                      |
+|-----------------------|-------------|---------|----------------------------------------------|
+| `headWidthRatio`      | `0.1`–`1.0` | `1.0`   | Head base span as a fraction of `height`     |
+| `headLengthRatio`     | `0.05`–`0.95` | `0.4` | Head extent as a fraction of `width`         |
+| `shaftThicknessRatio` | `0.05`–`1.0` | `0.4`   | Shaft thickness as a fraction of **head base width** (`headW`) |
+
+**Default ratios reproduce the pre-`shape_params` arrow exactly** for any `width`/`height`. Legacy rows with `shape_params = NULL` must be treated as having these defaults.
+
+**Known behavior — shaft/head coupling.** Because `shaftT` is expressed relative to `headW` (not `height`), changing `headWidthRatio` also changes the visible shaft thickness in pixels. In the editor, dragging the junction adjustment handle therefore visually fattens or thins the shaft as a side effect, even though `shaftThicknessRatio` is untouched. The shaft handle inverts this coupling, so it always lands on the pointer's Y. Generators can rely on this formula directly; it is stable and part of the format.
 
 ---
 

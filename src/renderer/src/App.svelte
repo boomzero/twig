@@ -48,10 +48,13 @@
     Polygon,
     FabricImage,
     ActiveSelection,
+    Control,
+    Point,
     util,
     cache,
     Gradient
   } from 'fabric'
+  import { DEFAULT_ARROW_SHAPE, type ArrowShape } from './lib/types'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import StackPanel from './components/StackPanel.svelte'
@@ -73,19 +76,262 @@
   // Shape Geometry Helpers
   // ============================================================================
 
-  // Arrow: 7-point right-pointing polygon, exactly fits a 200×100 bounding box.
-  const ARROW_CANONICAL_W = 200
-  const ARROW_CANONICAL_H = 100
-  function makeArrowPoints(): Array<{ x: number; y: number }> {
+  // Arrow: 7-point right-pointing block arrow parameterized by three ratios.
+  // Point order matches the legacy (pre-parameterization) order (CCW from the
+  // top-left of the shaft). Indices (used by adjustment-handle positionHandlers):
+  //   0: left-top of shaft       (0,       shaftTop)
+  //   1: right-top of shaft      (w-headL, shaftTop)
+  //   2: head base top           (w-headL, headTop )   ← junction handle anchor
+  //   3: tip                     (w,       h/2     )
+  //   4: head base bottom        (w-headL, headBot )
+  //   5: right-bottom of shaft   (w-headL, shaftBot)
+  //   6: left-bottom of shaft    (0,       shaftBot)
+  function makeArrowPoints(
+    w: number,
+    h: number,
+    shape: ArrowShape
+  ): Array<{ x: number; y: number }> {
+    const headW = h * shape.headWidthRatio
+    const headL = w * shape.headLengthRatio
+    const shaftT = headW * shape.shaftThicknessRatio
+    const shaftTop = (h - shaftT) / 2
+    const shaftBot = (h + shaftT) / 2
+    const headTop = (h - headW) / 2
+    const headBot = (h + headW) / 2
     return [
-      { x: 0, y: 30 },
-      { x: 120, y: 30 },
-      { x: 120, y: 0 },
-      { x: 200, y: 50 },
-      { x: 120, y: 100 },
-      { x: 120, y: 70 },
-      { x: 0, y: 70 }
+      { x: 0, y: shaftTop },
+      { x: w - headL, y: shaftTop },
+      { x: w - headL, y: headTop },
+      { x: w, y: h / 2 },
+      { x: w - headL, y: headBot },
+      { x: w - headL, y: shaftBot },
+      { x: 0, y: shaftBot }
     ]
+  }
+
+  /**
+   * Ensures an arrow element has its geometry ratios populated. Every code
+   * path that inserts or restores an arrow in memory funnels through this,
+   * so downstream (properties panel, handles, serialize) can rely on the
+   * field being present.
+   *
+   * Merge-fills partial objects (e.g. from a pasted payload that only carries
+   * one of the three ratios) so `undefined` ratios can't leak into
+   * makeArrowPoints() and produce NaN polygon points. Short-circuits when the
+   * shape is already complete to avoid spurious reactivity.
+   */
+  function ensureArrowShape(el: TwigElement): void {
+    if (el.type !== 'arrow') return
+    const s = el.arrowShape
+    if (
+      s &&
+      typeof s.headWidthRatio === 'number' &&
+      typeof s.headLengthRatio === 'number' &&
+      typeof s.shaftThicknessRatio === 'number'
+    ) {
+      return
+    }
+    el.arrowShape = { ...DEFAULT_ARROW_SHAPE, ...(s ?? {}) }
+  }
+
+  /**
+   * Applies an arrow element's (width, height, arrowShape) to a fabric Polygon.
+   * Sets points, resets scale to 1, and pins width/height/pathOffset to the
+   * element's nominal bounding box so hit-testing and control placement stay
+   * predictable regardless of the ratio values.
+   *
+   * Intentionally does NOT call Polygon.setBoundingBox(): when headWidthRatio<1
+   * the points bbox is smaller than the user's nominal h, and we want the
+   * fabric bbox to remain (w, h). pathOffset is supplied explicitly so it
+   * tracks the new points.
+   *
+   * Fabric's polygon geometry (bbox, hit-testing, pathOffset) breaks with
+   * negative intrinsic width/height, so Math.abs absorbs the sign from
+   * mirrored drags before points are built.
+   */
+  function applyArrowGeometry(obj: Polygon, el: TwigElement): void {
+    const shape = el.arrowShape ?? DEFAULT_ARROW_SHAPE
+    const w = Math.abs(el.width)
+    const h = Math.abs(el.height)
+    obj.set({
+      points: makeArrowPoints(w, h, shape),
+      width: w,
+      height: h,
+      pathOffset: new Point(w / 2, h / 2),
+      scaleX: 1,
+      scaleY: 1,
+      dirty: true
+    })
+    obj.setCoords()
+  }
+
+  // Action names for the custom arrow controls. Detected in handleObjectModified
+  // so the generic pushCheckpoint()/updateStateFromObject path is skipped
+  // (their work is handled inline by the control callbacks).
+  const ARROW_HEAD_ACTION = 'arrowHeadAdjust'
+  const ARROW_SHAFT_ACTION = 'arrowShaftAdjust'
+  const ARROW_HEAD_CONTROL_KEY = 'arrowHead'
+  const ARROW_SHAFT_CONTROL_KEY = 'arrowShaft'
+
+  function clamp(v: number, lo: number, hi: number): number {
+    return v < lo ? lo : v > hi ? hi : v
+  }
+
+  // Render the yellow-diamond adjustment handle. Called by fabric for each frame.
+  function renderAdjustmentDiamond(ctx: CanvasRenderingContext2D, left: number, top: number): void {
+    const size = 7
+    ctx.save()
+    ctx.translate(left, top)
+    ctx.rotate(Math.PI / 4)
+    ctx.fillStyle = '#FACC15' // amber-400 — distinct from the default blue corner handles
+    ctx.strokeStyle = '#78350F' // amber-900 border for visibility on any background
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.rect(-size, -size, size * 2, size * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  /**
+   * Installs two yellow adjustment handles on an arrow Polygon:
+   *   - "junction" control (points index 2) adjusts headLengthRatio and headWidthRatio.
+   *   - "shaft" control (points index 0) adjusts shaftThicknessRatio.
+   *
+   * positionHandler mirrors fabric's built-in polyControl pattern so the handles
+   * track the polygon correctly under arbitrary rotation/scale (see
+   * node_modules/fabric/src/controls/polyControl.ts).
+   *
+   * actionHandler converts the viewport pointer to the polygon's local point
+   * space via util.sendPointToPlane + pathOffset (same as polyActionHandler),
+   * recomputes ratios, calls applyArrowGeometry, and schedules a save. It does
+   * NOT push an undo checkpoint on every frame — a single pre-drag snapshot is
+   * pushed from mouseDownHandler, and handleObjectModified skips its usual
+   * post-drag checkpoint for these action names.
+   */
+  function installArrowAdjustmentHandles(obj: Polygon, el: TwigElement): void {
+    const ownerId = el.id
+
+    const makePositionHandler = (pointIndex: number) => {
+      return (_dim: Point, _finalMatrix: unknown, polyObject: FabricObject): Point => {
+        const poly = polyObject as Polygon
+        return new Point(poly.points[pointIndex].x, poly.points[pointIndex].y)
+          .subtract(poly.pathOffset)
+          .transform(
+            util.multiplyTransformMatrices(poly.getViewportTransform(), poly.calcTransformMatrix())
+          )
+      }
+    }
+
+    // Resolve the canonical element off the state each time (never close over
+    // a stale reference — the element may be swapped out by undo/redo or
+    // cross-slide navigation while an arrow Polygon is still attached).
+    const getElement = (): TwigElement | undefined => {
+      return appState.currentSlide?.elements.find((e) => e.id === ownerId)
+    }
+
+    const localPointerOnPoly = (poly: Polygon, x: number, y: number): Point => {
+      return util
+        .sendPointToPlane(new Point(x, y), undefined, poly.calcOwnMatrix())
+        .add(poly.pathOffset)
+    }
+
+    const junctionActionHandler = (
+      _eventData: unknown,
+      transform: { target: FabricObject },
+      x: number,
+      y: number
+    ): boolean => {
+      const poly = transform.target as Polygon
+      const element = getElement()
+      if (!element || element.type !== 'arrow') return false
+      const w = element.width
+      const h = element.height
+      if (w <= 0 || h <= 0) return false
+      const lp = localPointerOnPoly(poly, x, y)
+      const newHeadLen = clamp(1 - lp.x / w, 0.05, 0.95)
+      // Keep this clamp in sync with PropertiesPanel's headWidth input bounds
+      // (5%–100%) so an arrow authored through the panel round-trips through
+      // a handle drag without getting silently renormalized.
+      const newHeadWid = clamp(1 - (2 * lp.y) / h, 0.05, 1.0)
+      ensureArrowShape(element)
+      element.arrowShape = {
+        ...(element.arrowShape ?? DEFAULT_ARROW_SHAPE),
+        headLengthRatio: newHeadLen,
+        headWidthRatio: newHeadWid
+      }
+      applyArrowGeometry(poly, element)
+      return true
+    }
+
+    const shaftActionHandler = (
+      _eventData: unknown,
+      transform: { target: FabricObject },
+      x: number,
+      y: number
+    ): boolean => {
+      const poly = transform.target as Polygon
+      const element = getElement()
+      if (!element || element.type !== 'arrow') return false
+      const w = element.width
+      const h = element.height
+      if (w <= 0 || h <= 0) return false
+      const lp = localPointerOnPoly(poly, x, y)
+      const headW = h * (element.arrowShape?.headWidthRatio ?? DEFAULT_ARROW_SHAPE.headWidthRatio)
+      if (headW <= 0) return false
+      // Shaft top y in local points space is (h - shaftT) / 2. Inverting:
+      // shaftT = h - 2 * lp.y. Ratio = shaftT / headW.
+      const newShaft = clamp((h - 2 * lp.y) / headW, 0.05, 1.0)
+      ensureArrowShape(element)
+      element.arrowShape = {
+        ...(element.arrowShape ?? DEFAULT_ARROW_SHAPE),
+        shaftThicknessRatio: newShaft
+      }
+      applyArrowGeometry(poly, element)
+      return true
+    }
+
+    const mouseDownHandler = (): boolean => {
+      // Capture pre-drag snapshot exactly once per drag.
+      pushCheckpoint()
+      return true
+    }
+
+    const mouseUpHandler = (): boolean => {
+      scheduleSave()
+      scheduleThumbnailCapture()
+      return true
+    }
+
+    const diamondRender = (ctx: CanvasRenderingContext2D, left: number, top: number): void => {
+      renderAdjustmentDiamond(ctx, left, top)
+    }
+
+    const junction = new Control({
+      actionName: ARROW_HEAD_ACTION,
+      positionHandler: makePositionHandler(2) as Control['positionHandler'],
+      actionHandler: junctionActionHandler as Control['actionHandler'],
+      mouseDownHandler: mouseDownHandler as Control['mouseDownHandler'],
+      mouseUpHandler: mouseUpHandler as Control['mouseUpHandler'],
+      render: diamondRender as Control['render'],
+      cursorStyle: 'crosshair'
+    })
+
+    const shaft = new Control({
+      actionName: ARROW_SHAFT_ACTION,
+      positionHandler: makePositionHandler(0) as Control['positionHandler'],
+      actionHandler: shaftActionHandler as Control['actionHandler'],
+      mouseDownHandler: mouseDownHandler as Control['mouseDownHandler'],
+      mouseUpHandler: mouseUpHandler as Control['mouseUpHandler'],
+      render: diamondRender as Control['render'],
+      cursorStyle: 'ns-resize'
+    })
+
+    obj.controls = {
+      ...obj.controls,
+      [ARROW_HEAD_CONTROL_KEY]: junction,
+      [ARROW_SHAFT_CONTROL_KEY]: shaft
+    }
   }
 
   // Star: 5-point star with outer radius 100 and inner radius 42.
@@ -199,6 +445,19 @@
   let fontDropdownOpen = $state(false)
   let fontSearchQuery = $state('')
   let showShapePicker = $state(false)
+  let shapePickerRef: HTMLDivElement | null = $state(null)
+  let shapePickerButtonRef: HTMLButtonElement | null = $state(null)
+  $effect(() => {
+    if (!showShapePicker) return
+    function onMousedown(e: MouseEvent): void {
+      const target = e.target as Node
+      if (shapePickerRef?.contains(target)) return
+      if (shapePickerButtonRef?.contains(target)) return
+      showShapePicker = false
+    }
+    document.addEventListener('mousedown', onMousedown)
+    return () => document.removeEventListener('mousedown', onMousedown)
+  })
   let fontLoadingQueue: Set<string> = new SvelteSet<string>()
   let isLoadingFonts = false
 
@@ -931,12 +1190,16 @@
     }
 
     if (element.type === 'arrow') {
+      const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
       return stampGhostOverlay(
-        new Polygon(makeArrowPoints(), {
+        new Polygon(makeArrowPoints(element.width, element.height, shape), {
           ...pos,
           fill: element.fill,
-          scaleX: element.width / ARROW_CANONICAL_W,
-          scaleY: element.height / ARROW_CANONICAL_H,
+          width: element.width,
+          height: element.height,
+          pathOffset: new Point(element.width / 2, element.height / 2),
+          scaleX: 1,
+          scaleY: 1,
           ...GHOST_OVERLAY_OPTIONS
         }),
         action.id
@@ -1289,14 +1552,18 @@
               })
             )
           } else if (el.type === 'arrow') {
+            const shape = el.arrowShape ?? DEFAULT_ARROW_SHAPE
             tempCanvas.add(
-              new Polygon(makeArrowPoints(), {
+              new Polygon(makeArrowPoints(el.width, el.height, shape), {
                 left: el.x,
                 top: el.y,
                 angle: el.angle,
                 fill: el.fill,
-                scaleX: el.width / ARROW_CANONICAL_W,
-                scaleY: el.height / ARROW_CANONICAL_H
+                width: el.width,
+                height: el.height,
+                pathOffset: new Point(el.width / 2, el.height / 2),
+                scaleX: 1,
+                scaleY: 1
               })
             )
           } else if (el.type === 'text') {
@@ -1913,15 +2180,27 @@
           scaleY: element.height / STAR_CANONICAL_H
         })
       } else if (element.type === 'arrow') {
-        fabObj = new Polygon(makeArrowPoints(), {
+        ensureArrowShape(element)
+        const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
+        // Defensive: persisted rows (or a user typing a negative into the size
+        // field) may arrive with signed dimensions. Normalize in state so the
+        // fabric polygon and everything downstream see positive magnitudes.
+        element.width = Math.abs(element.width)
+        element.height = Math.abs(element.height)
+        const arrowPoly = new Polygon(makeArrowPoints(element.width, element.height, shape), {
           left: element.x,
           top: element.y,
           angle: element.angle,
           fill: element.fill,
           id: element.id,
-          scaleX: element.width / ARROW_CANONICAL_W,
-          scaleY: element.height / ARROW_CANONICAL_H
+          width: element.width,
+          height: element.height,
+          pathOffset: new Point(element.width / 2, element.height / 2),
+          scaleX: 1,
+          scaleY: 1
         })
+        installArrowAdjustmentHandles(arrowPoly, element)
+        fabObj = arrowPoly
       } else if (element.type === 'text') {
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
         fabObj = new Textbox(element.text || 'Hello', {
@@ -2105,6 +2384,18 @@
       return
     }
 
+    // Arrow adjustment-handle drags are self-contained: the Control callbacks
+    // already pushed a pre-drag checkpoint (mouseDownHandler), mutated the
+    // element's ratios and geometry live (actionHandler), and scheduled save
+    // (mouseUpHandler). Re-running pushCheckpoint / updateStateFromObject here
+    // would produce a duplicate no-op undo step and try to re-derive
+    // width/height from scaleX/scaleY (both 1 during these drags).
+    const actionName = (event as { transform?: { action?: string } }).transform?.action
+    if (actionName === ARROW_HEAD_ACTION || actionName === ARROW_SHAFT_ACTION) {
+      renderMovePathOverlay()
+      return
+    }
+
     // Capture state BEFORE updateStateFromObject mutates it — this is the pre-drag snapshot
     pushCheckpoint()
 
@@ -2149,6 +2440,19 @@
     elementInState.angle = transform.angle
     elementInState.width = obj.width * transform.scaleX
     elementInState.height = obj.height * transform.scaleY
+
+    // Arrow polygons re-derive their points from (width, height, arrowShape)
+    // every time the nominal bbox changes. Reset scaleX/scaleY to 1 so the
+    // state-to-canvas and canvas-to-state directions stay in sync.
+    // Normalize dimensions to their magnitude — a drag past the opposite edge
+    // produces a negative scaleX/scaleY, and signed intrinsic dimensions
+    // would poison fabric's bbox/hit-testing on the next modify/save cycle.
+    if (elementInState.type === 'arrow' && obj instanceof Polygon) {
+      elementInState.width = Math.abs(elementInState.width)
+      elementInState.height = Math.abs(elementInState.height)
+      ensureArrowShape(elementInState)
+      applyArrowGeometry(obj, elementInState)
+    }
 
     // For text objects, also update text content and styling
     if (elementInState.type === 'text' && obj instanceof Textbox) {
@@ -2210,15 +2514,15 @@
           scaleX: el.width / STAR_CANONICAL_W,
           scaleY: el.height / STAR_CANONICAL_H
         })
-      } else if (el.type === 'arrow') {
+      } else if (el.type === 'arrow' && obj instanceof Polygon) {
+        ensureArrowShape(el)
         obj.set({
           left: el.x,
           top: el.y,
           angle: el.angle,
-          fill: el.fill,
-          scaleX: el.width / ARROW_CANONICAL_W,
-          scaleY: el.height / ARROW_CANONICAL_H
+          fill: el.fill
         })
+        applyArrowGeometry(obj, el)
       } else {
         // rect, triangle: state stores effective dimensions; reset scale to 1.
         obj.set({
@@ -3673,7 +3977,8 @@
       height: 100,
       angle: 0,
       fill: '#FF6F61',
-      zIndex: nextZIndex()
+      zIndex: nextZIndex(),
+      arrowShape: { ...DEFAULT_ARROW_SHAPE }
     }
     appState.currentSlide.elements.push(el)
     scheduleSave()
@@ -4250,7 +4555,16 @@
         const x = Math.min(el.x + offset, CANVAS_W - 1)
         const y = Math.min(el.y + offset, CANVAS_H - 1)
         // Pasted elements start with no animation config (new IDs, no stale steps)
-        return { ...el, id: newId, x, y, zIndex: baseZ + i, animations: undefined }
+        const cloned: TwigElement = {
+          ...el,
+          id: newId,
+          x,
+          y,
+          zIndex: baseZ + i,
+          animations: undefined
+        }
+        ensureArrowShape(cloned)
+        return cloned
       })
 
       pushCheckpoint()
@@ -4801,6 +5115,7 @@
       </button>
       <div class="relative">
         <button
+          bind:this={shapePickerButtonRef}
           onclick={() => (showShapePicker = !showShapePicker)}
           class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
           class:bg-gray-200={showShapePicker}
@@ -4816,10 +5131,9 @@
           >
         </button>
         {#if showShapePicker}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
+            bind:this={shapePickerRef}
             class="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-1 flex flex-col gap-0.5 min-w-[120px]"
-            onmouseleave={() => (showShapePicker = false)}
           >
             <button
               onclick={() => {

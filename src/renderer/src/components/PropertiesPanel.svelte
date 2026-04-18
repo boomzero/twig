@@ -14,6 +14,7 @@
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
   import type { SlideBackground, ElementAnimations, SlideTransition } from '../lib/types'
+  import { DEFAULT_ARROW_SHAPE } from '../lib/types'
   import { _ } from 'svelte-i18n'
 
   type RichText = {
@@ -165,7 +166,9 @@
       {#if selectedObject.type === 'text' && richText}
         <!-- Text formatting controls -->
         <div class="pb-3 border-b border-gray-200">
-          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{$_('props.text')}</p>
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+            {$_('props.text')}
+          </p>
           <!-- B / I / U row -->
           <div class="flex gap-1 mb-2">
             <button
@@ -298,7 +301,9 @@
         />
       </div>
       <div>
-        <label for="width" class="block text-sm font-medium text-gray-600">{$_('props.width')}</label>
+        <label for="width" class="block text-sm font-medium text-gray-600"
+          >{$_('props.width')}</label
+        >
         <input
           type="number"
           id="width"
@@ -309,7 +314,9 @@
         />
       </div>
       <div>
-        <label for="height" class="block text-sm font-medium text-gray-600">{$_('props.height')}</label>
+        <label for="height" class="block text-sm font-medium text-gray-600"
+          >{$_('props.height')}</label
+        >
         <input
           type="number"
           id="height"
@@ -320,7 +327,9 @@
         />
       </div>
       <div>
-        <label for="angle" class="block text-sm font-medium text-gray-600">{$_('props.angle')}</label>
+        <label for="angle" class="block text-sm font-medium text-gray-600"
+          >{$_('props.angle')}</label
+        >
         <input
           type="number"
           id="angle"
@@ -332,7 +341,9 @@
       </div>
       {#if selectedObject.type === 'rect' || selectedObject.type === 'ellipse' || selectedObject.type === 'triangle' || selectedObject.type === 'star' || selectedObject.type === 'arrow'}
         <div>
-          <label for="fill" class="block text-sm font-medium text-gray-600">{$_('props.fill')}</label>
+          <label for="fill" class="block text-sm font-medium text-gray-600"
+            >{$_('props.fill')}</label
+          >
           <input
             type="color"
             id="fill"
@@ -344,9 +355,69 @@
         </div>
       {/if}
 
+      {#if selectedObject.type === 'arrow'}
+        {@const arrowShape = selectedObject.arrowShape ?? { ...DEFAULT_ARROW_SHAPE }}
+        {@const arrowInputs = [
+          {
+            key: 'headWidthRatio' as const,
+            id: 'headWidth',
+            label: 'props.headWidth',
+            min: 5,
+            max: 100
+          },
+          {
+            key: 'headLengthRatio' as const,
+            id: 'headLength',
+            label: 'props.headLength',
+            min: 5,
+            max: 95
+          },
+          {
+            key: 'shaftThicknessRatio' as const,
+            id: 'shaftThickness',
+            label: 'props.shaftThickness',
+            min: 5,
+            max: 100
+          }
+        ]}
+        <div class="pt-3 border-t border-gray-200">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+            {$_('props.arrowShape')}
+          </p>
+          <div class="space-y-2">
+            {#each arrowInputs as input (input.id)}
+              <div>
+                <label for={input.id} class="block text-xs font-medium text-gray-500"
+                  >{$_(input.label)}</label
+                >
+                <input
+                  type="number"
+                  id={input.id}
+                  min={input.min}
+                  max={input.max}
+                  step="1"
+                  value={Math.round(arrowShape[input.key] * 100)}
+                  oninput={(e) => {
+                    const pct = Number((e.target as HTMLInputElement).value)
+                    if (!Number.isFinite(pct)) return
+                    const clamped = Math.max(input.min, Math.min(input.max, pct)) / 100
+                    selectedObject.arrowShape = { ...arrowShape, [input.key]: clamped }
+                    handleInput()
+                  }}
+                  onblur={handleBlur}
+                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                />
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       <!-- Animations section -->
       <div class="pt-3 border-t border-gray-200">
-        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{$_('props.animations')}</p>
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+          {$_('props.animations')}
+        </p>
 
         <!-- Build In -->
         <div class="mb-2">
@@ -620,7 +691,9 @@
   {:else}
     <!-- Slide background controls when nothing is selected -->
     <div class="space-y-3">
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">{$_('bg.slide_background')}</p>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+        {$_('bg.slide_background')}
+      </p>
 
       <!-- Type selector tabs -->
       <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
@@ -731,7 +804,8 @@
           {#if currentBg?.type === 'image'}
             <button
               onclick={() => emitSolid('#ffffff')}
-              class="w-full py-1 text-xs text-red-500 hover:underline">{$_('bg.remove_image')}</button
+              class="w-full py-1 text-xs text-red-500 hover:underline"
+              >{$_('bg.remove_image')}</button
             >
           {/if}
         </div>
@@ -752,7 +826,9 @@
 
       <!-- Slide transition controls -->
       <div class="border-t border-gray-200 pt-3 space-y-2">
-        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">{$_('transition.label')}</p>
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+          {$_('transition.label')}
+        </p>
         <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
           {#each [['none', $_('transition.none')], ['dissolve', $_('transition.dissolve')], ['push', $_('transition.push')]] as [val, label] (val)}
             <button
@@ -775,7 +851,9 @@
         {#if slideTransition && slideTransition.type !== 'none'}
           <div>
             <label class="block text-xs font-medium text-gray-500 mb-1">
-              {$_('transition.duration', { values: { duration: slideTransition.duration.toFixed(2) } })}
+              {$_('transition.duration', {
+                values: { duration: slideTransition.duration.toFixed(2) }
+              })}
             </label>
             <input
               type="range"

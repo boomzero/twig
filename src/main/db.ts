@@ -4,8 +4,10 @@ import type {
   SlideBackground,
   AnimationStep,
   ElementAnimations,
-  SlideTransition
+  SlideTransition,
+  ArrowShape
 } from '../renderer/src/lib/types'
+import { DEFAULT_ARROW_SHAPE } from '../renderer/src/lib/types'
 
 export type { SlideBackground }
 
@@ -66,6 +68,9 @@ export interface TwigElement {
 
   /** Per-element animation configuration */
   animations?: ElementAnimations
+
+  /** Arrow-specific geometry ratios in [0, 1]. Ignored when type !== 'arrow'. */
+  arrowShape?: ArrowShape
 }
 
 /**
@@ -186,9 +191,17 @@ export function initializeDatabase(db: Database): void {
       filename TEXT,
       z_index INTEGER DEFAULT 0,
       animations TEXT,
+      shape_params TEXT,
       FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
     )
   `)
+
+  // Migration: add shape_params to pre-existing databases.
+  // SQLite lacks `ADD COLUMN IF NOT EXISTS`, so gate the ALTER on PRAGMA table_info.
+  const elementCols = db.prepare('PRAGMA table_info(elements)').all() as Array<{ name: string }>
+  if (!elementCols.some((c) => c.name === 'shape_params')) {
+    db.exec(`ALTER TABLE elements ADD COLUMN shape_params TEXT`)
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS fonts (
@@ -246,6 +259,7 @@ interface ElementRow {
   filename?: string | null // Original image filename
   z_index: number
   animations?: string | null // Stored as JSON string in database
+  shape_params?: string | null // Shape-specific geometry ratios (JSON); currently only used by 'arrow'
 }
 
 /**
@@ -270,7 +284,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
 
   const elementRows = db
     .prepare(
-      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
     )
     .all(slideId) as ElementRow[]
 
@@ -282,13 +296,40 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       parsedAnimations = undefined
     }
 
+    // Parse shape_params and seed defaults for arrows so the renderer and
+    // properties panel never see `undefined` on legacy rows.
+    let arrowShape: ArrowShape | undefined
+    if (el.type === 'arrow') {
+      if (el.shape_params) {
+        try {
+          const parsed = JSON.parse(el.shape_params) as Partial<ArrowShape>
+          arrowShape = {
+            headWidthRatio: parsed.headWidthRatio ?? DEFAULT_ARROW_SHAPE.headWidthRatio,
+            headLengthRatio: parsed.headLengthRatio ?? DEFAULT_ARROW_SHAPE.headLengthRatio,
+            shaftThicknessRatio:
+              parsed.shaftThicknessRatio ?? DEFAULT_ARROW_SHAPE.shaftThicknessRatio
+          }
+        } catch {
+          arrowShape = { ...DEFAULT_ARROW_SHAPE }
+        }
+      } else {
+        arrowShape = { ...DEFAULT_ARROW_SHAPE }
+      }
+    }
+
+    // Pre-fix saves may have persisted negative width/height for arrows after
+    // a mirrored drag. Fabric's polygon geometry assumes non-negative intrinsic
+    // dimensions, so sanitize on read for arrows.
+    const normalizedWidth = el.type === 'arrow' ? Math.abs(el.width) : el.width
+    const normalizedHeight = el.type === 'arrow' ? Math.abs(el.height) : el.height
+
     return {
       type: el.type as 'rect' | 'text' | 'image',
       id: el.id,
       x: el.x,
       y: el.y,
-      width: el.width,
-      height: el.height,
+      width: normalizedWidth,
+      height: normalizedHeight,
       angle: el.angle,
       fill: el.fill,
       text: el.text,
@@ -309,7 +350,8 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       src: el.src || undefined,
       filename: el.filename || undefined,
       zIndex: el.z_index ?? 0,
-      animations: parsedAnimations
+      animations: parsedAnimations,
+      arrowShape
     }
   })
 
@@ -409,8 +451,8 @@ function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string
  */
 function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
   const stmt = db.prepare(`
-    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations, shape_params)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       slide_id = excluded.slide_id,
       type = excluded.type,
@@ -426,9 +468,22 @@ function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
       styles = excluded.styles,
       filename = excluded.filename,
       z_index = excluded.z_index,
-      animations = excluded.animations
+      animations = excluded.animations,
+      shape_params = excluded.shape_params
   `)
   return (...args) => stmt.run(...args)
+}
+
+/** Serialize an element's shape-specific params to a JSON string, or null. */
+function serializeShapeParams(el: TwigElement): string | null {
+  if (el.type === 'arrow' && el.arrowShape) {
+    try {
+      return JSON.stringify(el.arrowShape)
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 /**
@@ -560,7 +615,8 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
         el.filename ?? null,
         el.zIndex,
-        animationsJson
+        animationsJson,
+        serializeShapeParams(el)
       )
     })
 
@@ -686,7 +742,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.src ?? null,
           el.filename ?? null,
           el.zIndex,
-          animationsJson
+          animationsJson,
+          serializeShapeParams(el)
         )
       })
 

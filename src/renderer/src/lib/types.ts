@@ -58,6 +58,28 @@ export interface TwigElement {
 
   /** Per-element animation configuration */
   animations?: ElementAnimations
+
+  /** Arrow-specific geometry ratios in [0, 1]. Ignored when type !== 'arrow'. */
+  arrowShape?: ArrowShape
+}
+
+/**
+ * Geometry ratios for a block-arrow element. All values in [0, 1].
+ * `headWidthRatio`: head base span as a fraction of element height.
+ * `headLengthRatio`: head horizontal extent as a fraction of element width.
+ * `shaftThicknessRatio`: shaft thickness as a fraction of head base width.
+ */
+export interface ArrowShape {
+  headWidthRatio: number
+  headLengthRatio: number
+  shaftThicknessRatio: number
+}
+
+/** Default arrow-shape ratios — reproduces the legacy 7-point 200x100 polygon. */
+export const DEFAULT_ARROW_SHAPE: ArrowShape = {
+  headWidthRatio: 1.0,
+  headLengthRatio: 0.4,
+  shaftThicknessRatio: 0.4
 }
 
 export interface BuildInAnimation {

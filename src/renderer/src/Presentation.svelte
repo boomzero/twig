@@ -19,6 +19,7 @@
     FabricImage,
     type FabricObject,
     Gradient,
+    Point,
     util
   } from 'fabric'
   import type {
@@ -26,8 +27,10 @@
     Slide,
     SlideBackground,
     AnimationStep,
-    SlideTransition
+    SlideTransition,
+    ArrowShape
   } from './lib/types'
+  import { DEFAULT_ARROW_SHAPE } from './lib/types'
   import { isStepConfiguredForElement } from './lib/animationUtils'
   import { normalizeFontBytes } from './lib/fontUtils'
 
@@ -44,17 +47,26 @@
   // Shape Geometry Helpers (must stay in sync with App.svelte)
   // ============================================================================
 
-  const ARROW_CANONICAL_W = 200
-  const ARROW_CANONICAL_H = 100
-  function makeArrowPoints(): Array<{ x: number; y: number }> {
+  function makeArrowPoints(
+    w: number,
+    h: number,
+    shape: ArrowShape
+  ): Array<{ x: number; y: number }> {
+    const headW = h * shape.headWidthRatio
+    const headL = w * shape.headLengthRatio
+    const shaftT = headW * shape.shaftThicknessRatio
+    const shaftTop = (h - shaftT) / 2
+    const shaftBot = (h + shaftT) / 2
+    const headTop = (h - headW) / 2
+    const headBot = (h + headW) / 2
     return [
-      { x: 0, y: 30 },
-      { x: 120, y: 30 },
-      { x: 120, y: 0 },
-      { x: 200, y: 50 },
-      { x: 120, y: 100 },
-      { x: 120, y: 70 },
-      { x: 0, y: 70 }
+      { x: 0, y: shaftTop },
+      { x: w - headL, y: shaftTop },
+      { x: w - headL, y: headTop },
+      { x: w, y: h / 2 },
+      { x: w - headL, y: headBot },
+      { x: w - headL, y: shaftBot },
+      { x: 0, y: shaftBot }
     ]
   }
 
@@ -397,13 +409,20 @@
           evented: false
         })
       } else if (element.type === 'arrow') {
-        fabObj = new Polygon(makeArrowPoints(), {
+        const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
+        // Guard against persisted signed dimensions (pre-fix saves, etc.).
+        const w = Math.abs(element.width)
+        const h = Math.abs(element.height)
+        fabObj = new Polygon(makeArrowPoints(w, h, shape), {
           left: element.x,
           top: element.y,
           angle: element.angle,
           fill: element.fill,
-          scaleX: element.width / ARROW_CANONICAL_W,
-          scaleY: element.height / ARROW_CANONICAL_H,
+          width: w,
+          height: h,
+          pathOffset: new Point(w / 2, h / 2),
+          scaleX: 1,
+          scaleY: 1,
           selectable: false,
           evented: false
         })
