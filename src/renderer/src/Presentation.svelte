@@ -43,6 +43,8 @@
     filePath: string | null
   }
 
+  type PresentationFabricObject = FabricObject & { id?: string }
+
   // ============================================================================
   // Shape Geometry Helpers (must stay in sync with App.svelte)
   // ============================================================================
@@ -358,6 +360,7 @@
     )
 
     const sorted = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
+    const zIndexById = new Map(sorted.map((el) => [el.id, el.zIndex]))
     for (const el of slide.elements) elementById.set(el.id, el)
 
     sorted.forEach((element: TwigElement) => {
@@ -372,6 +375,7 @@
           height: element.height,
           angle: element.angle,
           fill: element.fill,
+          id: element.id,
           selectable: false,
           evented: false
         })
@@ -383,6 +387,7 @@
           ry: element.height / 2,
           angle: element.angle,
           fill: element.fill,
+          id: element.id,
           selectable: false,
           evented: false
         })
@@ -394,6 +399,7 @@
           height: element.height,
           angle: element.angle,
           fill: element.fill,
+          id: element.id,
           selectable: false,
           evented: false
         })
@@ -403,6 +409,7 @@
           top: element.y,
           angle: element.angle,
           fill: element.fill,
+          id: element.id,
           scaleX: element.width / STAR_CANONICAL_W,
           scaleY: element.height / STAR_CANONICAL_H,
           selectable: false,
@@ -418,6 +425,7 @@
           top: element.y,
           angle: element.angle,
           fill: element.fill,
+          id: element.id,
           width: w,
           height: h,
           pathOffset: new Point(w / 2, h / 2),
@@ -433,6 +441,7 @@
           width: element.width,
           angle: element.angle,
           fill: element.fill,
+          id: element.id,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           styles: element.styles || {},
@@ -465,10 +474,14 @@
             angle: element.angle,
             scaleX: element.width / (img.width || 1),
             scaleY: element.height / (img.height || 1),
+            id: element.id,
             selectable: false,
             evented: false
           })
-          presentationCanvas.add(img)
+          const insertIndex = (
+            presentationCanvas.getObjects() as PresentationFabricObject[]
+          ).filter((obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < element.zIndex).length
+          presentationCanvas.insertAt(insertIndex, img)
           fabObjById.set(element.id, img)
           applyAnimationStateToObject(slide, element, img)
           presentationCanvas.renderAll()
@@ -487,6 +500,15 @@
     applyInitialAnimationState(slide)
 
     await Promise.allSettled([backgroundLoad, ...imageLoads])
+
+    if (!presentationCanvas || renderGeneration !== generation || imageLoads.length <= 1) return
+
+    const orderedObjects = (presentationCanvas.getObjects() as PresentationFabricObject[])
+      .slice()
+      .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
+
+    orderedObjects.forEach((obj, targetIndex) => presentationCanvas!.moveObjectTo(obj, targetIndex))
+    presentationCanvas.renderAll()
   }
 
   function applyAnimationStateToObject(slide: Slide, el: TwigElement, fabObj: FabricObject): void {
