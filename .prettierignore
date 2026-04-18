@@ -4,3 +4,5 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+# Vendored from fabric v7 — preserve upstream formatting for reviewable diffs
+src/renderer/src/lib/alignment-guides/vendor/

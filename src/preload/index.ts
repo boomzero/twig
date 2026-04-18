@@ -280,6 +280,16 @@ const api = {
       return (): void => {
         ipcRenderer.removeListener('app:update-downloaded', handler)
       }
+    },
+
+    /** Listen for alignment-guide snap toggle changes (main-owned pref). */
+    onSnapChanged: (callback: (enabled: boolean) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, enabled: boolean): void =>
+        callback(enabled)
+      ipcRenderer.on('snap:changed', handler)
+      return (): void => {
+        ipcRenderer.removeListener('snap:changed', handler)
+      }
     }
   },
 

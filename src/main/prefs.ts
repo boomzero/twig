@@ -7,6 +7,7 @@ type Locale = 'en' | 'zh'
 interface Prefs {
   locale: Locale
   autoUpdate: boolean
+  snapToGuides: boolean
 }
 
 const PREFS_PATH = join(app.getPath('userData'), 'twig-prefs.json')
@@ -36,13 +37,13 @@ function load(): Prefs {
         saved.locale = detectLocale()
         writeFileSync(PREFS_PATH, JSON.stringify(saved), 'utf-8')
       }
-      cache = { autoUpdate: true, ...saved } as Prefs
+      cache = { autoUpdate: true, snapToGuides: true, ...saved } as Prefs
       return cache
     }
   } catch {
     // Corrupted file — fall through to defaults
   }
-  const defaults: Prefs = { locale: detectLocale(), autoUpdate: true }
+  const defaults: Prefs = { locale: detectLocale(), autoUpdate: true, snapToGuides: true }
   writeFileSync(PREFS_PATH, JSON.stringify(defaults), 'utf-8')
   cache = defaults
   return cache

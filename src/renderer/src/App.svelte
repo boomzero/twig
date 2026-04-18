@@ -71,6 +71,7 @@
     switchPresentationWithTempGuard,
     type TempPresentationPromptChoice
   } from './lib/tempPresentationGuard'
+  import { installAlignmentGuides } from './lib/alignment-guides/index'
 
   // ============================================================================
   // Shape Geometry Helpers
@@ -366,6 +367,11 @@
 
   // fabric.js Canvas instance (initialized in $effect)
   let fabCanvas: Canvas | undefined
+  let alignmentGuides: { dispose(): void } | undefined
+
+  // Snap rotation to 15° increments within a 7° threshold. Applied to every
+  // interactive fabric object + ActiveSelection so multi-select rotation snaps too.
+  const ROTATION_SNAP = { snapAngle: 15, snapThreshold: 7 } as const
 
   // Currently active text object (for rich text editing)
   let activeTextObject: Textbox | null = null
@@ -1643,6 +1649,7 @@
   let unsubscribeOpenFile: (() => void) | undefined
   let unsubscribeUpdateDownloaded: (() => void) | undefined
   let unsubscribeOpenSettings: (() => void) | undefined
+  let unsubscribeSnapChanged: (() => void) | undefined
 
   // Reset background and transition checkpoint gates on pointer release so the next drag
   // session gets its own undo entry.
@@ -1743,6 +1750,18 @@
       settingsOpen = true
     })
 
+    // Initialize alignment-guide snap toggle from the main-owned pref and
+    // subscribe to changes pushed from the View menu.
+    try {
+      const snapPref = await window.api?.prefs?.get('snapToGuides')
+      if (typeof snapPref === 'boolean') appState.snapEnabled = snapPref
+    } catch {
+      // Missing pref key — defaults already set in state.svelte.ts
+    }
+    unsubscribeSnapChanged = window.api?.app?.onSnapChanged((enabled) => {
+      appState.snapEnabled = enabled
+    })
+
     // Listen for close requests from the main process
     unsubscribeCloseRequested = window.api?.lifecycle?.onCloseRequested(async (requestId) => {
       const decision = (await handleCloseRequest()) ? 'proceed' : 'cancel'
@@ -1783,6 +1802,7 @@
     unsubscribeOpenFile?.()
     unsubscribeUpdateDownloaded?.()
     unsubscribeOpenSettings?.()
+    unsubscribeSnapChanged?.()
 
     // Unregister flush save callback
     unregisterFlushSave()
@@ -1911,6 +1931,8 @@
       // (The UI is destroyed when currentSlide is null, so we need to dispose the old canvas)
       if (fabCanvas) {
         clearMovePathOverlay()
+        alignmentGuides?.dispose()
+        alignmentGuides = undefined
         fabCanvas.dispose()
         fabCanvas = undefined
       }
@@ -1924,6 +1946,10 @@
         if (canvasEl && appState.currentSlide) {
           if (!fabCanvas) {
             fabCanvas = new Canvas(canvasEl)
+            alignmentGuides?.dispose()
+            alignmentGuides = installAlignmentGuides(fabCanvas, {
+              isEnabled: () => appState.snapEnabled
+            })
           }
           renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
         }
@@ -1962,9 +1988,14 @@
     if (!fabCanvas || fabCanvas.getElement() !== canvasEl) {
       if (fabCanvas) {
         clearMovePathOverlay()
+        alignmentGuides?.dispose()
+        alignmentGuides = undefined
         fabCanvas.dispose()
       }
       fabCanvas = new Canvas(canvasEl)
+      alignmentGuides = installAlignmentGuides(fabCanvas, {
+        isEnabled: () => appState.snapEnabled
+      })
     }
 
     // Step 3: Re-render all objects from state
@@ -1984,6 +2015,7 @@
           selection = objectsToSelect[0]
         } else {
           selection = new ActiveSelection(objectsToSelect, { canvas: fabCanvas })
+          selection.set(ROTATION_SNAP)
         }
         fabCanvas.setActiveObject(selection)
         fabCanvas.renderAll()
@@ -2216,7 +2248,10 @@
           lockScalingY: true
         })
       }
-      if (fabObj) fabCanvas.add(fabObj)
+      if (fabObj) {
+        fabObj.set(ROTATION_SNAP)
+        fabCanvas.add(fabObj)
+      }
     })
 
     // Add image elements asynchronously, inserting at the correct z-position.
@@ -2242,7 +2277,8 @@
         angle: element.angle,
         scaleX,
         scaleY,
-        id: element.id
+        id: element.id,
+        ...ROTATION_SNAP
       })
       const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
@@ -2276,7 +2312,8 @@
               angle: element.angle,
               scaleX,
               scaleY,
-              id: element.id
+              id: element.id,
+              ...ROTATION_SNAP
             })
 
             // Count objects already on the canvas whose zIndex is lower than ours
@@ -2352,7 +2389,9 @@
     if (targets.length === 1) {
       fabCanvas.setActiveObject(targets[0])
     } else if (targets.length > 1) {
-      fabCanvas.setActiveObject(new ActiveSelection(targets, { canvas: fabCanvas }))
+      const selection = new ActiveSelection(targets, { canvas: fabCanvas })
+      selection.set(ROTATION_SNAP)
+      fabCanvas.setActiveObject(selection)
     }
     fabCanvas.renderAll()
   }
@@ -4690,6 +4729,7 @@
         const allObjects = fabCanvas.getObjects()
         if (allObjects.length > 0) {
           const selection = new ActiveSelection(allObjects, { canvas: fabCanvas })
+          selection.set(ROTATION_SNAP)
           fabCanvas.setActiveObject(selection)
           fabCanvas.renderAll()
         }
