@@ -58,6 +58,9 @@ CREATE TABLE elements (
   text        TEXT,                  -- content (text elements only)
   fontSize    REAL,                  -- px (text elements only)
   fontFamily  TEXT,                  -- family name (text elements only)
+  fontWeight  TEXT,                  -- 'normal' | 'bold' | numeric weight (text elements only)
+  fontStyle   TEXT,                  -- 'normal' | 'italic' | 'oblique' (text elements only)
+  underline   INTEGER,               -- 0 | 1, base underline flag (text elements only)
   styles      TEXT,                  -- JSON rich-text styles (text elements only)
   src         TEXT,                  -- base64 data URI (image elements only)
   filename    TEXT,                  -- original filename hint (image elements only)
@@ -125,7 +128,7 @@ All element types share the **common fields**: `id`, `slide_id`, `type`, `x`, `y
 | `triangle` | —                         | `fill`, `animations`       |
 | `star`     | —                         | `fill`, `animations`       |
 | `arrow`    | —                         | `fill`, `animations`, `shape_params` (see §4.6) |
-| `text`     | `text`, `fontSize`, `fontFamily` | `fill` (text color), `styles`, `animations` |
+| `text`     | `text`, `fontSize`, `fontFamily` | `fill` (text color), `fontWeight`, `fontStyle`, `underline`, `styles`, `animations` |
 | `image`    | `src`                     | `filename`, `animations`   |
 
 **Default values used by the editor when adding elements:**
@@ -286,9 +289,9 @@ Each action needs a stable `id` (UUID) because `animation_order` references it b
 
 ### 4.5 Fabric.js rich-text styles
 
-Stored in `elements.styles`. `NULL` means all text uses the element-level `fontSize`, `fontFamily`, and `fill`.
+Stored in `elements.styles`. `NULL` means all text uses the element-level `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `underline`, and `fill`.
 
-Use this column only when individual characters need different formatting. The structure is a nested object:
+Use this column only when individual characters need different formatting — per-character entries here override the element-level fields for those characters. The structure is a nested object:
 
 ```
 {
@@ -579,7 +582,9 @@ def create_presentation(path: str) -> None:
             width REAL NOT NULL, height REAL NOT NULL,
             angle REAL NOT NULL,
             fill TEXT,
-            text TEXT, fontSize REAL, fontFamily TEXT, styles TEXT,
+            text TEXT, fontSize REAL, fontFamily TEXT,
+            fontWeight TEXT, fontStyle TEXT, underline INTEGER,
+            styles TEXT,
             src TEXT, filename TEXT,
             z_index INTEGER NOT NULL DEFAULT 0,
             animations TEXT
