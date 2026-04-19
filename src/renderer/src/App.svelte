@@ -2111,8 +2111,8 @@
   }
 
   type ControlLayoutOverrides = {
-    widthPx: number
-    heightPx: number
+    widthPx?: number
+    heightPx?: number
   }
 
   function applyControlLayout(
@@ -2122,9 +2122,16 @@
     const controls = obj.controls
     if (!controls || Object.keys(controls).length === 0) return
 
+    // Creation sites may know only one reliable dimension up front (notably
+    // Textbox height before Fabric finishes initial text layout). When an
+    // override object is supplied, treat a missing axis as effectively
+    // unconstrained instead of falling back to the object's live scaled size.
+    const widthPx = overrides ? (overrides.widthPx ?? Infinity) : obj.getScaledWidth()
+    const heightPx = overrides ? (overrides.heightPx ?? Infinity) : obj.getScaledHeight()
+
     const layout = resolveControlLayout({
-      widthPx: overrides?.widthPx ?? obj.getScaledWidth(),
-      heightPx: overrides?.heightPx ?? obj.getScaledHeight(),
+      widthPx,
+      heightPx,
       isArrow: Boolean(controls[ARROW_HEAD_CONTROL_KEY])
     })
 
@@ -2502,6 +2509,10 @@
     // width/height from scaleX/scaleY (both 1 during these drags).
     const actionName = (event as { transform?: { action?: string } }).transform?.action
     if (actionName === ARROW_HEAD_ACTION || actionName === ARROW_SHAFT_ACTION) {
+      // Arrow adjustment drags mutate arrowShape in place and keep the nominal
+      // width/height fixed, but re-apply the compact control layout here anyway
+      // so the visible handle set is never left stale after the drag completes.
+      applyControlLayout(target as ControlLayoutTarget)
       renderMovePathOverlay()
       return
     }

@@ -56,6 +56,26 @@ describe('src/renderer/src/lib/controlLayout.ts', () => {
     })
   })
 
+  it('can decide compact mode from width alone when height is effectively unconstrained', () => {
+    expect(resolveControlLayout({ widthPx: 47, heightPx: Infinity, isArrow: false })).toEqual({
+      compact: true,
+      cornerSize: COMPACT_CORNER_SIZE,
+      touchCornerSize: DEFAULT_TOUCH_CORNER_SIZE,
+      padding: COMPACT_CONTROL_PADDING,
+      visibility: {
+        tl: true,
+        tr: true,
+        bl: true,
+        br: true,
+        mtr: true,
+        ml: false,
+        mr: false,
+        mt: false,
+        mb: false
+      }
+    })
+  })
+
   it('hides arrow adjustment controls in compact mode', () => {
     expect(resolveControlLayout({ widthPx: 24, heightPx: 30, isArrow: true })).toEqual({
       compact: true,
