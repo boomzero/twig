@@ -33,6 +33,7 @@
   import { DEFAULT_ARROW_SHAPE } from './lib/types'
   import { isStepConfiguredForElement } from './lib/animationUtils'
   import { normalizeFontBytes } from './lib/fontUtils'
+  import { getTextboxWrappingOptions } from './lib/textboxUtils'
 
   export interface PresentationState {
     /** ID of the slide to display — presentation window fetches the full slide from DB */
@@ -445,6 +446,7 @@
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           styles: element.styles || {},
+          ...getTextboxWrappingOptions(element.text),
           selectable: false,
           evented: false,
           editable: false,

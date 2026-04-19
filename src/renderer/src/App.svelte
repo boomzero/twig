@@ -36,6 +36,7 @@
   } from './lib/types'
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { fontDataToBase64 } from './lib/fontUtils'
+  import { getTextboxWrappingOptions, syncTextboxWrapping } from './lib/textboxUtils'
   import {
     Canvas,
     StaticCanvas,
@@ -1221,6 +1222,7 @@
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           styles: element.styles ? cleanStylesObject(element.styles) : {},
+          ...getTextboxWrappingOptions(element.text),
           lockScalingY: true,
           editable: false,
           ...GHOST_OVERLAY_OPTIONS
@@ -1581,7 +1583,8 @@
                 angle: el.angle,
                 fill: el.fill,
                 fontFamily: el.fontFamily,
-                fontSize: el.fontSize
+                fontSize: el.fontSize,
+                ...getTextboxWrappingOptions(el.text)
               })
             )
           } else if (el.type === 'image' && el.src) {
@@ -2245,6 +2248,7 @@
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           styles: cleanedStyles,
+          ...getTextboxWrappingOptions(element.text),
           lockScalingY: true
         })
       }
@@ -2758,6 +2762,10 @@
   function handleTextChanged(event: { target?: TwigFabricObject }): void {
     const target = event.target
     if (!(target instanceof Textbox)) return
+    const wrappingChanged = syncTextboxWrapping(target)
+    if (wrappingChanged) {
+      fabCanvas?.requestRenderAll()
+    }
     syncTextEditState(target)
     scheduleSave()
     scheduleThumbnailCapture()
