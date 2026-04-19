@@ -2132,7 +2132,8 @@
     const layout = resolveControlLayout({
       widthPx,
       heightPx,
-      isArrow: Boolean(controls[ARROW_HEAD_CONTROL_KEY])
+      isArrow: Boolean(controls[ARROW_HEAD_CONTROL_KEY]),
+      lockScalingY: Boolean(obj.lockScalingY)
     })
 
     const visibility = Object.fromEntries(

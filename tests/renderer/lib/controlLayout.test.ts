@@ -119,4 +119,51 @@ describe('src/renderer/src/lib/controlLayout.ts', () => {
       }
     })
   })
+
+  it('keeps width-resize handles visible for lockScalingY objects even when height is compact', () => {
+    // Single-line textbox at a small font — height drops below the compact
+    // threshold but width is normal. ml/mr must stay visible or the user has
+    // no way to resize width on canvas.
+    expect(
+      resolveControlLayout({ widthPx: 400, heightPx: 30, isArrow: false, lockScalingY: true })
+    ).toEqual({
+      compact: true,
+      cornerSize: COMPACT_CORNER_SIZE,
+      touchCornerSize: DEFAULT_TOUCH_CORNER_SIZE,
+      padding: COMPACT_CONTROL_PADDING,
+      visibility: {
+        tl: false,
+        tr: false,
+        bl: false,
+        br: false,
+        mtr: true,
+        ml: true,
+        mr: true,
+        mt: false,
+        mb: false
+      }
+    })
+  })
+
+  it('hides corner and mt/mb handles for lockScalingY objects in default mode too', () => {
+    expect(
+      resolveControlLayout({ widthPx: 600, heightPx: 120, isArrow: false, lockScalingY: true })
+    ).toEqual({
+      compact: false,
+      cornerSize: DEFAULT_CORNER_SIZE,
+      touchCornerSize: DEFAULT_TOUCH_CORNER_SIZE,
+      padding: DEFAULT_CONTROL_PADDING,
+      visibility: {
+        tl: false,
+        tr: false,
+        bl: false,
+        br: false,
+        mtr: true,
+        ml: true,
+        mr: true,
+        mt: false,
+        mb: false
+      }
+    })
+  })
 })

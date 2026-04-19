@@ -2,6 +2,12 @@ export type ControlLayoutInput = {
   widthPx: number
   heightPx: number
   isArrow: boolean
+  /**
+   * True when the object's Y scaling is locked (e.g. Fabric Textbox). Such
+   * objects only expose width-resize + rotate handles — corners and mt/mb are
+   * either inoperable or redundant and are hidden in every mode.
+   */
+  lockScalingY?: boolean
 }
 
 export type ControlLayout = {
@@ -26,22 +32,38 @@ function normalizeDimension(value: number): number {
 export function resolveControlLayout({
   widthPx,
   heightPx,
-  isArrow
+  isArrow,
+  lockScalingY = false
 }: ControlLayoutInput): ControlLayout {
   const minDimension = Math.min(normalizeDimension(widthPx), normalizeDimension(heightPx))
   const compact = minDimension < COMPACT_CONTROL_THRESHOLD_PX
 
-  const visibility: Record<string, boolean> = {
-    tl: true,
-    tr: true,
-    bl: true,
-    br: true,
-    mtr: true,
-    ml: !compact,
-    mr: !compact,
-    mt: !compact,
-    mb: !compact
-  }
+  const visibility: Record<string, boolean> = lockScalingY
+    ? {
+        // Height is locked, so only width-resize and rotate handles are
+        // meaningful. Hide mt/mb (inoperable) and corners (redundant with
+        // ml/mr, and misleading because they cannot scale height).
+        tl: false,
+        tr: false,
+        bl: false,
+        br: false,
+        mtr: true,
+        ml: true,
+        mr: true,
+        mt: false,
+        mb: false
+      }
+    : {
+        tl: true,
+        tr: true,
+        bl: true,
+        br: true,
+        mtr: true,
+        ml: !compact,
+        mr: !compact,
+        mt: !compact,
+        mb: !compact
+      }
 
   if (isArrow) {
     visibility.arrowHead = !compact
