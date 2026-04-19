@@ -1097,10 +1097,11 @@ function setupMacAppMenu(): void {
             setupMacAppMenu()
           }
         },
-        { type: 'separator' },
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' }
+        { type: 'separator' as const },
+        ...(is.dev
+          ? [{ role: 'reload' as const }, { role: 'forceReload' as const }]
+          : []),
+        { role: 'toggleDevTools' as const }
       ]
     },
     {

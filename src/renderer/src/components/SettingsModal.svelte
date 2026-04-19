@@ -17,10 +17,15 @@
   }
 
   const isStoreBuild = window.api?.app?.isStoreBuild ?? false
+  const modKeyLabel = navigator.userAgent.includes('Mac') ? 'Cmd' : 'Ctrl'
 
   // Auto-update
   let autoUpdate = $state(true)
   let autoUpdateLoaded = $state(false)
+
+  // Snap to guides
+  let snapToGuides = $state(true)
+  let snapToGuidesLoaded = $state(false)
 
   $effect(() => {
     if (open && !autoUpdateLoaded) {
@@ -34,10 +39,32 @@
           autoUpdateLoaded = true
         })
     }
+    if (open && !snapToGuidesLoaded) {
+      window.api?.prefs?.get('snapToGuides')
+        .then((val) => {
+          snapToGuides = val !== false
+          snapToGuidesLoaded = true
+        })
+        .catch(() => {
+          snapToGuidesLoaded = true
+        })
+    }
+  })
+
+  // Keep the modal checkbox in sync when toggled from the View menu.
+  $effect(() => {
+    const unsub = window.api?.app?.onSnapChanged?.((enabled) => {
+      snapToGuides = enabled
+    })
+    return () => unsub?.()
   })
 
   async function handleAutoUpdateChange(): Promise<void> {
     await window.api?.prefs?.set('autoUpdate', autoUpdate)
+  }
+
+  async function handleSnapToGuidesChange(): Promise<void> {
+    await window.api?.prefs?.set('snapToGuides', snapToGuides)
   }
 
   async function openPrivacyPolicy(): Promise<void> {
@@ -84,6 +111,7 @@
     checkStatus = 'idle'
     updateFoundVersion = null
     autoUpdateLoaded = false
+    snapToGuidesLoaded = false
   }
 
   function onKeydown(e: KeyboardEvent): void {
@@ -148,6 +176,27 @@
               <span class="text-sm text-gray-700">{$_('settings.language.zh')}</span>
             </label>
           </div>
+        </section>
+
+        <hr class="border-gray-100" />
+
+        <!-- Editing -->
+        <section>
+          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            {$_('settings.editing')}
+          </h3>
+          <label class="flex items-center gap-3 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              bind:checked={snapToGuides}
+              onchange={handleSnapToGuidesChange}
+              class="accent-indigo-600 w-4 h-4"
+            />
+            <span class="text-sm text-gray-700">{$_('settings.snap_to_guides')}</span>
+          </label>
+          <p class="text-xs text-gray-500 ml-7">
+            {$_('settings.snap_to_guides_tip', { values: { key: modKeyLabel } })}
+          </p>
         </section>
 
         <hr class="border-gray-100" />
