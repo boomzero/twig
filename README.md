@@ -12,6 +12,9 @@
 <a href="https://apps.apple.com/us/app/twig-presentation-editor/id6761291348">
   <img src="resources/mac-app-store-badge.svg" alt="Download on the Mac App Store" height="40" />
 </a>
+<a href="https://get.microsoft.com/installer/download/9NC6MM40GZ37?referrer=appbadge" target="_self">
+  <img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft" width="200" style="margin-left: 8px;" />
+</a>
 
 </div>
 
@@ -32,21 +35,21 @@ Presentations are stored as `.tb` files — plain SQLite databases. No cloud req
 
 ## Status
 
-twig is in active development. It handles the essentials — editing, transitions, animations, custom fonts, backgrounds — and works well for day-to-day use.
+twig is in active development. It handles the essentials — editing, alignment guides, transitions, animations, custom fonts, backgrounds — and works well for day-to-day use.
 
-On the roadmap: templates, element grouping, alignment guides, and more transitions and animation types.
+On the roadmap: templates, element grouping, and more transitions and animation types.
 
 ---
 
 ## Installation
 
-Grab the latest build from [Releases](https://github.com/boomzero/twig/releases).
+For Windows, the preferred install method is the [Microsoft Store](https://apps.microsoft.com/detail/9NC6MM40GZ37). The `.exe` file on [Releases](https://github.com/boomzero/twig/releases) is still available, but unlike the macOS release builds it is not code-signed, so Windows may show trust warnings.
 
 | Platform | File |
 |----------|------|
-| macOS | `.dmg` or Mac App Store |
-| Windows | `.exe` / `.msi` |
-| Linux | `.AppImage` / `.deb` |
+| macOS | Mac App Store or signed `.dmg` from Releases |
+| Windows | Microsoft Store (preferred), or `.exe` from Releases |
+| Linux | `.AppImage` / `.deb` from Releases |
 
 ---
 
