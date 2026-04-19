@@ -2805,6 +2805,15 @@
       isSelectionUnderlined = false
       wasEditing = false
     }
+
+    // Marquee/shift-click selections are created by Fabric internally and
+    // never flow through createActiveSelectionWithLayout, so apply the compact
+    // layout here to cover every selection entry path.
+    const activeObj = fabCanvas?.getActiveObject()
+    if (activeObj) {
+      applyControlLayout(activeObj as ControlLayoutTarget)
+    }
+
     renderMovePathOverlay()
   }
 
