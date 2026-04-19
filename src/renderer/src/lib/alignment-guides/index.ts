@@ -68,7 +68,7 @@ export class TwigAligningGuidelines extends AligningGuidelines {
     const base = super.getObjectsByTarget(target)
     const filtered = new Set<FabricObject>()
     for (const o of base) {
-      // Non-interactive overlay chrome (move-path line, source marker, ghosts, etc.)
+      // Non-interactive overlay chrome (e.g. future locked background layers)
       if (o.selectable === false && o.evented === false) continue
       filtered.add(o)
     }
