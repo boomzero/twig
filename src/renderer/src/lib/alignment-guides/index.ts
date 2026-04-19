@@ -185,12 +185,42 @@ export class TwigAligningGuidelines extends AligningGuidelines {
   }
 }
 
+// Rotation snapping is driven by Fabric's per-object snapAngle/snapThreshold,
+// not by AligningGuidelines. Mirror the modifier-key / global-toggle bypass for
+// rotation by toggling those props on the active target during the gesture.
+const SNAP_ANGLE = 15
+const SNAP_THRESHOLD = 7
+
+type RotatingEvent = { target?: FabricObject; e?: MaybeNativeEvent }
+
 export function installAlignmentGuides(
   canvas: Canvas,
   opts: InstallOptions
 ): { dispose(): void } {
   const instance = new TwigAligningGuidelines(canvas, opts)
+
+  const onRotating = (e: RotatingEvent): void => {
+    const target = e.target
+    if (!target) return
+    const native = e.e
+    const bypass = !opts.isEnabled() || !!(native && (native.metaKey || native.ctrlKey))
+    target.snapAngle = bypass ? 0 : SNAP_ANGLE
+    target.snapThreshold = bypass ? 0 : SNAP_THRESHOLD
+  }
+  const onMouseUp = (): void => {
+    const active = canvas.getActiveObject()
+    if (!active) return
+    active.snapAngle = SNAP_ANGLE
+    active.snapThreshold = SNAP_THRESHOLD
+  }
+  canvas.on('object:rotating', onRotating)
+  canvas.on('mouse:up', onMouseUp)
+
   return {
-    dispose: () => instance.dispose()
+    dispose: () => {
+      canvas.off('object:rotating', onRotating)
+      canvas.off('mouse:up', onMouseUp)
+      instance.dispose()
+    }
   }
 }
