@@ -43,6 +43,15 @@ export interface TwigElement {
   /** Font family name (only for text elements) */
   fontFamily?: string
 
+  /** Base font weight for the text object when not using per-character overrides. */
+  fontWeight?: string | number
+
+  /** Base font style for the text object when not using per-character overrides. */
+  fontStyle?: string
+
+  /** Base underline flag for the text object when not using per-character overrides. */
+  underline?: boolean
+
   /** Rich text styles object from fabric.js (only for text elements) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>

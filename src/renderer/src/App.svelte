@@ -555,13 +555,6 @@
   const historyBySlideId = new SvelteMap<string, SlideHistory>()
   const MAX_UNDO_ENTRIES = 50
   let historyRevision = $state(0) // bumped on every history mutation to drive $derived
-  // Deep slide edits (for example rich-text style mutations) do not replace the
-  // currentSlide object, so effects that need the latest slide snapshot must
-  // subscribe to a serialized view instead of only tracking the slide reference.
-  const currentSlideSyncKey = $derived.by(() => {
-    const slide = appState.currentSlide
-    return slide ? JSON.stringify(slide) : ''
-  })
 
   let bgCheckpointPushed = false // gates background-change history to first event per drag
   let transitionCheckpointPushed = false // gates transition-change history to first event per drag
@@ -1229,6 +1222,9 @@
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
+          fontWeight: element.fontWeight,
+          fontStyle: element.fontStyle,
+          underline: element.underline,
           styles: element.styles ? cleanStylesObject(element.styles) : {},
           ...getTextboxWrappingOptions(element.text),
           lockScalingY: true,
@@ -1592,6 +1588,9 @@
                 fill: el.fill,
                 fontFamily: el.fontFamily,
                 fontSize: el.fontSize,
+                fontWeight: el.fontWeight,
+                fontStyle: el.fontStyle,
+                underline: el.underline,
                 ...getTextboxWrappingOptions(el.text)
               })
             )
@@ -1840,12 +1839,11 @@
    * Runs whenever any tracked state changes.
    */
   $effect(() => {
-    // Track all relevant state by reading each property. currentSlideSyncKey is
-    // used here because many editor paths mutate nested slide fields in place.
-    void currentSlideSyncKey
+    // Track all relevant state by reading each property
     void appState.currentFilePath
     void appState.slideIds
     void appState.currentSlideIndex
+    void appState.currentSlide
     void appState.selectedObjectId
     void appState.isPresentingMode
     void loadingState.isLoadingSlide
@@ -2302,6 +2300,9 @@
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
+          fontWeight: element.fontWeight,
+          fontStyle: element.fontStyle,
+          underline: element.underline,
           styles: cleanedStyles,
           ...getTextboxWrappingOptions(element.text),
           lockScalingY: true
@@ -2570,6 +2571,9 @@
       elementInState.text = obj.text
       elementInState.fontSize = obj.fontSize
       elementInState.fontFamily = obj.fontFamily
+      elementInState.fontWeight = obj.fontWeight
+      elementInState.fontStyle = obj.fontStyle
+      elementInState.underline = obj.underline
       elementInState.fill = obj.fill as string
       // Clean up any unwanted transparent values before saving to state
       elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
@@ -2585,6 +2589,9 @@
     elementInState.text = obj.text
     elementInState.fontSize = obj.fontSize
     elementInState.fontFamily = obj.fontFamily
+    elementInState.fontWeight = obj.fontWeight
+    elementInState.fontStyle = obj.fontStyle
+    elementInState.underline = obj.underline
     elementInState.fill = obj.fill as string
     elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
   }
@@ -3999,6 +4006,9 @@
       text: 'Double-click to edit',
       fontSize: 40,
       fontFamily: 'Arial',
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      underline: false,
       fill: '#333333',
       zIndex: nextZIndex()
     }
@@ -4885,7 +4895,6 @@
 
   // Keep presentation window in sync whenever the current slide changes
   $effect(() => {
-    void currentSlideSyncKey
     if (appState.isPresentingMode && appState.currentSlide) {
       sendPresentationState()
     }

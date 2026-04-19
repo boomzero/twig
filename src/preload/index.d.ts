@@ -66,6 +66,9 @@ export interface DebugState {
       text?: string
       fontSize?: number
       fontFamily?: string
+      fontWeight?: string | number
+      fontStyle?: string
+      underline?: boolean
       styles?: Record<string, Record<string, unknown>>
       src?: string
       filename?: string

@@ -53,6 +53,15 @@ export interface TwigElement {
   /** Font family name (only for text elements) */
   fontFamily?: string
 
+  /** Base font weight (only for text elements) */
+  fontWeight?: string | number
+
+  /** Base font style (only for text elements) */
+  fontStyle?: string
+
+  /** Base underline flag (only for text elements) */
+  underline?: boolean
+
   /** Rich text styles object from fabric.js (only for text elements) */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>
@@ -186,6 +195,9 @@ export function initializeDatabase(db: Database): void {
       text TEXT,
       fontSize REAL,
       fontFamily TEXT,
+      fontWeight TEXT,
+      fontStyle TEXT,
+      underline INTEGER,
       styles TEXT,
       src TEXT,
       filename TEXT,
@@ -201,6 +213,15 @@ export function initializeDatabase(db: Database): void {
   const elementCols = db.prepare('PRAGMA table_info(elements)').all() as Array<{ name: string }>
   if (!elementCols.some((c) => c.name === 'shape_params')) {
     db.exec(`ALTER TABLE elements ADD COLUMN shape_params TEXT`)
+  }
+  if (!elementCols.some((c) => c.name === 'fontWeight')) {
+    db.exec(`ALTER TABLE elements ADD COLUMN fontWeight TEXT`)
+  }
+  if (!elementCols.some((c) => c.name === 'fontStyle')) {
+    db.exec(`ALTER TABLE elements ADD COLUMN fontStyle TEXT`)
+  }
+  if (!elementCols.some((c) => c.name === 'underline')) {
+    db.exec(`ALTER TABLE elements ADD COLUMN underline INTEGER`)
   }
 
   db.exec(`
@@ -254,6 +275,9 @@ interface ElementRow {
   text?: string
   fontSize?: number
   fontFamily?: string
+  fontWeight?: string | number
+  fontStyle?: string
+  underline?: number | null
   styles?: string | null // Stored as JSON string in database
   src?: string | null // Image data as base64 data URI
   filename?: string | null // Original image filename
@@ -284,7 +308,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
 
   const elementRows = db
     .prepare(
-      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
     )
     .all(slideId) as ElementRow[]
 
@@ -335,6 +359,9 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       text: el.text,
       fontSize: el.fontSize,
       fontFamily: el.fontFamily,
+      fontWeight: el.fontWeight ?? undefined,
+      fontStyle: el.fontStyle ?? undefined,
+      underline: el.underline === null || el.underline === undefined ? undefined : Boolean(el.underline),
       // Parse the styles JSON string back into an object with error handling
       styles: el.styles
         ? (() => {
@@ -451,8 +478,8 @@ function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string
  */
 function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
   const stmt = db.prepare(`
-    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, styles, src, filename, z_index, animations, shape_params)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       slide_id = excluded.slide_id,
       type = excluded.type,
@@ -465,6 +492,9 @@ function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
       text = excluded.text,
       fontSize = excluded.fontSize,
       fontFamily = excluded.fontFamily,
+      fontWeight = excluded.fontWeight,
+      fontStyle = excluded.fontStyle,
+      underline = excluded.underline,
       styles = excluded.styles,
       filename = excluded.filename,
       z_index = excluded.z_index,
@@ -611,6 +641,9 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.text ?? null,
         el.fontSize ?? null,
         el.fontFamily ?? null,
+        el.fontWeight ?? null,
+        el.fontStyle ?? null,
+        el.underline === undefined ? null : Number(el.underline),
         stylesJson,
         el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
         el.filename ?? null,
@@ -738,6 +771,9 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.text ?? null,
           el.fontSize ?? null,
           el.fontFamily ?? null,
+          el.fontWeight ?? null,
+          el.fontStyle ?? null,
+          el.underline === undefined ? null : Number(el.underline),
           stylesJson,
           el.src ?? null,
           el.filename ?? null,
