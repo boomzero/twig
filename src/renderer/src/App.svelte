@@ -2807,10 +2807,15 @@
     }
 
     // Marquee/shift-click selections are created by Fabric internally and
-    // never flow through createActiveSelectionWithLayout, so apply the compact
-    // layout here to cover every selection entry path.
+    // never flow through createActiveSelectionWithLayout, so apply both the
+    // rotation-snap config and the compact layout here to cover every
+    // selection entry path. Individual objects already carry ROTATION_SNAP
+    // from their creation sites; the gap is ActiveSelection.
     const activeObj = fabCanvas?.getActiveObject()
     if (activeObj) {
+      if (activeObj.type === 'activeselection') {
+        activeObj.set(ROTATION_SNAP)
+      }
       applyControlLayout(activeObj as ControlLayoutTarget)
     }
 
