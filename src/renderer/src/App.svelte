@@ -35,6 +35,7 @@
     Slide
   } from './lib/types'
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
+  import { resolveControlLayout } from './lib/controlLayout'
   import { fontDataToBase64 } from './lib/fontUtils'
   import { getTextboxWrappingOptions, syncTextboxWrapping } from './lib/textboxUtils'
   import {
@@ -554,6 +555,13 @@
   const historyBySlideId = new SvelteMap<string, SlideHistory>()
   const MAX_UNDO_ENTRIES = 50
   let historyRevision = $state(0) // bumped on every history mutation to drive $derived
+  // Deep slide edits (for example rich-text style mutations) do not replace the
+  // currentSlide object, so effects that need the latest slide snapshot must
+  // subscribe to a serialized view instead of only tracking the slide reference.
+  const currentSlideSyncKey = $derived.by(() => {
+    const slide = appState.currentSlide
+    return slide ? JSON.stringify(slide) : ''
+  })
 
   let bgCheckpointPushed = false // gates background-change history to first event per drag
   let transitionCheckpointPushed = false // gates transition-change history to first event per drag
@@ -1832,11 +1840,12 @@
    * Runs whenever any tracked state changes.
    */
   $effect(() => {
-    // Track all relevant state by reading each property
+    // Track all relevant state by reading each property. currentSlideSyncKey is
+    // used here because many editor paths mutate nested slide fields in place.
+    void currentSlideSyncKey
     void appState.currentFilePath
     void appState.slideIds
     void appState.currentSlideIndex
-    void appState.currentSlide
     void appState.selectedObjectId
     void appState.isPresentingMode
     void loadingState.isLoadingSlide
@@ -2017,8 +2026,7 @@
         if (objectsToSelect.length === 1) {
           selection = objectsToSelect[0]
         } else {
-          selection = new ActiveSelection(objectsToSelect, { canvas: fabCanvas })
-          selection.set(ROTATION_SNAP)
+          selection = createActiveSelectionWithLayout(objectsToSelect)
         }
         fabCanvas.setActiveObject(selection)
         fabCanvas.renderAll()
@@ -2091,6 +2099,53 @@
     })
 
     return cleaned
+  }
+
+  type ControlLayoutTarget = FabricObject & {
+    controls?: Record<string, Control>
+    cornerSize: number
+    touchCornerSize: number
+    padding: number
+    setControlsVisibility(options: Record<string, boolean>): void
+    getScaledWidth(): number
+    getScaledHeight(): number
+    setCoords(): void
+  }
+
+  type ControlLayoutOverrides = {
+    widthPx: number
+    heightPx: number
+  }
+
+  function applyControlLayout(
+    obj: ControlLayoutTarget,
+    overrides?: ControlLayoutOverrides
+  ): void {
+    const controls = obj.controls
+    if (!controls || Object.keys(controls).length === 0) return
+
+    const layout = resolveControlLayout({
+      widthPx: overrides?.widthPx ?? obj.getScaledWidth(),
+      heightPx: overrides?.heightPx ?? obj.getScaledHeight(),
+      isArrow: Boolean(controls[ARROW_HEAD_CONTROL_KEY])
+    })
+
+    const visibility = Object.fromEntries(
+      Object.entries(layout.visibility).filter(([key]) => Boolean(controls[key]))
+    )
+
+    obj.cornerSize = layout.cornerSize
+    obj.touchCornerSize = layout.touchCornerSize
+    obj.padding = layout.padding
+    obj.setControlsVisibility(visibility)
+    obj.setCoords()
+  }
+
+  function createActiveSelectionWithLayout(objects: FabricObject[]): ActiveSelection {
+    const selection = new ActiveSelection(objects, { canvas: fabCanvas })
+    selection.set(ROTATION_SNAP)
+    applyControlLayout(selection as ControlLayoutTarget)
+    return selection
   }
 
   /**
@@ -2254,6 +2309,10 @@
       }
       if (fabObj) {
         fabObj.set(ROTATION_SNAP)
+        applyControlLayout(fabObj as ControlLayoutTarget, {
+          widthPx: element.width,
+          heightPx: element.height
+        })
         fabCanvas.add(fabObj)
       }
     })
@@ -2283,6 +2342,10 @@
         scaleY,
         id: element.id,
         ...ROTATION_SNAP
+      })
+      applyControlLayout(img as ControlLayoutTarget, {
+        widthPx: element.width,
+        heightPx: element.height
       })
       const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
@@ -2318,6 +2381,10 @@
               scaleY,
               id: element.id,
               ...ROTATION_SNAP
+            })
+            applyControlLayout(img as ControlLayoutTarget, {
+              widthPx: element.width,
+              heightPx: element.height
             })
 
             // Count objects already on the canvas whose zIndex is lower than ours
@@ -2393,8 +2460,7 @@
     if (targets.length === 1) {
       fabCanvas.setActiveObject(targets[0])
     } else if (targets.length > 1) {
-      const selection = new ActiveSelection(targets, { canvas: fabCanvas })
-      selection.set(ROTATION_SNAP)
+      const selection = createActiveSelectionWithLayout(targets)
       fabCanvas.setActiveObject(selection)
     }
     fabCanvas.renderAll()
@@ -2448,8 +2514,10 @@
       selection.getObjects().forEach((obj) => {
         updateStateFromObject(obj as TwigFabricObject)
       })
+      applyControlLayout(selection as unknown as ControlLayoutTarget)
     } else {
       updateStateFromObject(target as TwigFabricObject)
+      applyControlLayout(target as ControlLayoutTarget)
     }
 
     // Trigger auto-save directly — the $effect doesn't subscribe to deep element
@@ -2580,6 +2648,7 @@
         })
       }
       obj.setCoords()
+      applyControlLayout(obj as ControlLayoutTarget)
       fabCanvas?.renderAll()
     }
     renderMovePathOverlay()
@@ -4736,8 +4805,7 @@
       if (fabCanvas) {
         const allObjects = fabCanvas.getObjects()
         if (allObjects.length > 0) {
-          const selection = new ActiveSelection(allObjects, { canvas: fabCanvas })
-          selection.set(ROTATION_SNAP)
+          const selection = createActiveSelectionWithLayout(allObjects)
           fabCanvas.setActiveObject(selection)
           fabCanvas.renderAll()
         }
@@ -4817,6 +4885,7 @@
 
   // Keep presentation window in sync whenever the current slide changes
   $effect(() => {
+    void currentSlideSyncKey
     if (appState.isPresentingMode && appState.currentSlide) {
       sendPresentationState()
     }
