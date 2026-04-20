@@ -35,6 +35,7 @@
     Slide
   } from './lib/types'
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
+  import { resolveControlLayout } from './lib/controlLayout'
   import { fontDataToBase64 } from './lib/fontUtils'
   import { getTextboxWrappingOptions, syncTextboxWrapping } from './lib/textboxUtils'
   import {
@@ -1221,6 +1222,9 @@
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
+          fontWeight: element.fontWeight,
+          fontStyle: element.fontStyle,
+          underline: element.underline,
           styles: element.styles ? cleanStylesObject(element.styles) : {},
           ...getTextboxWrappingOptions(element.text),
           lockScalingY: true,
@@ -1584,6 +1588,9 @@
                 fill: el.fill,
                 fontFamily: el.fontFamily,
                 fontSize: el.fontSize,
+                fontWeight: el.fontWeight,
+                fontStyle: el.fontStyle,
+                underline: el.underline,
                 ...getTextboxWrappingOptions(el.text)
               })
             )
@@ -2017,8 +2024,7 @@
         if (objectsToSelect.length === 1) {
           selection = objectsToSelect[0]
         } else {
-          selection = new ActiveSelection(objectsToSelect, { canvas: fabCanvas })
-          selection.set(ROTATION_SNAP)
+          selection = createActiveSelectionWithLayout(objectsToSelect)
         }
         fabCanvas.setActiveObject(selection)
         fabCanvas.renderAll()
@@ -2091,6 +2097,61 @@
     })
 
     return cleaned
+  }
+
+  type ControlLayoutTarget = FabricObject & {
+    controls?: Record<string, Control>
+    cornerSize: number
+    touchCornerSize: number
+    padding: number
+    setControlsVisibility(options: Record<string, boolean>): void
+    getScaledWidth(): number
+    getScaledHeight(): number
+    setCoords(): void
+  }
+
+  type ControlLayoutOverrides = {
+    widthPx?: number
+    heightPx?: number
+  }
+
+  function applyControlLayout(
+    obj: ControlLayoutTarget,
+    overrides?: ControlLayoutOverrides
+  ): void {
+    const controls = obj.controls
+    if (!controls || Object.keys(controls).length === 0) return
+
+    // Creation sites may know only one reliable dimension up front (notably
+    // Textbox height before Fabric finishes initial text layout). When an
+    // override object is supplied, treat a missing axis as effectively
+    // unconstrained instead of falling back to the object's live scaled size.
+    const widthPx = overrides ? (overrides.widthPx ?? Infinity) : obj.getScaledWidth()
+    const heightPx = overrides ? (overrides.heightPx ?? Infinity) : obj.getScaledHeight()
+
+    const layout = resolveControlLayout({
+      widthPx,
+      heightPx,
+      isArrow: Boolean(controls[ARROW_HEAD_CONTROL_KEY]),
+      lockScalingY: Boolean(obj.lockScalingY)
+    })
+
+    const visibility = Object.fromEntries(
+      Object.entries(layout.visibility).filter(([key]) => Boolean(controls[key]))
+    )
+
+    obj.cornerSize = layout.cornerSize
+    obj.touchCornerSize = layout.touchCornerSize
+    obj.padding = layout.padding
+    obj.setControlsVisibility(visibility)
+    obj.setCoords()
+  }
+
+  function createActiveSelectionWithLayout(objects: FabricObject[]): ActiveSelection {
+    const selection = new ActiveSelection(objects, { canvas: fabCanvas })
+    selection.set(ROTATION_SNAP)
+    applyControlLayout(selection as ControlLayoutTarget)
+    return selection
   }
 
   /**
@@ -2247,6 +2308,9 @@
           fill: element.fill,
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
+          fontWeight: element.fontWeight,
+          fontStyle: element.fontStyle,
+          underline: element.underline,
           styles: cleanedStyles,
           ...getTextboxWrappingOptions(element.text),
           lockScalingY: true
@@ -2254,6 +2318,10 @@
       }
       if (fabObj) {
         fabObj.set(ROTATION_SNAP)
+        applyControlLayout(fabObj as ControlLayoutTarget, {
+          widthPx: element.width,
+          heightPx: element.height
+        })
         fabCanvas.add(fabObj)
       }
     })
@@ -2283,6 +2351,10 @@
         scaleY,
         id: element.id,
         ...ROTATION_SNAP
+      })
+      applyControlLayout(img as ControlLayoutTarget, {
+        widthPx: element.width,
+        heightPx: element.height
       })
       const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
@@ -2318,6 +2390,10 @@
               scaleY,
               id: element.id,
               ...ROTATION_SNAP
+            })
+            applyControlLayout(img as ControlLayoutTarget, {
+              widthPx: element.width,
+              heightPx: element.height
             })
 
             // Count objects already on the canvas whose zIndex is lower than ours
@@ -2393,8 +2469,7 @@
     if (targets.length === 1) {
       fabCanvas.setActiveObject(targets[0])
     } else if (targets.length > 1) {
-      const selection = new ActiveSelection(targets, { canvas: fabCanvas })
-      selection.set(ROTATION_SNAP)
+      const selection = createActiveSelectionWithLayout(targets)
       fabCanvas.setActiveObject(selection)
     }
     fabCanvas.renderAll()
@@ -2435,6 +2510,10 @@
     // width/height from scaleX/scaleY (both 1 during these drags).
     const actionName = (event as { transform?: { action?: string } }).transform?.action
     if (actionName === ARROW_HEAD_ACTION || actionName === ARROW_SHAFT_ACTION) {
+      // Arrow adjustment drags mutate arrowShape in place and keep the nominal
+      // width/height fixed, but re-apply the compact control layout here anyway
+      // so the visible handle set is never left stale after the drag completes.
+      applyControlLayout(target as ControlLayoutTarget)
       renderMovePathOverlay()
       return
     }
@@ -2448,8 +2527,10 @@
       selection.getObjects().forEach((obj) => {
         updateStateFromObject(obj as TwigFabricObject)
       })
+      applyControlLayout(selection as unknown as ControlLayoutTarget)
     } else {
       updateStateFromObject(target as TwigFabricObject)
+      applyControlLayout(target as ControlLayoutTarget)
     }
 
     // Trigger auto-save directly — the $effect doesn't subscribe to deep element
@@ -2502,6 +2583,9 @@
       elementInState.text = obj.text
       elementInState.fontSize = obj.fontSize
       elementInState.fontFamily = obj.fontFamily
+      elementInState.fontWeight = obj.fontWeight
+      elementInState.fontStyle = obj.fontStyle
+      elementInState.underline = obj.underline
       elementInState.fill = obj.fill as string
       // Clean up any unwanted transparent values before saving to state
       elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
@@ -2517,6 +2601,9 @@
     elementInState.text = obj.text
     elementInState.fontSize = obj.fontSize
     elementInState.fontFamily = obj.fontFamily
+    elementInState.fontWeight = obj.fontWeight
+    elementInState.fontStyle = obj.fontStyle
+    elementInState.underline = obj.underline
     elementInState.fill = obj.fill as string
     elementInState.styles = obj.styles ? cleanStylesObject(obj.styles) : undefined
   }
@@ -2580,6 +2667,7 @@
         })
       }
       obj.setCoords()
+      applyControlLayout(obj as ControlLayoutTarget)
       fabCanvas?.renderAll()
     }
     renderMovePathOverlay()
@@ -2718,6 +2806,20 @@
       isSelectionUnderlined = false
       wasEditing = false
     }
+
+    // Marquee/shift-click selections are created by Fabric internally and
+    // never flow through createActiveSelectionWithLayout, so apply both the
+    // rotation-snap config and the compact layout here to cover every
+    // selection entry path. Individual objects already carry ROTATION_SNAP
+    // from their creation sites; the gap is ActiveSelection.
+    const activeObj = fabCanvas?.getActiveObject()
+    if (activeObj) {
+      if (activeObj.type === 'activeselection') {
+        activeObj.set(ROTATION_SNAP)
+      }
+      applyControlLayout(activeObj as ControlLayoutTarget)
+    }
+
     renderMovePathOverlay()
   }
 
@@ -3930,6 +4032,9 @@
       text: 'Double-click to edit',
       fontSize: 40,
       fontFamily: 'Arial',
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      underline: false,
       fill: '#333333',
       zIndex: nextZIndex()
     }
@@ -4736,8 +4841,7 @@
       if (fabCanvas) {
         const allObjects = fabCanvas.getObjects()
         if (allObjects.length > 0) {
-          const selection = new ActiveSelection(allObjects, { canvas: fabCanvas })
-          selection.set(ROTATION_SNAP)
+          const selection = createActiveSelectionWithLayout(allObjects)
           fabCanvas.setActiveObject(selection)
           fabCanvas.renderAll()
         }

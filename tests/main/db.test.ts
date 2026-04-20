@@ -48,6 +48,9 @@ function makeSlide(overrides: Partial<Slide> = {}): Slide {
         text: 'Hello, twig',
         fontSize: 28,
         fontFamily: 'Inter',
+        fontWeight: 'bold',
+        fontStyle: 'italic',
+        underline: true,
         styles: {
           0: {
             0: {
@@ -333,8 +336,8 @@ describe('src/main/db.ts', () => {
       db.prepare(
         `INSERT INTO elements (
           id, slide_id, type, x, y, width, height, angle, fill, text, fontSize,
-          fontFamily, styles, src, filename, z_index, animations
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         'el-bad-json',
         'slide-bad-json',
@@ -348,6 +351,9 @@ describe('src/main/db.ts', () => {
         'Broken',
         18,
         'Arial',
+        null,
+        null,
+        null,
         '{bad styles',
         null,
         null,
@@ -372,6 +378,9 @@ describe('src/main/db.ts', () => {
             text: 'Broken',
             fontSize: 18,
             fontFamily: 'Arial',
+            fontWeight: 'normal',
+            fontStyle: 'normal',
+            underline: false,
             styles: undefined,
             src: undefined,
             filename: undefined,
