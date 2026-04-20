@@ -347,6 +347,18 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     const normalizedWidth = el.type === 'arrow' ? Math.abs(el.width) : el.width
     const normalizedHeight = el.type === 'arrow' ? Math.abs(el.height) : el.height
 
+    // Text rows saved before these columns existed have NULL here; Fabric's
+    // Textbox will call .toLowerCase() on fontWeight/fontStyle and throw if
+    // the value is undefined/null, so seed the standard defaults for text.
+    const isText = el.type === 'text'
+    const textFontWeight = isText ? (el.fontWeight ?? 'normal') : undefined
+    const textFontStyle = isText ? (el.fontStyle ?? 'normal') : undefined
+    const textUnderline = isText
+      ? el.underline === null || el.underline === undefined
+        ? false
+        : Boolean(el.underline)
+      : undefined
+
     return {
       type: el.type as 'rect' | 'text' | 'image',
       id: el.id,
@@ -359,9 +371,9 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       text: el.text,
       fontSize: el.fontSize,
       fontFamily: el.fontFamily,
-      fontWeight: el.fontWeight ?? undefined,
-      fontStyle: el.fontStyle ?? undefined,
-      underline: el.underline === null || el.underline === undefined ? undefined : Boolean(el.underline),
+      fontWeight: textFontWeight,
+      fontStyle: textFontStyle,
+      underline: textUnderline,
       // Parse the styles JSON string back into an object with error handling
       styles: el.styles
         ? (() => {
