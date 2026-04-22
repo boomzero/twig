@@ -4,8 +4,10 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const isCiMode = process.argv[2] === 'ci'
-const vitestMode = process.argv[2] === 'watch' ? 'watch' : 'run'
+const mode = process.argv[2]
+const isCiMode = mode === 'ci'
+const isCoverageMode = mode === 'coverage'
+const vitestMode = mode === 'watch' ? 'watch' : 'run'
 const scriptsDir = dirname(fileURLToPath(import.meta.url))
 const repoDir = resolve(scriptsDir, '..')
 const nodeGypBin = resolve(repoDir, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
@@ -123,7 +125,10 @@ async function main() {
     }
   }
 
-  child = spawn('npx', ['vitest', vitestMode], {
+  const vitestArgs = ['vitest', vitestMode]
+  if (isCoverageMode) vitestArgs.push('--coverage')
+
+  child = spawn('npx', vitestArgs, {
     stdio: 'inherit',
     shell: process.platform === 'win32'
   })

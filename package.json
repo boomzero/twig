@@ -14,6 +14,7 @@
     "test": "node ./scripts/run-tests.mjs run",
     "test:watch": "node ./scripts/run-tests.mjs watch",
     "test:ci": "node ./scripts/run-tests.mjs ci",
+    "test:coverage": "node ./scripts/run-tests.mjs coverage",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
@@ -66,6 +67,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.4",
+    "@vitest/coverage-v8": "^4.1.4"
   }
 }

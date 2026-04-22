@@ -12,6 +12,19 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     // Native addons like better-sqlite3 are more stable in forked workers than threads.
     pool: 'forks',
-    restoreMocks: true
+    restoreMocks: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      reportsDirectory: 'coverage',
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/renderer/src/lib/i18n/**',
+        'src/renderer/src/assets/**',
+        'src/**/*.test.ts'
+      ],
+      all: true
+    }
   }
 })
