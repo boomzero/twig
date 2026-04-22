@@ -44,6 +44,7 @@
   "status.unsaved_file.title": "演示文稿尚未保存到文件。点击\"保存\"以选择保存位置。",
   "slide.delete": "删除幻灯片",
   "slide.delete.confirm": "删除此幻灯片？此操作无法撤销。",
+  "slide.duplicate": "复制幻灯片",
   "slide.new": "+ 新建幻灯片",
   "slide.move_path": "切换移动路径编辑器",
   "loading.title": "加载中…",

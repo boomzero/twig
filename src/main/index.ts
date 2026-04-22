@@ -1372,6 +1372,22 @@ app.whenReady().then(() => {
   })
 
   /**
+   * Duplicates a slide and inserts the copy immediately after the source.
+   */
+  ipcMain.handle('db:duplicate-slide', (_event, filePath: string, slideId: string): Slide => {
+    try {
+      validateFilePath(filePath)
+      validateSlideId(slideId)
+      return withDbConnection(filePath, (db) => dbService.duplicateSlide(db, slideId), {
+        syncShadowBack: true
+      })
+    } catch (error) {
+      console.error('Error in db:duplicate-slide:', error)
+      throw error
+    }
+  })
+
+  /**
    * Saves a slide and all its elements to the database.
    */
   ipcMain.handle('db:save-slide', (_event, filePath: string, slide: Slide): void => {

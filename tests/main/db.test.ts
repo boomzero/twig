@@ -6,6 +6,7 @@ import {
   configureDatabaseConnection,
   createSlide,
   deleteSlide,
+  duplicateSlide,
   getFontData,
   getFonts,
   getSetting,
@@ -198,6 +199,115 @@ describe('src/main/db.ts', () => {
     applyBackgroundToAllSlides(db, { type: 'solid', color: '#123456' })
     expect(getSlide(db, first.id)?.background).toEqual({ type: 'solid', color: '#123456' })
     expect(getSlide(db, third.id)?.background).toEqual({ type: 'solid', color: '#123456' })
+  })
+
+  it('duplicates a slide immediately after the source with remapped element IDs', () => {
+    const before = createSlide(db)
+    const source = makeSlide({
+      id: 'slide-source',
+      elements: [
+        makeSlide().elements[0],
+        {
+          id: 'el-arrow',
+          type: 'arrow',
+          x: 240,
+          y: 180,
+          width: 220,
+          height: 80,
+          angle: 12,
+          fill: '#778899',
+          zIndex: 1,
+          arrowShape: {
+            headWidthRatio: 0.9,
+            headLengthRatio: 0.35,
+            shaftThicknessRatio: 0.45
+          },
+          animations: {
+            buildIn: { type: 'appear', duration: 0.2 }
+          }
+        },
+        { ...makeSlide().elements[1], zIndex: 2 }
+      ],
+      animationOrder: [
+        { elementId: 'el-text', category: 'buildIn' },
+        { elementId: 'el-text', category: 'action', actionId: 'action-1' },
+        { elementId: 'el-arrow', category: 'buildIn' },
+        { elementId: 'el-text', category: 'buildOut' }
+      ]
+    })
+    saveSlide(db, source)
+    const after = createSlide(db)
+    saveThumbnail(db, source.id, 'data:image/jpeg;base64,dup-thumb')
+    const sourceBeforeDuplicate = getSlide(db, source.id)
+    expect(sourceBeforeDuplicate).not.toBeNull()
+
+    const duplicated = duplicateSlide(db, source.id)
+    const persisted = getSlide(db, duplicated.id)
+
+    expect(getSlideIds(db)).toEqual([before.id, source.id, duplicated.id, after.id])
+    expect(getThumbnails(db)).toEqual({
+      [source.id]: 'data:image/jpeg;base64,dup-thumb',
+      [duplicated.id]: 'data:image/jpeg;base64,dup-thumb'
+    })
+    expect(duplicated.id).not.toBe(source.id)
+    expect(duplicated.background).toEqual(source.background)
+    expect(duplicated.transition).toEqual(source.transition)
+    expect(duplicated.elements).toHaveLength(source.elements.length)
+    expect(new Set(duplicated.elements.map((el) => el.id)).size).toBe(source.elements.length)
+
+    source.elements.forEach((sourceElement, index) => {
+      const duplicatedElement = duplicated.elements[index]
+      expect(duplicatedElement.id).not.toBe(sourceElement.id)
+      expect(duplicatedElement).toMatchObject({ ...sourceElement, id: duplicatedElement.id })
+    })
+
+    const [duplicatedText, duplicatedArrow, duplicatedImage] = duplicated.elements
+    expect(duplicated.animationOrder).toEqual([
+      { elementId: duplicatedText.id, category: 'buildIn' },
+      { elementId: duplicatedText.id, category: 'action', actionId: 'action-1' },
+      { elementId: duplicatedArrow.id, category: 'buildIn' },
+      { elementId: duplicatedText.id, category: 'buildOut' }
+    ])
+    expect(duplicatedImage.src).toBe(source.elements[2].src)
+    expect(getSlide(db, source.id)).toEqual(sourceBeforeDuplicate)
+    expectStoredSlide(persisted, duplicated)
+  })
+
+  it('throws before writing when duplicating a missing slide', () => {
+    const slide = makeSlide({ id: 'slide-existing' })
+    saveSlide(db, slide)
+    saveThumbnail(db, slide.id, 'data:image/jpeg;base64,thumb')
+
+    expect(() => duplicateSlide(db, 'missing-slide')).toThrowError('Slide not found: missing-slide')
+    expect(getSlideIds(db)).toEqual([slide.id])
+    expect(getThumbnails(db)).toEqual({ [slide.id]: 'data:image/jpeg;base64,thumb' })
+    expectStoredSlide(getSlide(db, slide.id), slide)
+  })
+
+  it('rolls back slide order and inserted rows when duplication fails mid-transaction', () => {
+    const before = createSlide(db)
+    const source = makeSlide({ id: 'slide-rollback-source' })
+    saveSlide(db, source)
+    const after = createSlide(db)
+    saveThumbnail(db, source.id, 'data:image/jpeg;base64,rollback-thumb')
+    const previousSlideIds = getSlideIds(db)
+    const previousThumbnails = getThumbnails(db)
+    const sourceBeforeDuplicate = getSlide(db, source.id)
+
+    db.exec(`
+      CREATE TRIGGER fail_duplicate_element_insert
+      BEFORE INSERT ON elements
+      WHEN NEW.slide_id != '${source.id}'
+      BEGIN
+        SELECT RAISE(ABORT, 'duplicate element insert failed');
+      END
+    `)
+
+    expect(() => duplicateSlide(db, source.id)).toThrowError('duplicate element insert failed')
+    expect(getSlideIds(db)).toEqual([before.id, source.id, after.id])
+    expect(getSlideIds(db)).toEqual(previousSlideIds)
+    expect(getThumbnails(db)).toEqual(previousThumbnails)
+    expect(getSlide(db, source.id)).toEqual(sourceBeforeDuplicate)
   })
 
   it('recognizes the untouched bootstrap presentation and ignores thumbnails', () => {
