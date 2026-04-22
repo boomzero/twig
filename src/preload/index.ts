@@ -50,6 +50,10 @@ const api = {
     /** Create a new blank slide in the database */
     createSlide: (filePath) => ipcRenderer.invoke('db:create-slide', filePath),
 
+    /** Duplicate a slide and insert the copy immediately after the source */
+    duplicateSlide: (filePath, slideId) =>
+      ipcRenderer.invoke('db:duplicate-slide', filePath, slideId),
+
     /** Save a slide to the database */
     saveSlide: (filePath, slide) => ipcRenderer.invoke('db:save-slide', filePath, slide),
 

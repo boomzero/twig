@@ -697,6 +697,123 @@ export function createSlide(db: Database): Slide {
 }
 
 /**
+ * Duplicates a slide, inserting the copy immediately after the source slide.
+ * The duplicate receives a new slide ID and fresh element IDs.
+ *
+ * @param db - The SQLite database connection
+ * @param sourceSlideId - The ID of the slide to duplicate
+ * @returns The duplicated slide with remapped IDs
+ * @throws Error if the source slide does not exist
+ */
+export function duplicateSlide(db: Database, sourceSlideId: string): Slide {
+  const sourceMetaStmt = db.prepare('SELECT slide_order, thumbnail FROM slides WHERE id = ?')
+  const shiftSlidesStmt = db.prepare(
+    'UPDATE slides SET slide_order = slide_order + 1 WHERE slide_order > ?'
+  )
+  const insertSlideStmt = db.prepare(
+    'INSERT INTO slides (id, slide_order, thumbnail, background, animation_order, transition) VALUES (?, ?, ?, ?, ?, ?)'
+  )
+  const elementUpsert = prepareElementUpsert(db)
+
+  const transaction = db.transaction((slideId: string): Slide => {
+    const sourceMeta = sourceMetaStmt.get(slideId) as
+      | { slide_order: number; thumbnail: string | null }
+      | undefined
+    if (!sourceMeta) {
+      throw new Error(`Slide not found: ${slideId}`)
+    }
+
+    const sourceSlide = getSlide(db, slideId)!
+
+    const duplicatedSlideId = uuid_v4()
+    const elementIdMap = new Map<string, string>()
+    const duplicatedElements = sourceSlide.elements.map((element) => {
+      const duplicatedElement = JSON.parse(JSON.stringify(element)) as TwigElement
+      const prefix = element.id.split('_')[0] || element.type
+      const duplicatedElementId = `${prefix}_${uuid_v4()}`
+      duplicatedElement.id = duplicatedElementId
+      elementIdMap.set(element.id, duplicatedElementId)
+      return duplicatedElement
+    })
+
+    const duplicatedSlide: Slide = {
+      id: duplicatedSlideId,
+      elements: duplicatedElements,
+      background: sourceSlide.background
+        ? (JSON.parse(JSON.stringify(sourceSlide.background)) as SlideBackground)
+        : undefined,
+      animationOrder: sourceSlide.animationOrder.map((step) => ({
+        ...step,
+        elementId: elementIdMap.get(step.elementId) ?? step.elementId
+      })),
+      transition: sourceSlide.transition
+        ? (JSON.parse(JSON.stringify(sourceSlide.transition)) as SlideTransition)
+        : undefined
+    }
+
+    shiftSlidesStmt.run(sourceMeta.slide_order)
+    insertSlideStmt.run(
+      duplicatedSlide.id,
+      sourceMeta.slide_order + 1,
+      sourceMeta.thumbnail,
+      serializeJson(duplicatedSlide.background),
+      JSON.stringify(duplicatedSlide.animationOrder ?? []),
+      serializeJson(duplicatedSlide.transition)
+    )
+
+    duplicatedSlide.elements.forEach((el) => {
+      let stylesJson: string | null = null
+      if (el.styles) {
+        try {
+          stylesJson = JSON.stringify(el.styles)
+        } catch (error) {
+          console.error(`Failed to serialize styles for element ${el.id}:`, error)
+          stylesJson = null
+        }
+      }
+
+      let animationsJson: string | null = null
+      if (el.animations) {
+        try {
+          animationsJson = JSON.stringify(el.animations)
+        } catch {
+          animationsJson = null
+        }
+      }
+
+      elementUpsert(
+        el.id,
+        duplicatedSlide.id,
+        el.type,
+        el.x,
+        el.y,
+        el.width,
+        el.height,
+        el.angle,
+        el.fill ?? null,
+        el.text ?? null,
+        el.fontSize ?? null,
+        el.fontFamily ?? null,
+        el.fontWeight ?? null,
+        el.fontStyle ?? null,
+        el.underline === undefined ? null : Number(el.underline),
+        stylesJson,
+        el.src ?? null,
+        el.filename ?? null,
+        el.zIndex,
+        animationsJson,
+        serializeShapeParams(el)
+      )
+    })
+
+    validateAndRepairSlideOrder(db)
+    return duplicatedSlide
+  })
+
+  return transaction(sourceSlideId)
+}
+
+/**
  * Saves multiple slides to the database in a single transaction.
  *
  * This ensures atomicity - either all slides are saved or none are.

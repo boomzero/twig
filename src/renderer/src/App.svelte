@@ -571,6 +571,7 @@
   let slideDragSourceId = $state<string | null>(null)
   let slideDragOverId = $state<string | null>(null)
   let slideDragOverPosition = $state<'before' | 'after'>('before')
+  let duplicatingSlideId = $state<string | null>(null)
 
   // Reactive booleans for toolbar disabled state.
   // historyRevision is read to subscribe to stack mutations; appState.currentSlide?.id
@@ -4294,6 +4295,7 @@
    */
   async function handleSlideSelect(slideId: string): Promise<void> {
     if (slideId === appState.currentSlide?.id) return
+    if (duplicatingSlideId) return
 
     // Capture BEFORE any async work (sync, so canvas is still showing old slide)
     const snapshot = captureCanvasSnapshot(0.85)
@@ -4318,6 +4320,7 @@
    */
   async function deleteSlideById(slideId: string): Promise<void> {
     if (appState.isPresentingMode) return
+    if (loadingState.isLoadingSlide || duplicatingSlideId) return
     if (appState.slideIds.length <= 1) return
     const filePath = appState.currentFilePath
     if (!filePath) return
@@ -4362,6 +4365,54 @@
       appState.currentSlideIndex = ids.indexOf(appState.currentSlide?.id ?? '')
       if (savedHistory) historyBySlideId.set(slideId, savedHistory)
       if (isDeletingCurrent) await loadSlide(slideId)
+    }
+  }
+
+  /**
+   * Duplicates a slide and switches the editor to the inserted copy.
+   */
+  async function duplicateSlideById(slideId: string): Promise<void> {
+    if (appState.isPresentingMode) return
+    if (loadingState.isLoadingSlide || duplicatingSlideId) return
+    const filePath = appState.currentFilePath
+    if (!filePath) return
+
+    const sourceIndex = appState.slideIds.indexOf(slideId)
+    if (sourceIndex === -1) return
+
+    const snapshot = captureCanvasSnapshot(0.85)
+    duplicatingSlideId = slideId
+
+    try {
+      if (snapshot) slideTransitionOverlaySrc = snapshot
+      await flushPendingSave()
+
+      const duplicatedSlide = await window.api.db.duplicateSlide(filePath, slideId)
+      const newSlideIds = [...appState.slideIds]
+      const insertIndex = sourceIndex + 1
+      newSlideIds.splice(insertIndex, 0, duplicatedSlide.id)
+
+      appState.slideIds = newSlideIds
+      if (appState.thumbnails[slideId]) {
+        appState.thumbnails = {
+          ...appState.thumbnails,
+          [duplicatedSlide.id]: appState.thumbnails[slideId]
+        }
+      }
+
+      // Source history references old element IDs, so the duplicate starts with empty stacks.
+      historyBySlideId.set(duplicatedSlide.id, { undo: [], redo: [] })
+      await loadSlide(duplicatedSlide.id)
+      if (appState.currentSlide?.id !== duplicatedSlide.id) {
+        slideTransitionOverlaySrc = null
+      }
+    } catch (error) {
+      slideTransitionOverlaySrc = null
+      console.error('Failed to duplicate slide:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Failed to duplicate slide: ${errorMessage}`)
+    } finally {
+      duplicatingSlideId = null
     }
   }
 
@@ -5471,7 +5522,7 @@
           <div
             class="relative w-full group"
             class:opacity-40={slideDragSourceId === slideId}
-            draggable={!loadingState.isLoadingSlide}
+            draggable={!loadingState.isLoadingSlide && !duplicatingSlideId}
             ondragstart={(e) => onSlideDragStart(e, slideId)}
             ondragover={(e) => onSlideDragOver(e, slideId)}
             ondragleave={onSlideDragLeave}
@@ -5488,7 +5539,7 @@
               class="w-full px-2 py-2 rounded-lg cursor-pointer hover:bg-gray-200 flex flex-col items-center gap-1"
               class:bg-gray-200={slideId === appState.currentSlide.id}
               onclick={async () => await handleSlideSelect(slideId)}
-              disabled={loadingState.isLoadingSlide}
+              disabled={loadingState.isLoadingSlide || !!duplicatingSlideId}
             >
               {#if appState.thumbnails[slideId]}
                 <img
@@ -5504,14 +5555,36 @@
               {/if}
               <div class="w-full text-xs text-left text-gray-500">{index + 1}</div>
             </button>
+            <button
+              class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-opacity z-10 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400 group/duplicate"
+              onclick={async () => await duplicateSlideById(slideId)}
+              aria-label={$_('slide.duplicate')}
+              disabled={loadingState.isLoadingSlide || !!duplicatingSlideId}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 256 256"
+                fill="currentColor"
+                class="w-3 h-3"
+              >
+                <path
+                  d="M184,72H40A16,16,0,0,0,24,88V200a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V88A16,16,0,0,0,184,72Zm0,128H40V88H184V200ZM232,56V176a8,8,0,0,1-16,0V56H64a8,8,0,0,1,0-16H216A16,16,0,0,1,232,56Z"
+                />
+              </svg>
+              <span
+                class="absolute right-0 top-full mt-1 px-2 py-1 text-[10px] text-white bg-gray-800 rounded pointer-events-none whitespace-nowrap opacity-0 group-hover/duplicate:opacity-100 transition-opacity"
+              >
+                {$_('slide.duplicate')}
+              </span>
+            </button>
             {#if appState.slideIds.length > 1}
               <button
-                class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-opacity z-10"
+                class="absolute top-2 right-8 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-opacity z-10 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400 group/delete"
                 onclick={() => {
                   if (confirm(get(_)('slide.delete.confirm'))) deleteSlideById(slideId)
                 }}
-                title={$_('slide.delete')}
                 aria-label={$_('slide.delete')}
+                disabled={loadingState.isLoadingSlide || !!duplicatingSlideId}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -5525,6 +5598,11 @@
                     clip-rule="evenodd"
                   />
                 </svg>
+                <span
+                  class="absolute right-0 top-full mt-1 px-2 py-1 text-[10px] text-white bg-gray-800 rounded pointer-events-none whitespace-nowrap opacity-0 group-hover/delete:opacity-100 transition-opacity"
+                >
+                  {$_('slide.delete')}
+                </span>
               </button>
             {/if}
             {#if slideDragOverId === slideId && slideDragOverPosition === 'after'}

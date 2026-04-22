@@ -91,6 +91,7 @@ declare global {
         getSlideIds: (filePath: string) => Promise<string[]>
         getSlide: (filePath: string, slideId: string) => Promise<Slide | null>
         createSlide: (filePath: string) => Promise<Slide>
+        duplicateSlide: (filePath: string, slideId: string) => Promise<Slide>
         saveSlide: (filePath: string, slide: Slide) => Promise<void>
         saveAs: (filePath: string, slides: Slide[]) => Promise<void>
         closeConnection: (filePath: string) => Promise<void>

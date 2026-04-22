@@ -44,6 +44,7 @@
   "status.unsaved_file.title": "This presentation hasn't been saved to a file yet. Click 'Save' to choose a location.",
   "slide.delete": "Delete slide",
   "slide.delete.confirm": "Delete this slide? This cannot be undone.",
+  "slide.duplicate": "Duplicate slide",
   "slide.new": "+ New Slide",
   "slide.move_path": "Toggle move path editor",
   "loading.title": "Loading...",
