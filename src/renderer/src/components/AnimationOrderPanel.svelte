@@ -43,10 +43,19 @@
     classes: string
   } {
     if (category === 'buildIn')
-      return { label: get(_)('anim_panel.in'), classes: 'bg-green-100 text-green-700 border-green-200' }
+      return {
+        label: get(_)('anim_panel.in'),
+        classes: 'bg-green-100 text-green-700 border-green-200'
+      }
     if (category === 'buildOut')
-      return { label: get(_)('anim_panel.out'), classes: 'bg-orange-100 text-orange-700 border-orange-200' }
-    return { label: get(_)('anim_panel.action'), classes: 'bg-blue-100 text-blue-700 border-blue-200' }
+      return {
+        label: get(_)('anim_panel.out'),
+        classes: 'bg-orange-100 text-orange-700 border-orange-200'
+      }
+    return {
+      label: get(_)('anim_panel.action'),
+      classes: 'bg-blue-100 text-blue-700 border-blue-200'
+    }
   }
 
   function getAnimationTypeLabel(step: AnimationStep): string {

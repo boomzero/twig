@@ -193,10 +193,7 @@ const SNAP_THRESHOLD = 7
 
 type RotatingEvent = { target?: FabricObject; e?: MaybeNativeEvent }
 
-export function installAlignmentGuides(
-  canvas: Canvas,
-  opts: InstallOptions
-): { dispose(): void } {
+export function installAlignmentGuides(canvas: Canvas, opts: InstallOptions): { dispose(): void } {
   const instance = new TwigAligningGuidelines(canvas, opts)
 
   const onRotating = (e: RotatingEvent): void => {

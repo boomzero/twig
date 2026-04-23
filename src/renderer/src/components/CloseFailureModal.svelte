@@ -119,10 +119,8 @@
         <p class="text-sm leading-6 text-gray-600">{$_('close_failure.body')}</p>
         {#if errorMessage}
           <pre
-            class="mt-4 overflow-x-auto rounded-xl bg-gray-50 px-4 py-3 text-xs leading-5 text-gray-700 whitespace-pre-wrap"
-          >
-{errorMessage}</pre
-          >
+            class="mt-4 overflow-x-auto rounded-xl bg-gray-50 px-4 py-3 text-xs leading-5 text-gray-700 whitespace-pre-wrap">
+{errorMessage}</pre>
         {/if}
       </div>
 

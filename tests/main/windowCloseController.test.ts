@@ -29,7 +29,19 @@ class FakeWindow {
 
 class FakeIpcMain extends EventEmitter {}
 
-function createHarness(initiallyQuitting = false) {
+type WindowCloseHarness = {
+  window: FakeWindow
+  ipcMain: FakeIpcMain
+  logger: { warn: ReturnType<typeof vi.fn> }
+  setIsQuitting: ReturnType<typeof vi.fn>
+  quitApp: ReturnType<typeof vi.fn>
+  controller: ReturnType<typeof createWindowCloseController>
+  event: { preventDefault: ReturnType<typeof vi.fn> }
+  signalRendererReady: () => void
+  getIsQuitting: () => boolean
+}
+
+function createHarness(initiallyQuitting = false): WindowCloseHarness {
   const window = new FakeWindow()
   const ipcMain = new FakeIpcMain()
   const logger = { warn: vi.fn() }

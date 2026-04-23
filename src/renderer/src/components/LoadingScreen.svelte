@@ -21,12 +21,7 @@
       compact ? 'h-16 w-16 rounded-[22px]' : 'h-[88px] w-[88px] rounded-[28px]'
     }`}
   >
-    <img
-      src={twigLogo}
-      alt="twig logo"
-      class="h-full w-full object-contain"
-      draggable="false"
-    />
+    <img src={twigLogo} alt="twig logo" class="h-full w-full object-contain" draggable="false" />
   </div>
 
   <div class="space-y-1">

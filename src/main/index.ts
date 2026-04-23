@@ -616,6 +616,13 @@ interface SystemFont {
   format: string
 }
 
+interface FontkitFontMetadata {
+  familyName?: string
+  preferredFamily?: string
+  type?: string
+  fonts?: FontkitFontMetadata[]
+}
+
 /**
  * Gets the platform-specific font directories to scan for system fonts.
  *
@@ -686,15 +693,14 @@ function scanFontDirectory(dir: string, fonts: SystemFont[]): void {
         if (['.ttf', '.otf', '.ttc'].includes(ext)) {
           try {
             // Read the actual font family name from the font file metadata
-            const font = fontkit.openSync(fullPath)
+            const font = fontkit.openSync(fullPath) as FontkitFontMetadata
             const format = ext.substring(1) // Remove the dot
 
             if (font?.type === 'TTC' && Array.isArray(font.fonts)) {
               for (const collectionFont of font.fonts) {
                 // Prefer typographic family name (name ID 16) which groups all weights
                 // under one family. Fall back to name ID 1 which may include weight suffixes.
-                const familyName =
-                  (collectionFont as any).preferredFamily || collectionFont.familyName
+                const familyName = collectionFont.preferredFamily || collectionFont.familyName
                 if (familyName) {
                   fonts.push({
                     family: familyName,
@@ -704,7 +710,7 @@ function scanFontDirectory(dir: string, fonts: SystemFont[]): void {
                 }
               }
             } else {
-              const familyName = (font as any).preferredFamily || font.familyName
+              const familyName = font.preferredFamily || font.familyName
               if (familyName) {
                 fonts.push({
                   family: familyName,
@@ -1098,9 +1104,7 @@ function setupMacAppMenu(): void {
           }
         },
         { type: 'separator' as const },
-        ...(is.dev
-          ? [{ role: 'reload' as const }, { role: 'forceReload' as const }]
-          : []),
+        ...(is.dev ? [{ role: 'reload' as const }, { role: 'forceReload' as const }] : []),
         { role: 'toggleDevTools' as const }
       ]
     },

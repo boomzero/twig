@@ -191,7 +191,9 @@
           <div class="text-right text-sm">
             <div class="text-gray-300">{$_('debug.last_update')}</div>
             <div class="font-mono">{lastUpdate || 'Waiting for data...'}</div>
-            <div class="text-xs text-gray-400 mt-1">{$_('debug.update_count', { values: { count: updateCount } })}</div>
+            <div class="text-xs text-gray-400 mt-1">
+              {$_('debug.update_count', { values: { count: updateCount } })}
+            </div>
             {#if updateCount === 0}
               <div class="text-xs text-yellow-400 mt-2">{$_('debug.no_updates')}</div>
             {/if}
@@ -203,7 +205,9 @@
       <div class="bg-white rounded-b-lg shadow-lg p-6 space-y-6">
         <!-- File Info -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.file_info')}</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+            {$_('debug.file_info')}
+          </h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.current_file')}</span>
@@ -225,7 +229,9 @@
 
         <!-- Slide Info -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.slide_info')}</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+            {$_('debug.slide_info')}
+          </h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.total_slides')}</span>
@@ -255,7 +261,9 @@
 
         <!-- Selection Info -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.selection_state')}</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+            {$_('debug.selection_state')}
+          </h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.selected_id')}</span>
@@ -268,7 +276,9 @@
 
         <!-- Loading State -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.loading_state')}</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+            {$_('debug.loading_state')}
+          </h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.is_loading')}</span>
@@ -285,7 +295,9 @@
 
         <!-- Presentation Mode -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.presentation')}</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+            {$_('debug.presentation')}
+          </h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.is_presenting')}</span>
@@ -302,7 +314,9 @@
 
         <!-- Memory Usage -->
         <section>
-          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.memory')}</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+            {$_('debug.memory')}
+          </h2>
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.state_size')}</span>
@@ -314,7 +328,9 @@
         <!-- Slide IDs List -->
         {#if state.slideIds.length > 0}
           <section>
-            <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">{$_('debug.all_slide_ids')}</h2>
+            <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
+              {$_('debug.all_slide_ids')}
+            </h2>
             <div class="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto">
               <div class="text-xs font-mono space-y-1">
                 {#each state.slideIds as slideId, index (slideId)}
@@ -350,7 +366,9 @@
 
               {#if state.currentSlide.elements.length > 0}
                 <div class="border-t border-gray-300 pt-3 mt-3">
-                  <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase">{$_('debug.elements_section')}</h3>
+                  <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase">
+                    {$_('debug.elements_section')}
+                  </h3>
                   <div class="space-y-4 max-h-96 overflow-y-auto">
                     {#each state.currentSlide.elements as element, index (element.id)}
                       <div

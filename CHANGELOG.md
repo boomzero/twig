@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.1.0] - 2026-04-23
+
+### Added
+
+- Parameterized block arrow shape with adjustment handles
+- Keynote-style alignment guides for object positioning
+- Snap-to-guides setting with improved rotation behavior
+- Slide duplication from the thumbnail sidebar (#48)
+- Vitest v8 coverage reporting
+
+### Fixed
+
+- Stale slide thumbnails after visual edits
+- Presentation mode z-ordering
+- CJK textbox wrapping
+- Base text style persistence and compact controls for tiny selections (#47)
+
+### Changed
+
+- Scoped reload menu items to development builds
+- Updated installation guidance in README
+- Expanded `.tb` format documentation for newer shape and slide data
+
 ## [1.0.1] - 2026-04-13
 
 ### Added

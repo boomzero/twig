@@ -1,13 +1,8 @@
-const displayName =
-  process.env.WINDOWS_STORE_DISPLAY_NAME || 'Twig Presentation Editor'
-const publisherDisplayName =
-  process.env.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME || '朱晨瑞'
-const identityName =
-  process.env.WINDOWS_STORE_IDENTITY_NAME || 'FF08CC69.TwigPresentationEditor'
-const publisher =
-  process.env.WINDOWS_STORE_PUBLISHER || 'CN=76F716C7-82A7-4940-8AF7-087E05524817'
-const applicationId =
-  process.env.WINDOWS_STORE_APPLICATION_ID || 'TwigPresentationEditor'
+const displayName = process.env.WINDOWS_STORE_DISPLAY_NAME || 'Twig Presentation Editor'
+const publisherDisplayName = process.env.WINDOWS_STORE_PUBLISHER_DISPLAY_NAME || '朱晨瑞'
+const identityName = process.env.WINDOWS_STORE_IDENTITY_NAME || 'FF08CC69.TwigPresentationEditor'
+const publisher = process.env.WINDOWS_STORE_PUBLISHER || 'CN=76F716C7-82A7-4940-8AF7-087E05524817'
+const applicationId = process.env.WINDOWS_STORE_APPLICATION_ID || 'TwigPresentationEditor'
 
 const msix = {
   artifactName: '${name}-${version}.${ext}',
@@ -18,14 +13,14 @@ const msix = {
   applicationId,
   // electron-builder resolves AppX tile assets from build/appx/*.png.
   backgroundColor: '#282B33',
-  languages: ['en-US', 'zh-CN'],
+  languages: ['en-US', 'zh-CN']
 }
 
 module.exports = {
   appId: 'com.twig.app',
   productName: 'twig',
   directories: {
-    buildResources: 'build',
+    buildResources: 'build'
   },
   files: [
     '!**/.vscode/*',
@@ -34,7 +29,7 @@ module.exports = {
     '!svelte.config.mjs',
     '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}',
     '!{.env,.env.*,.npmrc,pnpm-lock.yaml}',
-    '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}',
+    '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   ],
   electronLanguages: ['en-US', 'zh-CN'],
   asarUnpack: ['resources/**'],
@@ -45,17 +40,17 @@ module.exports = {
       description: 'Twig Presentation File',
       mimeType: 'application/x-twig',
       icon: 'build/icon',
-      role: 'Editor',
-    },
+      role: 'Editor'
+    }
   ],
   win: {
     executableName: 'twig',
     target: [
       {
         target: 'appx',
-        arch: ['x64'],
-      },
-    ],
+        arch: ['x64']
+      }
+    ]
   },
   appx: msix,
   mac: {
@@ -70,12 +65,12 @@ module.exports = {
         'twig needs access to your Documents folder to open and save presentations.',
       NSDownloadsFolderUsageDescription:
         'twig needs access to your Downloads folder to open and save presentations.',
-      CFBundleLocalizations: ['en', 'zh-CN'],
+      CFBundleLocalizations: ['en', 'zh-CN']
     },
-    notarize: true,
+    notarize: true
   },
   dmg: {
-    artifactName: '${name}-${version}.${ext}',
+    artifactName: '${name}-${version}.${ext}'
   },
   mas: {
     entitlements: 'build/entitlements.mas.plist',
@@ -88,24 +83,24 @@ module.exports = {
         'twig needs access to your Documents folder to open and save presentations.',
       NSDownloadsFolderUsageDescription:
         'twig needs access to your Downloads folder to open and save presentations.',
-      CFBundleLocalizations: ['en', 'zh-CN'],
+      CFBundleLocalizations: ['en', 'zh-CN']
     },
-    notarize: false,
+    notarize: false
   },
   linux: {
     target: ['AppImage', 'deb'],
     maintainer: 'boomzero',
     category: 'Utility',
-    icon: 'build/icons/png',
+    icon: 'build/icons/png'
   },
   appImage: {
-    artifactName: '${name}-${version}.${ext}',
+    artifactName: '${name}-${version}.${ext}'
   },
   npmRebuild: false,
   publish: {
     provider: 'github',
     owner: 'boomzero',
     repo: 'twig',
-    releaseType: 'draft',
-  },
+    releaseType: 'draft'
+  }
 }

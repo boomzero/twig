@@ -14,7 +14,7 @@ A `.tb` file is a standard SQLite database that stores a twig presentation. You 
 4. [JSON column reference](#4-json-column-reference)
    - 4.1 [SlideBackground](#41-slidebackground)
    - 4.2 [SlideTransition](#42-slidetransition)
-   - 4.3 [AnimationStep\[\] (animation\_order)](#43-animationstep-animation_order)
+   - 4.3 [AnimationStep\[\] (animation_order)](#43-animationstep-animation_order)
    - 4.4 [ElementAnimations (animations)](#44-elementanimations-animations)
    - 4.5 [Fabric.js rich-text styles](#45-fabricjs-rich-text-styles)
    - 4.6 [Arrow shape (shape_params)](#46-arrow-shape-shape_params)
@@ -105,13 +105,13 @@ Element coordinates use the **center point** as origin — this is the fabric.js
 
 Key landmark positions:
 
-| Position            |  x  |  y  |
-|---------------------|-----|-----|
-| Canvas center       | 480 | 270 |
-| Top-left quadrant   | 240 | 135 |
-| Top-right quadrant  | 720 | 135 |
-| Bottom-left quadrant| 240 | 405 |
-| Bottom-right quadrant|720 | 405 |
+| Position              | x   | y   |
+| --------------------- | --- | --- |
+| Canvas center         | 480 | 270 |
+| Top-left quadrant     | 240 | 135 |
+| Top-right quadrant    | 720 | 135 |
+| Bottom-left quadrant  | 240 | 405 |
+| Bottom-right quadrant | 720 | 405 |
 
 When pasting, twig clamps element centers to `[0, 959]` × `[0, 539]` to keep them on-canvas.
 
@@ -121,26 +121,26 @@ When pasting, twig clamps element centers to `[0, 959]` × `[0, 539]` to keep th
 
 All element types share the **common fields**: `id`, `slide_id`, `type`, `x`, `y`, `width`, `height`, `angle`, `z_index`.
 
-| `type`     | Required additional fields | Optional fields            |
-|------------|---------------------------|----------------------------|
-| `rect`     | —                         | `fill`, `animations`       |
-| `ellipse`  | —                         | `fill`, `animations`       |
-| `triangle` | —                         | `fill`, `animations`       |
-| `star`     | —                         | `fill`, `animations`       |
-| `arrow`    | —                         | `fill`, `animations`, `shape_params` (see §4.6) |
+| `type`     | Required additional fields       | Optional fields                                                                     |
+| ---------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| `rect`     | —                                | `fill`, `animations`                                                                |
+| `ellipse`  | —                                | `fill`, `animations`                                                                |
+| `triangle` | —                                | `fill`, `animations`                                                                |
+| `star`     | —                                | `fill`, `animations`                                                                |
+| `arrow`    | —                                | `fill`, `animations`, `shape_params` (see §4.6)                                     |
 | `text`     | `text`, `fontSize`, `fontFamily` | `fill` (text color), `fontWeight`, `fontStyle`, `underline`, `styles`, `animations` |
-| `image`    | `src`                     | `filename`, `animations`   |
+| `image`    | `src`                            | `filename`, `animations`                                                            |
 
 **Default values used by the editor when adding elements:**
 
-| Type       | Default `width` | Default `height` | Default `fill`  | Default `fontSize` |
-|------------|-----------------|------------------|-----------------|-------------------|
-| `rect`     | 150             | 100              | `#FF6F61`       | —                 |
-| `ellipse`  | 150             | 150              | `#FF6F61`       | —                 |
-| `triangle` | 150             | 130              | `#FF6F61`       | —                 |
-| `star`     | 150             | 150              | `#FF6F61`       | —                 |
-| `arrow`    | 200             | 100              | `#FF6F61`       | —                 |
-| `text`     | 200             | 50               | `#333333`       | 40                |
+| Type       | Default `width` | Default `height` | Default `fill` | Default `fontSize` |
+| ---------- | --------------- | ---------------- | -------------- | ------------------ |
+| `rect`     | 150             | 100              | `#FF6F61`      | —                  |
+| `ellipse`  | 150             | 150              | `#FF6F61`      | —                  |
+| `triangle` | 150             | 130              | `#FF6F61`      | —                  |
+| `star`     | 150             | 150              | `#FF6F61`      | —                  |
+| `arrow`    | 200             | 100              | `#FF6F61`      | —                  |
+| `text`     | 200             | 50               | `#333333`      | 40                 |
 
 Text elements use `Arial` as the default `fontFamily`.
 
@@ -201,11 +201,11 @@ Stored in `slides.transition`. `NULL` means no transition animation between slid
 { "type": "dissolve", "duration": 0.4 }
 ```
 
-| `type`      | Description                        |
-|-------------|------------------------------------|
-| `"none"`    | Instant cut (same as NULL)         |
-| `"dissolve"`| Cross-fade between slides          |
-| `"push"`    | New slide pushes old one left      |
+| `type`       | Description                   |
+| ------------ | ----------------------------- |
+| `"none"`     | Instant cut (same as NULL)    |
+| `"dissolve"` | Cross-fade between slides     |
+| `"push"`     | New slide pushes old one left |
 
 `duration` is in seconds (e.g. `0.4`).
 
@@ -225,10 +225,10 @@ Each step in the array represents one user-triggered animation event (one press 
 ]
 ```
 
-| Field       | Type   | Description                                                                 |
-|-------------|--------|-----------------------------------------------------------------------------|
-| `elementId` | string | ID of the element this step controls                                        |
-| `category`  | string | `"buildIn"` \| `"action"` \| `"buildOut"`                                   |
+| Field       | Type   | Description                                                                             |
+| ----------- | ------ | --------------------------------------------------------------------------------------- |
+| `elementId` | string | ID of the element this step controls                                                    |
+| `category`  | string | `"buildIn"` \| `"action"` \| `"buildOut"`                                               |
 | `actionId`  | string | Required when `category` is `"action"` — matches an `id` in `ElementAnimations.actions` |
 
 The order in this array is the order animations fire during presentation. Elements not listed here appear immediately when the slide loads.
@@ -265,23 +265,23 @@ All three sub-objects are optional. You may have only a `buildIn`, only `actions
 
 **buildIn types:**
 
-| `type`     | Effect                                 |
-|------------|----------------------------------------|
-| `"appear"` | Instantly visible (snaps in)           |
-| `"fade-in"`| Fades from transparent to opaque       |
+| `type`      | Effect                           |
+| ----------- | -------------------------------- |
+| `"appear"`  | Instantly visible (snaps in)     |
+| `"fade-in"` | Fades from transparent to opaque |
 
 **buildOut types:**
 
-| `type`        | Effect                              |
-|---------------|-------------------------------------|
-| `"disappear"` | Instantly hidden (snaps out)        |
-| `"fade-out"`  | Fades from opaque to transparent    |
+| `type`        | Effect                           |
+| ------------- | -------------------------------- |
+| `"disappear"` | Instantly hidden (snaps out)     |
+| `"fade-out"`  | Fades from opaque to transparent |
 
 **action types:**
 
-| `type`  | Additional fields         | Description                          |
-|---------|---------------------------|--------------------------------------|
-| `"move"`| `toX`, `toY`, `duration`  | Animates element center to (`toX`,`toY`) |
+| `type`   | Additional fields        | Description                              |
+| -------- | ------------------------ | ---------------------------------------- |
+| `"move"` | `toX`, `toY`, `duration` | Animates element center to (`toX`,`toY`) |
 
 Each action needs a stable `id` (UUID) because `animation_order` references it by `actionId`.
 
@@ -320,14 +320,14 @@ Example — bold first word, red second word:
 
 Supported per-character style properties (fabric.js IText):
 
-| Property      | Example value         | Description            |
-|---------------|-----------------------|------------------------|
-| `fill`        | `"#ff0000"`           | Text color override    |
-| `fontSize`    | `24`                  | Size in px             |
-| `fontWeight`  | `"bold"` / `"normal"` | Weight override        |
-| `fontStyle`   | `"italic"` / `"normal"` | Style override       |
-| `underline`   | `true`                | Underline              |
-| `linethrough` | `true`                | Strikethrough          |
+| Property      | Example value           | Description         |
+| ------------- | ----------------------- | ------------------- |
+| `fill`        | `"#ff0000"`             | Text color override |
+| `fontSize`    | `24`                    | Size in px          |
+| `fontWeight`  | `"bold"` / `"normal"`   | Weight override     |
+| `fontStyle`   | `"italic"` / `"normal"` | Style override      |
+| `underline`   | `true`                  | Underline           |
+| `linethrough` | `true`                  | Strikethrough       |
 
 For plain uniform text, leave `styles` as `NULL` — it is more efficient and easier to generate.
 
@@ -351,11 +351,11 @@ headL   = w * headLengthRatio           // head horizontal extent
 shaftT  = headW * shaftThicknessRatio   // shaft thickness
 ```
 
-| Field                 | Range       | Default | Meaning                                      |
-|-----------------------|-------------|---------|----------------------------------------------|
-| `headWidthRatio`      | `0.1`–`1.0` | `1.0`   | Head base span as a fraction of `height`     |
-| `headLengthRatio`     | `0.05`–`0.95` | `0.4` | Head extent as a fraction of `width`         |
-| `shaftThicknessRatio` | `0.05`–`1.0` | `0.4`   | Shaft thickness as a fraction of **head base width** (`headW`) |
+| Field                 | Range         | Default | Meaning                                                        |
+| --------------------- | ------------- | ------- | -------------------------------------------------------------- |
+| `headWidthRatio`      | `0.1`–`1.0`   | `1.0`   | Head base span as a fraction of `height`                       |
+| `headLengthRatio`     | `0.05`–`0.95` | `0.4`   | Head extent as a fraction of `width`                           |
+| `shaftThicknessRatio` | `0.05`–`1.0`  | `0.4`   | Shaft thickness as a fraction of **head base width** (`headW`) |
 
 **Default ratios reproduce the pre-`shape_params` arrow exactly** for any `width`/`height`. Legacy rows with `shape_params = NULL` must be treated as having these defaults.
 
@@ -377,10 +377,10 @@ Twig uses the system clipboard to copy and paste elements between slides and bet
 }
 ```
 
-| Field                | Description                                                                                      |
-|----------------------|--------------------------------------------------------------------------------------------------|
-| `__twig_clipboard__` | Always `true`. Acts as a sentinel so twig ignores unrelated clipboard text.                      |
-| `copyId`             | A fresh UUID generated on every copy. Allows twig to detect when a new copy overwrites the last. |
+| Field                | Description                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| `__twig_clipboard__` | Always `true`. Acts as a sentinel so twig ignores unrelated clipboard text.                       |
+| `copyId`             | A fresh UUID generated on every copy. Allows twig to detect when a new copy overwrites the last.  |
 | `elements`           | Array of serialized `TwigElement` objects (same structure as the `elements` table rows, not SQL). |
 
 Each element in `elements` is a plain JavaScript object with these fields:
@@ -482,15 +482,15 @@ print("Clipboard ready — switch to twig and press Cmd/Ctrl+V")
 
 IDs use the pattern `<type>_<uuid-v4>`:
 
-| Element type | ID prefix   | Example                          |
-|--------------|-------------|----------------------------------|
-| `rect`       | `rect_`     | `rect_3f2a1b4c-...`             |
-| `ellipse`    | `ellipse_`  | `ellipse_9c1b2d3e-...`          |
-| `triangle`   | `triangle_` | `triangle_7a8b9c0d-...`         |
-| `star`       | `star_`     | `star_1a2b3c4d-...`             |
-| `arrow`      | `arrow_`    | `arrow_5e6f7a8b-...`            |
-| `text`       | `text_`     | `text_2b3c4d5e-...`             |
-| `image`      | `image_`    | `image_6f7a8b9c-...`            |
+| Element type | ID prefix   | Example                 |
+| ------------ | ----------- | ----------------------- |
+| `rect`       | `rect_`     | `rect_3f2a1b4c-...`     |
+| `ellipse`    | `ellipse_`  | `ellipse_9c1b2d3e-...`  |
+| `triangle`   | `triangle_` | `triangle_7a8b9c0d-...` |
+| `star`       | `star_`     | `star_1a2b3c4d-...`     |
+| `arrow`      | `arrow_`    | `arrow_5e6f7a8b-...`    |
+| `text`       | `text_`     | `text_2b3c4d5e-...`     |
+| `image`      | `image_`    | `image_6f7a8b9c-...`    |
 
 The prefix before `_` is used during paste to preserve element type in the regenerated ID. IDs must be unique across the entire file (all slides).
 
@@ -519,12 +519,12 @@ Any `fontFamily` value not on this list must have a corresponding row in the `fo
 fonts.variant format: "<weight>-<style>"
 ```
 
-| Weight  | Style   | `variant` value    |
-|---------|---------|--------------------|
-| normal  | normal  | `normal-normal`    |
-| bold    | normal  | `bold-normal`      |
-| normal  | italic  | `normal-italic`    |
-| bold    | italic  | `bold-italic`      |
+| Weight | Style  | `variant` value |
+| ------ | ------ | --------------- |
+| normal | normal | `normal-normal` |
+| bold   | normal | `bold-normal`   |
+| normal | italic | `normal-italic` |
+| bold   | italic | `bold-italic`   |
 
 Example insertion:
 

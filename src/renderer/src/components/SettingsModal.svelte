@@ -29,7 +29,8 @@
 
   $effect(() => {
     if (open && !autoUpdateLoaded) {
-      window.api?.prefs?.get('autoUpdate')
+      window.api?.prefs
+        ?.get('autoUpdate')
         .then((val) => {
           autoUpdate = val !== false
           autoUpdateLoaded = true
@@ -40,7 +41,8 @@
         })
     }
     if (open && !snapToGuidesLoaded) {
-      window.api?.prefs?.get('snapToGuides')
+      window.api?.prefs
+        ?.get('snapToGuides')
         .then((val) => {
           snapToGuides = val !== false
           snapToGuidesLoaded = true
@@ -123,7 +125,9 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-    onclick={(e) => { if (e.target === e.currentTarget) close() }}
+    onclick={(e) => {
+      if (e.target === e.currentTarget) close()
+    }}
     onkeydown={onKeydown}
     role="dialog"
     aria-modal="true"
@@ -139,14 +143,18 @@
           aria-label={$_('settings.close')}
         >
           <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
           </svg>
         </button>
       </div>
 
       <!-- Body -->
       <div class="px-6 py-5 space-y-6">
-
         <!-- Language -->
         <section>
           <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -222,52 +230,52 @@
 
         <!-- Updates (hidden on store-managed builds — updater is not available) -->
         {#if !isStoreBuild}
-        <section>
-          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            {$_('settings.updates')}
-          </h3>
+          <section>
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              {$_('settings.updates')}
+            </h3>
 
-          <!-- Auto-update toggle -->
-          <label class="flex items-center gap-3 cursor-pointer mb-4">
-            <input
-              type="checkbox"
-              bind:checked={autoUpdate}
-              onchange={handleAutoUpdateChange}
-              class="accent-indigo-600 w-4 h-4"
-            />
-            <span class="text-sm text-gray-700">{$_('settings.auto_update')}</span>
-          </label>
+            <!-- Auto-update toggle -->
+            <label class="flex items-center gap-3 cursor-pointer mb-4">
+              <input
+                type="checkbox"
+                bind:checked={autoUpdate}
+                onchange={handleAutoUpdateChange}
+                class="accent-indigo-600 w-4 h-4"
+              />
+              <span class="text-sm text-gray-700">{$_('settings.auto_update')}</span>
+            </label>
 
-          <!-- Manual check -->
-          <div class="flex items-center gap-3 flex-wrap">
-            <button
-              onclick={checkNow}
-              disabled={checkStatus === 'checking'}
-              class="px-3 py-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md disabled:opacity-50"
-            >
-              {$_('settings.check_now')}
-            </button>
-
-            {#if checkStatus === 'checking'}
-              <span class="text-xs text-gray-500">{$_('settings.checking')}</span>
-            {:else if checkStatus === 'up-to-date'}
-              <span class="text-xs text-gray-500">{$_('settings.up_to_date')}</span>
-            {:else if checkStatus === 'available' && updateFoundVersion}
-              <span class="text-xs text-gray-700">
-                {$_('settings.update_available', { values: { version: updateFoundVersion } })}
-              </span>
+            <!-- Manual check -->
+            <div class="flex items-center gap-3 flex-wrap">
               <button
-                onclick={downloadAndInstall}
-                disabled={isDownloading}
-                class="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-md disabled:opacity-50"
+                onclick={checkNow}
+                disabled={checkStatus === 'checking'}
+                class="px-3 py-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md disabled:opacity-50"
               >
-                {isDownloading ? '...' : $_('settings.install_update')}
+                {$_('settings.check_now')}
               </button>
-            {:else if checkStatus === 'error'}
-              <span class="text-xs text-red-500">{$_('settings.update_error')}</span>
-            {/if}
-          </div>
-        </section>
+
+              {#if checkStatus === 'checking'}
+                <span class="text-xs text-gray-500">{$_('settings.checking')}</span>
+              {:else if checkStatus === 'up-to-date'}
+                <span class="text-xs text-gray-500">{$_('settings.up_to_date')}</span>
+              {:else if checkStatus === 'available' && updateFoundVersion}
+                <span class="text-xs text-gray-700">
+                  {$_('settings.update_available', { values: { version: updateFoundVersion } })}
+                </span>
+                <button
+                  onclick={downloadAndInstall}
+                  disabled={isDownloading}
+                  class="px-3 py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-md disabled:opacity-50"
+                >
+                  {isDownloading ? '...' : $_('settings.install_update')}
+                </button>
+              {:else if checkStatus === 'error'}
+                <span class="text-xs text-red-500">{$_('settings.update_error')}</span>
+              {/if}
+            </div>
+          </section>
         {/if}
       </div>
 

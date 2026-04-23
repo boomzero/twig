@@ -30,8 +30,8 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
-  bundleShortVersion: 1.0.1
-  bundleVersion: 1.0.19
+  bundleShortVersion: 1.1.0
+  bundleVersion: 1.0.20
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -50,7 +50,7 @@ mas:
   entitlements: build/entitlements.mas.plist
   entitlementsInherit: build/entitlements.mas.inherit.plist
   provisioningProfile: build/twig.provisionprofile
-  identity: "Apple Distribution: Chenrui Zhu (65ZLJ987GH)"
+  identity: 'Apple Distribution: Chenrui Zhu (65ZLJ987GH)'
   artifactName: ${name}-${version}-mas.${ext}
   extendInfo:
     ITSAppUsesNonExemptEncryption: false

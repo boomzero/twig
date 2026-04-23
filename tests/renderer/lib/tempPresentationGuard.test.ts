@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, type Mock, vi } from 'vitest'
 import {
   closePresentationWithTempGuard,
   decideTempPresentationDisposition,
   switchPresentationWithTempGuard,
   type TempPresentationPromptChoice
 } from '../../../src/renderer/src/lib/tempPresentationGuard'
+
+type GuardOptions = Parameters<typeof decideTempPresentationDisposition>[0] & {
+  flushPendingSave: Mock<() => Promise<void>>
+  isBootstrapPresentation: Mock<(filePath: string) => Promise<boolean>>
+  promptToAbandonTemp: Mock<() => Promise<TempPresentationPromptChoice>>
+  saveTempPresentation: Mock<() => Promise<boolean>>
+}
 
 function createGuardOptions(
   overrides: {
@@ -13,13 +20,17 @@ function createGuardOptions(
     promptChoice?: TempPresentationPromptChoice
     didSave?: boolean
   } = {}
-) {
-  const flushPendingSave = vi.fn().mockResolvedValue(undefined)
-  const isBootstrapPresentation = vi.fn().mockResolvedValue(false)
+): GuardOptions {
+  const flushPendingSave = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+  const isBootstrapPresentation = vi
+    .fn<(filePath: string) => Promise<boolean>>()
+    .mockResolvedValue(false)
   const promptToAbandonTemp = vi
     .fn<() => Promise<TempPresentationPromptChoice>>()
     .mockResolvedValue(overrides.promptChoice ?? 'cancel')
-  const saveTempPresentation = vi.fn().mockResolvedValue(overrides.didSave ?? true)
+  const saveTempPresentation = vi
+    .fn<() => Promise<boolean>>()
+    .mockResolvedValue(overrides.didSave ?? true)
 
   return {
     currentFilePath: overrides.currentFilePath ?? '/tmp/current.tb',

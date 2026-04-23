@@ -3,7 +3,7 @@
 
 **twig** &nbsp;·&nbsp; a presentation editor that looks the same everywhere
 
-[![Version](https://img.shields.io/badge/version-1.0.1-8b5cf6?style=flat-square)](https://github.com/boomzero/twig/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-8b5cf6?style=flat-square)](https://github.com/boomzero/twig/releases)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555?style=flat-square)](#installation)
 
@@ -45,11 +45,11 @@ On the roadmap: templates, element grouping, and more transitions and animation 
 
 For Windows, the preferred install method is the [Microsoft Store](https://apps.microsoft.com/detail/9NC6MM40GZ37). The `.exe` file on [Releases](https://github.com/boomzero/twig/releases) is still available, but unlike the macOS release builds it is not code-signed, so Windows may show trust warnings.
 
-| Platform | File |
-|----------|------|
-| macOS | Mac App Store or signed `.dmg` from Releases |
-| Windows | Microsoft Store (preferred), or `.exe` from Releases |
-| Linux | `.AppImage` / `.deb` from Releases |
+| Platform | File                                                 |
+| -------- | ---------------------------------------------------- |
+| macOS    | Mac App Store or signed `.dmg` from Releases         |
+| Windows  | Microsoft Store (preferred), or `.exe` from Releases |
+| Linux    | `.AppImage` / `.deb` from Releases                   |
 
 ---
 

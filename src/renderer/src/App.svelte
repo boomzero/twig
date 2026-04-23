@@ -2116,10 +2116,7 @@
     heightPx?: number
   }
 
-  function applyControlLayout(
-    obj: ControlLayoutTarget,
-    overrides?: ControlLayoutOverrides
-  ): void {
+  function applyControlLayout(obj: ControlLayoutTarget, overrides?: ControlLayoutOverrides): void {
     const controls = obj.controls
     if (!controls || Object.keys(controls).length === 0) return
 
@@ -3286,7 +3283,7 @@
         isBootstrapPresentation: (filePath) => window.api.db.isBootstrapPresentation(filePath),
         promptToAbandonTemp: promptToAbandonTempPresentation,
         saveTempPresentation: saveCurrentPresentationAs,
-        replacePresentation: async (_decision) => {
+        replacePresentation: async () => {
           // Snapshot after the guard resolves because choosing "Save" may move
           // a temp presentation to a new on-disk location.
           const restoreFilePath = appState.currentFilePath

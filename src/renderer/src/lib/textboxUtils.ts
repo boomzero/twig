@@ -11,9 +11,7 @@ export function shouldSplitTextboxByGrapheme(text: string | null | undefined): b
   return typeof text === 'string' && CJK_GRAPHEME_WRAP_RE.test(text)
 }
 
-export function getTextboxWrappingOptions(
-  text: string | null | undefined
-): {
+export function getTextboxWrappingOptions(text: string | null | undefined): {
   splitByGrapheme: boolean
 } {
   return {

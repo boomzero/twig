@@ -179,9 +179,7 @@ declare global {
         onSnapChanged: (callback: (enabled: boolean) => void) => () => void
       }
       prefs: {
-        get: (
-          key: 'locale' | 'autoUpdate' | 'snapToGuides'
-        ) => Promise<string | boolean | null>
+        get: (key: 'locale' | 'autoUpdate' | 'snapToGuides') => Promise<string | boolean | null>
         set: (
           key: 'locale' | 'autoUpdate' | 'snapToGuides',
           value: string | boolean
