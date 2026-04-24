@@ -23,7 +23,13 @@
   import { onMount, onDestroy } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import { v4 as uuid_v4 } from 'uuid'
-  import { appState, loadPresentation, loadSlide, loadingState } from './lib/state.svelte'
+  import {
+    appState,
+    loadPresentation,
+    loadSlide,
+    loadingState,
+    TooNewCancelledError
+  } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
   import type { TwigElement, SelectionState } from './lib/state.svelte'
   import type {
@@ -1708,9 +1714,8 @@
 
     // Check if the app was launched by double-clicking a .tb file
     const launchFile = await window.api?.app?.getFileToOpen()
-    if (launchFile) {
-      await openPresentationAtPath(launchFile)
-    } else {
+    const opened = launchFile ? await openPresentationAtPath(launchFile) : false
+    if (!opened) {
       await createNewPresentationInternal()
     }
     loadingScreenPhase = 'booting'
@@ -3266,7 +3271,12 @@
     imageElementCache.clear()
     prefetchedSlideIds.clear()
     loadingScreenPhase = 'opening'
-    await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
+    try {
+      await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
+    } catch (error) {
+      if (error instanceof TooNewCancelledError) return
+      throw error
+    }
 
     if (slideId && slideId !== appState.currentSlide?.id && appState.slideIds.includes(slideId)) {
       await loadSlide(slideId)
@@ -3281,7 +3291,14 @@
     clearAllHistory()
     imageElementCache.clear()
     prefetchedSlideIds.clear()
-    await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
+    try {
+      await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
+    } catch (error) {
+      if (error instanceof TooNewCancelledError) {
+        return false
+      }
+      throw error
+    }
     setSaveStatus('saved')
     prefetchAllSlideImages().catch(() => {})
     return true
@@ -3429,6 +3446,9 @@
         appState.currentSlide = newSlide
         appState.currentSlideIndex = 0
         appState.selectedObjectId = null
+        appState.readOnly = false
+        appState.compatNotesRaw = ''
+        appState.fileVersion = null
 
         console.log('Created new presentation with temp database:', tempPath)
         setSaveStatus('saved')
@@ -3519,8 +3539,8 @@
           return { completed: false, mutatedState: false }
         }
 
-        await openPresentationAtPath(filePath)
-        return { completed: true, mutatedState: true }
+        const opened = await openPresentationAtPath(filePath)
+        return { completed: opened, mutatedState: opened }
       })
     } catch (error) {
       console.error('Failed to open presentation:', error)

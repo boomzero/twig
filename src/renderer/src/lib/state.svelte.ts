@@ -137,6 +137,18 @@ export interface TooNewFileInfo {
 
 export type TooNewChoice = 'readonly' | 'cancel'
 
+/**
+ * Thrown by `loadPresentation` when the user dismisses the too-new-file modal.
+ * Callers should catch this specifically and treat it as a benign abort rather
+ * than a load failure (no error alert, no telemetry).
+ */
+export class TooNewCancelledError extends Error {
+  constructor() {
+    super('user cancelled tooNew open')
+    this.name = 'TooNewCancelledError'
+  }
+}
+
 export interface LoadPresentationOptions {
   /**
    * Called when the file is newer than this build supports. Resolves to
@@ -178,7 +190,7 @@ export async function loadPresentation(
     }
     const choice = options.onTooNewFile ? await options.onTooNewFile(info) : 'cancel'
     if (choice === 'cancel') {
-      throw new Error('user cancelled tooNew open')
+      throw new TooNewCancelledError()
     }
     readOnly = true
   }
