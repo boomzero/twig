@@ -13,7 +13,12 @@
 
 <script lang="ts">
   import { appState } from '../lib/state.svelte'
-  import type { SlideBackground, ElementAnimations, SlideTransition } from '../lib/types'
+  import type {
+    ArrowShape,
+    SlideBackground,
+    ElementAnimations,
+    SlideTransition
+  } from '../lib/types'
   import { DEFAULT_ARROW_SHAPE } from '../lib/types'
   import { _ } from 'svelte-i18n'
 
@@ -79,13 +84,40 @@
   // change per focus session, not on focus itself (which would clear redo even
   // if the user never edits anything). Reset on blur so the next session is fresh.
   let snapshotPushed = false
-  function handleInput(): void {
+  function beginPropertyMutation(): boolean {
+    if (appState.readOnly) return false
     if (!snapshotPushed) {
       onBeforePropertyChange?.()
       snapshotPushed = true
     }
+    return true
+  }
+
+  type NumericProperty = 'x' | 'y' | 'width' | 'height' | 'angle'
+
+  function updateNumericProperty(key: NumericProperty, event: Event): void {
+    if (!selectedObject || !beginPropertyMutation()) return
+    const value = (event.target as HTMLInputElement).valueAsNumber
+    if (!Number.isFinite(value)) return
+    selectedObject[key] = value
     onPropertyChange?.()
   }
+
+  function updateFill(event: Event): void {
+    if (!selectedObject || !beginPropertyMutation()) return
+    selectedObject.fill = (event.target as HTMLInputElement).value
+    onPropertyChange?.()
+  }
+
+  function updateArrowShape(key: keyof ArrowShape, value: number): void {
+    if (!selectedObject || selectedObject.type !== 'arrow' || !beginPropertyMutation()) return
+    selectedObject.arrowShape = {
+      ...(selectedObject.arrowShape ?? DEFAULT_ARROW_SHAPE),
+      [key]: value
+    }
+    onPropertyChange?.()
+  }
+
   function handleBlur(): void {
     snapshotPushed = false
   }
@@ -97,6 +129,7 @@
   let animSnapshotPushed = false
 
   function emitAnimationChange(animations: ElementAnimations, continuous = false): void {
+    if (appState.readOnly) return
     if (!selectedObject) return
     if (!continuous || !animSnapshotPushed) {
       onBeforePropertyChange?.()
@@ -128,10 +161,12 @@
   )
 
   function emitSolid(color: string): void {
+    if (appState.readOnly) return
     onSlideBackgroundChange?.({ type: 'solid', color })
   }
 
   function emitGradient(angle: number, color1: string, color2: string): void {
+    if (appState.readOnly) return
     onSlideBackgroundChange?.({
       type: 'gradient',
       angle,
@@ -143,6 +178,7 @@
   }
 
   async function pickImageBackground(): Promise<void> {
+    if (appState.readOnly) return
     const result = await window.api.dialog.showImageDialog()
     if (result?.src) {
       const fit = currentBg?.type === 'image' ? (currentBg.fit ?? 'cover') : 'cover'
@@ -151,6 +187,7 @@
   }
 
   function emitImageFit(fit: 'stretch' | 'contain' | 'cover'): void {
+    if (appState.readOnly) return
     if (currentBg?.type === 'image') {
       onSlideBackgroundChange?.({ ...currentBg, fit })
     }
@@ -283,8 +320,9 @@
         <input
           type="number"
           id="x"
-          bind:value={selectedObject.x}
-          oninput={handleInput}
+          value={selectedObject.x}
+          disabled={appState.readOnly}
+          oninput={(e) => updateNumericProperty('x', e)}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -294,8 +332,9 @@
         <input
           type="number"
           id="y"
-          bind:value={selectedObject.y}
-          oninput={handleInput}
+          value={selectedObject.y}
+          disabled={appState.readOnly}
+          oninput={(e) => updateNumericProperty('y', e)}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -307,8 +346,9 @@
         <input
           type="number"
           id="width"
-          bind:value={selectedObject.width}
-          oninput={handleInput}
+          value={selectedObject.width}
+          disabled={appState.readOnly}
+          oninput={(e) => updateNumericProperty('width', e)}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -320,8 +360,9 @@
         <input
           type="number"
           id="height"
-          bind:value={selectedObject.height}
-          oninput={handleInput}
+          value={selectedObject.height}
+          disabled={appState.readOnly}
+          oninput={(e) => updateNumericProperty('height', e)}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -333,8 +374,9 @@
         <input
           type="number"
           id="angle"
-          bind:value={selectedObject.angle}
-          oninput={handleInput}
+          value={selectedObject.angle}
+          disabled={appState.readOnly}
+          oninput={(e) => updateNumericProperty('angle', e)}
           onblur={handleBlur}
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
@@ -347,8 +389,9 @@
           <input
             type="color"
             id="fill"
-            bind:value={selectedObject.fill}
-            oninput={handleInput}
+            value={selectedObject.fill}
+            disabled={appState.readOnly}
+            oninput={updateFill}
             onblur={handleBlur}
             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
           />
@@ -397,12 +440,12 @@
                   max={input.max}
                   step="1"
                   value={Math.round(arrowShape[input.key] * 100)}
+                  disabled={appState.readOnly}
                   oninput={(e) => {
                     const pct = Number((e.target as HTMLInputElement).value)
                     if (!Number.isFinite(pct)) return
                     const clamped = Math.max(input.min, Math.min(input.max, pct)) / 100
-                    selectedObject.arrowShape = { ...arrowShape, [input.key]: clamped }
-                    handleInput()
+                    updateArrowShape(input.key, clamped)
                   }}
                   onblur={handleBlur}
                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
