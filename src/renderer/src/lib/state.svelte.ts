@@ -209,8 +209,8 @@ export async function loadPresentation(
   appState.selectedObjectId = null
   appState.thumbnails = await window.api.db.getThumbnails(filePath)
   appState.readOnly = readOnly
-  appState.compatNotesRaw = readOnly ? probe.compatNotes ?? '' : ''
-  appState.fileVersion = readOnly ? probe.fileVersion ?? null : null
+  appState.compatNotesRaw = readOnly ? (probe.compatNotes ?? '') : ''
+  appState.fileVersion = readOnly ? (probe.fileVersion ?? null) : null
 
   // Load the first slide, or create one if the file is empty
   if (ids.length > 0) {

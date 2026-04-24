@@ -539,7 +539,9 @@ describe('format versioning', () => {
     expect(instance.pragma('user_version', { simple: true })).toBe(CURRENT_FORMAT_VERSION)
 
     const rows = instance
-      .prepare("SELECT key, value FROM settings WHERE key IN ('format_version','compat_notes','created_with_app_version','created_at','last_written_with_app_version')")
+      .prepare(
+        "SELECT key, value FROM settings WHERE key IN ('format_version','compat_notes','created_with_app_version','created_at','last_written_with_app_version')"
+      )
       .all() as { key: string; value: string }[]
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
 
@@ -552,18 +554,24 @@ describe('format versioning', () => {
 
   it('preserves created_* and refreshes last_written_* on subsequent stamps', () => {
     initializeDatabase(instance, '1.1.0')
-    const firstCreatedAt = (instance
-      .prepare("SELECT value FROM settings WHERE key = 'created_at'")
-      .get() as { value: string }).value
-    const firstCreatedWith = (instance
-      .prepare("SELECT value FROM settings WHERE key = 'created_with_app_version'")
-      .get() as { value: string }).value
+    const firstCreatedAt = (
+      instance.prepare("SELECT value FROM settings WHERE key = 'created_at'").get() as {
+        value: string
+      }
+    ).value
+    const firstCreatedWith = (
+      instance
+        .prepare("SELECT value FROM settings WHERE key = 'created_with_app_version'")
+        .get() as { value: string }
+    ).value
 
     stampFileMetadata(instance, '1.2.0')
     stampFileMetadata(instance, '1.3.0')
 
     const rows = instance
-      .prepare("SELECT key, value FROM settings WHERE key IN ('created_with_app_version','created_at','last_written_with_app_version','compat_notes')")
+      .prepare(
+        "SELECT key, value FROM settings WHERE key IN ('created_with_app_version','created_at','last_written_with_app_version','compat_notes')"
+      )
       .all() as { key: string; value: string }[]
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
 
@@ -605,9 +613,7 @@ describe('format versioning', () => {
     initializeDatabase(instance, TEST_APP_VERSION)
 
     // Missing columns added by migrations.
-    const cols = instance
-      .prepare("PRAGMA table_info('elements')")
-      .all() as { name: string }[]
+    const cols = instance.prepare("PRAGMA table_info('elements')").all() as { name: string }[]
     const colNames = new Set(cols.map((c) => c.name))
     expect(colNames.has('shape_params')).toBe(true)
     expect(colNames.has('fontWeight')).toBe(true)
@@ -619,9 +625,11 @@ describe('format versioning', () => {
     expect(instance.pragma('user_version', { simple: true })).toBe(CURRENT_FORMAT_VERSION)
 
     // created_at reflects the upgrade time, not some earlier creation.
-    const createdAt = (instance
-      .prepare("SELECT value FROM settings WHERE key = 'created_at'")
-      .get() as { value: string }).value
+    const createdAt = (
+      instance.prepare("SELECT value FROM settings WHERE key = 'created_at'").get() as {
+        value: string
+      }
+    ).value
     expect(Date.parse(createdAt)).toBeGreaterThanOrEqual(before - 1)
   })
 

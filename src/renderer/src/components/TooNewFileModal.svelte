@@ -12,14 +12,8 @@
     onCancel: () => void
   }
 
-  let {
-    open,
-    fileVersion,
-    currentVersion,
-    compatNotesRaw,
-    onOpenReadOnly,
-    onCancel
-  }: Props = $props()
+  let { open, fileVersion, currentVersion, compatNotesRaw, onOpenReadOnly, onCancel }: Props =
+    $props()
 
   let dialogEl: HTMLDivElement | null = null
   let previousFocusedElement: HTMLElement | null = null

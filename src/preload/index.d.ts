@@ -42,13 +42,7 @@ export interface ImageData {
 /**
  * Result of probing a candidate `.tb` file for its format identity.
  */
-export type FormatProbeStatus =
-  | 'fresh'
-  | 'legacy'
-  | 'current'
-  | 'older'
-  | 'tooNew'
-  | 'notTwig'
+export type FormatProbeStatus = 'fresh' | 'legacy' | 'current' | 'older' | 'tooNew' | 'notTwig'
 
 export interface FormatProbeResult {
   status: FormatProbeStatus
@@ -115,10 +109,7 @@ declare global {
         saveAs: (filePath: string, slides: Slide[]) => Promise<void>
         closeConnection: (filePath: string) => Promise<void>
         probeFormat: (filePath: string) => Promise<FormatProbeResult>
-        openForEdit: (
-          filePath: string,
-          options?: { readOnly?: boolean }
-        ) => Promise<string[]>
+        openForEdit: (filePath: string, options?: { readOnly?: boolean }) => Promise<string[]>
         createTemp: () => Promise<string>
         isTempFile: (filePath: string) => Promise<boolean>
         isBootstrapPresentation: (filePath: string) => Promise<boolean>

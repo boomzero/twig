@@ -114,9 +114,9 @@ export function detectFormat(db: Database): FormatProbeResult {
     if (fileVersion > CURRENT_FORMAT_VERSION) {
       let compatNotes = ''
       try {
-        const row = db
-          .prepare("SELECT value FROM settings WHERE key = 'compat_notes'")
-          .get() as { value: string } | undefined
+        const row = db.prepare("SELECT value FROM settings WHERE key = 'compat_notes'").get() as
+          | { value: string }
+          | undefined
         compatNotes = row?.value ?? ''
       } catch {
         // settings table missing from a too-new file: degrade to empty notes.
@@ -135,9 +135,9 @@ export function detectFormat(db: Database): FormatProbeResult {
 
   // appId === 0: either a brand-new/empty SQLite file or a legacy twig file
   // (pre-versioning) or some unrelated SQLite file.
-  const tables = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-    .all() as { name: string }[]
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+    name: string
+  }[]
   const tableNames = new Set(tables.map((t) => t.name))
 
   if (tableNames.size === 0) {
@@ -172,16 +172,12 @@ export function stampFileMetadata(db: Database, appVersion: string): void {
     db.pragma(`application_id = ${TWIG_APP_ID}`)
     db.pragma(`user_version = ${CURRENT_FORMAT_VERSION}`)
 
-    const upsert = db.prepare(
-      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
-    )
+    const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
     upsert.run('format_version', String(CURRENT_FORMAT_VERSION))
     upsert.run('compat_notes', CURRENT_COMPAT_NOTES)
     upsert.run('last_written_with_app_version', appVersion)
 
-    const firstWriteOnly = db.prepare(
-      'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
-    )
+    const firstWriteOnly = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
     firstWriteOnly.run('created_with_app_version', appVersion)
     firstWriteOnly.run('created_at', nowIso)
   })
@@ -224,7 +220,6 @@ export function runMigrations(db: Database, fromVersion: number, toVersion: numb
     db.exec('ALTER TABLE elements ADD COLUMN underline INTEGER')
   }
 }
-
 
 import type {
   SlideBackground,
@@ -390,7 +385,9 @@ export class FileTooNewError extends Error {
     public readonly fileVersion: number,
     public readonly compatNotes: string
   ) {
-    super(`.tb file format version ${fileVersion} is newer than supported (${CURRENT_FORMAT_VERSION})`)
+    super(
+      `.tb file format version ${fileVersion} is newer than supported (${CURRENT_FORMAT_VERSION})`
+    )
     this.name = 'FileTooNewError'
   }
 }
@@ -496,7 +493,7 @@ export function initializeDatabase(db: Database, appVersion: string): void {
   // Legacy twig files (pre-versioning) report fileVersion 0; treat identically
   // to fresh for migration purposes.
   const fromVersion =
-    initial.status === 'current' || initial.status === 'older' ? initial.fileVersion ?? 0 : 0
+    initial.status === 'current' || initial.status === 'older' ? (initial.fileVersion ?? 0) : 0
   runMigrations(db, fromVersion, CURRENT_FORMAT_VERSION)
 
   // Stamp AFTER tables exist and migrations are complete. Transactional, so

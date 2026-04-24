@@ -784,10 +784,10 @@ Since twig 1.1.0, every `.tb` file carries a small amount of format-identity met
 
 ### 11.1 Format identity pragmas
 
-| Pragma              | Value                        | Meaning                                                                 |
-| ------------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| `application_id`    | `0x74776967` (ASCII `"twig"`) | Marks the SQLite file as a twig presentation.                           |
-| `user_version`      | `1` (current: v1)            | Format revision. Bumped when the schema changes incompatibly.           |
+| Pragma           | Value                         | Meaning                                                       |
+| ---------------- | ----------------------------- | ------------------------------------------------------------- |
+| `application_id` | `0x74776967` (ASCII `"twig"`) | Marks the SQLite file as a twig presentation.                 |
+| `user_version`   | `1` (current: v1)             | Format revision. Bumped when the schema changes incompatibly. |
 
 Both pragmas must be set on every write. Writers should set them **before** inserting any rows so that even a partially-written file is identifiable.
 
@@ -795,13 +795,13 @@ Both pragmas must be set on every write. Writers should set them **before** inse
 
 The same metadata is also mirrored as rows in the `settings` table so tools without PRAGMA access can still read it. Five keys are reserved by the format:
 
-| Key                              | Value                                | Lifetime                                                                            |
-| -------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------- |
-| `format_version`                 | decimal integer as string (`"1"`)    | Refreshed on every write.                                                           |
-| `compat_notes`                   | string (plain text or JSON; see §11.4) | Refreshed on every write. Empty string in v1.                                       |
-| `created_with_app_version`       | app version string (`"1.1.0"`)       | Written once via `INSERT OR IGNORE`; never overwritten.                             |
-| `created_at`                     | ISO-8601 UTC timestamp               | Written once via `INSERT OR IGNORE`; never overwritten.                             |
-| `last_written_with_app_version`  | app version string                   | Refreshed on every write.                                                           |
+| Key                             | Value                                  | Lifetime                                                |
+| ------------------------------- | -------------------------------------- | ------------------------------------------------------- |
+| `format_version`                | decimal integer as string (`"1"`)      | Refreshed on every write.                               |
+| `compat_notes`                  | string (plain text or JSON; see §11.4) | Refreshed on every write. Empty string in v1.           |
+| `created_with_app_version`      | app version string (`"1.1.0"`)         | Written once via `INSERT OR IGNORE`; never overwritten. |
+| `created_at`                    | ISO-8601 UTC timestamp                 | Written once via `INSERT OR IGNORE`; never overwritten. |
+| `last_written_with_app_version` | app version string                     | Refreshed on every write.                               |
 
 **Reserved means reserved.** Writers must not store user content under these keys. Readers detecting "is this an untouched blank presentation?" must ignore these five keys and count only other rows.
 

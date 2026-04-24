@@ -279,9 +279,7 @@ function touchAccessOrder(order: string[], filePath: string): void {
  */
 function getWritableConnection(filePath: string): Database.Database {
   if (roConnectionCache.has(filePath)) {
-    throw new Error(
-      `Cannot open ${filePath} for writing: the file is currently open read-only`
-    )
+    throw new Error(`Cannot open ${filePath} for writing: the file is currently open read-only`)
   }
 
   ensureMasFileAccess(filePath)
@@ -403,9 +401,7 @@ function getWritableConnection(filePath: string): Database.Database {
  */
 function getReadOnlyConnection(filePath: string): Database.Database {
   if (rwConnectionCache.has(filePath)) {
-    throw new Error(
-      `Cannot open ${filePath} read-only: the file is already open for writing`
-    )
+    throw new Error(`Cannot open ${filePath} read-only: the file is already open for writing`)
   }
 
   ensureMasFileAccess(filePath)
@@ -753,9 +749,7 @@ function withDbConnection<T>(
         `Presentation is open read-only: ${filePath}. Writes are disabled for files written by a newer version of twig.`
       )
     }
-    const db = options.write
-      ? getWritableConnection(filePath)
-      : getReadableConnection(filePath)
+    const db = options.write ? getWritableConnection(filePath) : getReadableConnection(filePath)
     const result = fn(db)
     // Stamp provenance BEFORE the MAS shadow is flushed, so the copy sees the
     // refreshed `last_written_with_app_version` row.
@@ -1348,10 +1342,7 @@ app.whenReady().then(() => {
   // both RW and RO caches (closeDbConnection tolerates either).
   powerMonitor.on('suspend', () => {
     safeLog('System suspending — closing all database connections')
-    const openPaths = new Set<string>([
-      ...rwConnectionCache.keys(),
-      ...roConnectionCache.keys()
-    ])
+    const openPaths = new Set<string>([...rwConnectionCache.keys(), ...roConnectionCache.keys()])
     for (const filePath of openPaths) {
       closeDbConnection(filePath, 'passive')
     }
@@ -1767,18 +1758,15 @@ app.whenReady().then(() => {
    * caching a connection. Used by the renderer's open flow to distinguish
    * fresh/legacy/current/tooNew/notTwig before committing to an open mode.
    */
-  ipcMain.handle(
-    'db:probe-format',
-    (_event, filePath: string): dbService.FormatProbeResult => {
-      try {
-        validateFilePath(filePath)
-        return probeDatabaseFormat(filePath)
-      } catch (error) {
-        console.error('Error in db:probe-format:', error)
-        throw error
-      }
+  ipcMain.handle('db:probe-format', (_event, filePath: string): dbService.FormatProbeResult => {
+    try {
+      validateFilePath(filePath)
+      return probeDatabaseFormat(filePath)
+    } catch (error) {
+      console.error('Error in db:probe-format:', error)
+      throw error
     }
-  )
+  })
 
   /**
    * Opens a presentation for editing or read-only viewing. In read-only mode
