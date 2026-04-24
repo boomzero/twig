@@ -218,6 +218,6 @@
   "open.too_new_file_version": "文件格式：v{fileVersion}",
   "open.too_new_your_version": "当前 twig 支持：v{currentVersion}",
   "readonly.banner": "只读模式 — 此文件由较新版本的 twig 创建。",
-  "readonly.compat_notes_label": "来自文件作者的说明：",
+  "readonly.compat_notes_label": "兼容性说明：",
   "readonly.write_blocked": "查看较新文件时已禁用编辑。"
 }

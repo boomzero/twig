@@ -218,6 +218,6 @@
   "open.too_new_file_version": "File format: v{fileVersion}",
   "open.too_new_your_version": "This twig supports: v{currentVersion}",
   "readonly.banner": "Opened read-only — written by a newer version of twig.",
-  "readonly.compat_notes_label": "From the file's author:",
+  "readonly.compat_notes_label": "Compatibility notes:",
   "readonly.write_blocked": "Edits are disabled while viewing a newer file."
 }
