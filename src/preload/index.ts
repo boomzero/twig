@@ -63,6 +63,13 @@ const api = {
     /** Close a database connection (used before overwriting files) */
     closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath),
 
+    /** Probe a file for its twig format identity without mutating or caching it */
+    probeFormat: (filePath: string) => ipcRenderer.invoke('db:probe-format', filePath),
+
+    /** Open a presentation for editing (default) or read-only viewing */
+    openForEdit: (filePath: string, options?: { readOnly?: boolean }) =>
+      ipcRenderer.invoke('db:open-for-edit', filePath, options),
+
     /** Create a new temporary database for unsaved presentations */
     createTemp: () => ipcRenderer.invoke('db:create-temp'),
 

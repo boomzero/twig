@@ -1,9 +1,10 @@
 # Changelog
 
-## [1.1.0] - 2026-04-23
+## [1.1.0] - 2026-04-24
 
 ### Added
 
+- **Versioned `.tb` file format (v1)** with forward-compatibility messaging: every `.tb` now carries `PRAGMA application_id = 0x74776967` and `PRAGMA user_version = 1`, plus reserved `settings` rows for format version, provenance, and a `compat_notes` payload that newer writers use to warn older readers about format changes. A newer-than-supported file opens in a read-only mode that displays the writer's `compat_notes` verbatim. `compat_notes` accepts either a plain string or a locale-keyed JSON object for i18n. See `TWIG_SPEC.md` §11–§12.
 - Parameterized block arrow shape with adjustment handles
 - Keynote-style alignment guides for object positioning
 - Snap-to-guides setting with improved rotation behavior
@@ -22,6 +23,7 @@
 - Scoped reload menu items to development builds
 - Updated installation guidance in README
 - Expanded `.tb` format documentation for newer shape and slide data
+- Legacy 1.0.x `.tb` files are upgraded in place on first open: pragmas are stamped, reserved metadata rows are written, and missing columns (`shape_params`, `fontWeight`, `fontStyle`, `underline`) are added. Upgrade is non-destructive; provenance fields record the upgrading twig version and the upgrade time.
 
 ## [1.0.1] - 2026-04-13
 

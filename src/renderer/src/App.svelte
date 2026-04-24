@@ -64,9 +64,11 @@
   import SettingsModal from './components/SettingsModal.svelte'
   import CloseFailureModal from './components/CloseFailureModal.svelte'
   import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
+  import TooNewFileModal from './components/TooNewFileModal.svelte'
   import LoadingScreen, { type LoadingPhase } from './components/LoadingScreen.svelte'
   import { PressedKeys } from 'runed'
-  import { _ } from 'svelte-i18n'
+  import { _, locale } from 'svelte-i18n'
+  import { resolveCompatNotes } from './lib/compatNotes'
   import { get } from 'svelte/store'
   import {
     closePresentationWithTempGuard,
@@ -402,6 +404,15 @@
   let loadingScreenPhase = $state<LoadingPhase>('booting')
   let tempPresentationGuardResolver: ((choice: TempPresentationPromptChoice) => void) | null = null
   let closeFailureGuardResolver: ((shouldClose: boolean) => void) | null = null
+
+  // Too-new file modal (shown when opening a presentation whose format is
+  // newer than this build's CURRENT_FORMAT_VERSION). The modal lets the user
+  // choose to open read-only or cancel.
+  const CURRENT_FORMAT_VERSION = 1
+  let tooNewModalOpen = $state(false)
+  let tooNewModalFileVersion = $state(0)
+  let tooNewModalCompatNotesRaw = $state('')
+  let tooNewModalResolver: ((choice: 'readonly' | 'cancel') => void) | null = null
   let activePresentationTransitionPromise: Promise<void> | null = null
 
   // Active side panel — only one can be open at a time
@@ -658,6 +669,13 @@
    * @param rethrowErrors - If true, errors are re-thrown to the caller. If false, errors are logged only.
    */
   async function performSave(rethrowErrors: boolean = false): Promise<void> {
+    // Read-only presentations cannot be saved. Skip silently — the UI's write
+    // gates should have prevented edits in the first place, and the main
+    // process refuses writes on RO-cached files anyway.
+    if (appState.readOnly) {
+      return
+    }
+
     // Wait for any in-flight save to complete
     while (savePromise) {
       await savePromise
@@ -1039,6 +1057,7 @@
   }
 
   function scheduleThumbnailCapture(): void {
+    if (appState.readOnly) return
     if (thumbnailTimeoutId) clearTimeout(thumbnailTimeoutId)
     thumbnailTimeoutId = setTimeout(() => {
       thumbnailTimeoutId = null
@@ -2712,7 +2731,7 @@
   }
 
   function handleRemoveAnimationStep(step: AnimationStep): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
 
     const el = appState.currentSlide.elements.find((e) => e.id === step.elementId)
@@ -3185,6 +3204,28 @@
     })
   }
 
+  function resolveTooNewModal(choice: 'readonly' | 'cancel'): void {
+    const resolve = tooNewModalResolver
+    tooNewModalResolver = null
+    tooNewModalOpen = false
+    resolve?.(choice)
+  }
+
+  function handleTooNewFile(info: {
+    fileVersion: number
+    compatNotesRaw: string
+  }): Promise<'readonly' | 'cancel'> {
+    if (tooNewModalResolver) {
+      return Promise.resolve('cancel')
+    }
+    tooNewModalFileVersion = info.fileVersion
+    tooNewModalCompatNotesRaw = info.compatNotesRaw
+    tooNewModalOpen = true
+    return new Promise((resolve) => {
+      tooNewModalResolver = resolve
+    })
+  }
+
   function resolveCloseFailureGuard(shouldClose: boolean): void {
     const resolve = closeFailureGuardResolver
     closeFailureGuardResolver = null
@@ -3225,7 +3266,7 @@
     imageElementCache.clear()
     prefetchedSlideIds.clear()
     loadingScreenPhase = 'opening'
-    await loadPresentation(filePath)
+    await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
 
     if (slideId && slideId !== appState.currentSlide?.id && appState.slideIds.includes(slideId)) {
       await loadSlide(slideId)
@@ -3240,7 +3281,7 @@
     clearAllHistory()
     imageElementCache.clear()
     prefetchedSlideIds.clear()
-    await loadPresentation(filePath)
+    await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     setSaveStatus('saved')
     prefetchAllSlideImages().catch(() => {})
     return true
@@ -3494,6 +3535,8 @@
    * Uses promise lock to prevent concurrent save operations.
    */
   async function handleSave(): Promise<void> {
+    if (appState.readOnly) return
+
     // If this is a temp file (unsaved presentation), delegate to Save As
     if (appState.isTempFile) {
       await saveCurrentPresentationAs()
@@ -3511,6 +3554,8 @@
    * Prevents concurrent save operations using promise lock.
    */
   async function saveCurrentPresentationAs(): Promise<boolean> {
+    if (appState.readOnly) return false
+
     // Save original state in case we need to recover from an error
     const originalFilePath = appState.currentFilePath
     const originalSlideId = appState.currentSlide?.id
@@ -3574,7 +3619,7 @@
       if (originalFilePath && appState.currentFilePath !== originalFilePath) {
         try {
           loadingScreenPhase = 'opening'
-          await loadPresentation(originalFilePath)
+          await loadPresentation(originalFilePath, { onTooNewFile: handleTooNewFile })
           if (originalSlideId) {
             await loadSlide(originalSlideId)
           }
@@ -3817,6 +3862,9 @@
    * @param fontFamily - The font family name to embed
    */
   async function embedFontIfNeeded(fontFamily: string): Promise<void> {
+    // Read-only presentations can't embed fonts — skip silently.
+    if (appState.readOnly) return
+
     // Skip embedding for web-safe fonts that are already available in browsers
     if (WEB_SAFE_FONTS.includes(fontFamily)) {
       console.log(`Skipping embed for web-safe font: ${fontFamily}`)
@@ -4017,7 +4065,7 @@
   }
 
   function addText(): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
     const newText: TwigElement = {
       type: 'text',
@@ -4044,7 +4092,7 @@
    * Adds a new rectangle element to the current slide at a default position.
    */
   function addRectangle(): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
     const newRect: TwigElement = {
       type: 'rect',
@@ -4062,7 +4110,7 @@
   }
 
   function addEllipse(): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
     const el: TwigElement = {
       type: 'ellipse',
@@ -4080,7 +4128,7 @@
   }
 
   function addTriangle(): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
     const el: TwigElement = {
       type: 'triangle',
@@ -4098,7 +4146,7 @@
   }
 
   function addStar(): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
     const el: TwigElement = {
       type: 'star',
@@ -4116,7 +4164,7 @@
   }
 
   function addArrow(): void {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
     pushCheckpoint()
     const el: TwigElement = {
       type: 'arrow',
@@ -4139,7 +4187,7 @@
    * The image is loaded as a base64 data URI and stored in the slide data.
    */
   async function addImage(): Promise<void> {
-    if (!appState.currentSlide) return
+    if (!appState.currentSlide || appState.readOnly) return
 
     try {
       const imageData = await window.api.dialog.showImageDialog()
@@ -4252,6 +4300,7 @@
       console.error('Cannot add slide: no current file path')
       return
     }
+    if (appState.readOnly) return
 
     let newSlideId: string | null = null
     try {
@@ -4316,7 +4365,7 @@
    * No-ops if this is the last slide.
    */
   async function deleteSlideById(slideId: string): Promise<void> {
-    if (appState.isPresentingMode) return
+    if (appState.isPresentingMode || appState.readOnly) return
     if (loadingState.isLoadingSlide || duplicatingSlideId) return
     if (appState.slideIds.length <= 1) return
     const filePath = appState.currentFilePath
@@ -4369,7 +4418,7 @@
    * Duplicates a slide and switches the editor to the inserted copy.
    */
   async function duplicateSlideById(slideId: string): Promise<void> {
-    if (appState.isPresentingMode) return
+    if (appState.isPresentingMode || appState.readOnly) return
     if (loadingState.isLoadingSlide || duplicatingSlideId) return
     const filePath = appState.currentFilePath
     if (!filePath) return
@@ -4417,7 +4466,7 @@
    * Reorders slides to match newOrderIds. Optimistically updates state and persists to DB.
    */
   async function handleSlideReorder(newOrderIds: string[]): Promise<void> {
-    if (appState.isPresentingMode) return
+    if (appState.isPresentingMode || appState.readOnly) return
     const filePath = appState.currentFilePath
     if (!filePath) return
 
@@ -4489,7 +4538,7 @@
    * Supports deleting multiple objects when a multi-selection is active.
    */
   function deleteSelectedObject(): void {
-    if (!fabCanvas || !appState.currentSlide) return
+    if (!fabCanvas || !appState.currentSlide || appState.readOnly) return
 
     const activeObjects = fabCanvas.getActiveObjects()
     if (activeObjects.length === 0) return
@@ -5032,9 +5081,35 @@
   onCloseAnyway={() => resolveCloseFailureGuard(true)}
   onCancel={() => resolveCloseFailureGuard(false)}
 />
+<TooNewFileModal
+  open={tooNewModalOpen}
+  fileVersion={tooNewModalFileVersion}
+  currentVersion={CURRENT_FORMAT_VERSION}
+  compatNotesRaw={tooNewModalCompatNotesRaw}
+  onOpenReadOnly={() => resolveTooNewModal('readonly')}
+  onCancel={() => resolveTooNewModal('cancel')}
+/>
 
 {#if appState.currentSlide}
   <div class="flex flex-col h-screen font-sans" role="application">
+    {#if appState.readOnly}
+      <div
+        class="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900"
+        role="status"
+      >
+        <svg class="h-4 w-4 shrink-0 text-amber-600" viewBox="0 0 256 256" fill="currentColor">
+          <path
+            d="M236.8,188.09,149.35,36.22a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"
+          />
+        </svg>
+        <span class="font-medium">{$_('readonly.banner')}</span>
+        {#if resolveCompatNotes(appState.compatNotesRaw, $locale ?? 'en')}
+          <span class="truncate text-amber-800/80"
+            >· {resolveCompatNotes(appState.compatNotesRaw, $locale ?? 'en')}</span
+          >
+        {/if}
+      </div>
+    {/if}
     {#if contextMenuVisible}
       <ContextMenu
         x={contextMenuPosition.x}
@@ -5778,6 +5853,7 @@
               }
             }}
             onSlideBackgroundChange={async (bg) => {
+              if (appState.readOnly) return
               if (appState.currentSlide) {
                 if (!bgCheckpointPushed) {
                   pushCheckpoint()
@@ -5792,7 +5868,7 @@
               }
             }}
             onSetAsDefault={async (bg) => {
-              if (!appState.currentFilePath) return
+              if (!appState.currentFilePath || appState.readOnly) return
               // JSON round-trip strips any Svelte 5 reactive Proxy before IPC/storage
               const plain: SlideBackground | null = bg ? JSON.parse(JSON.stringify(bg)) : null
               defaultSlideBackground = plain ?? undefined
@@ -5803,7 +5879,7 @@
               )
             }}
             onApplyToAll={async (bg) => {
-              if (!appState.currentFilePath || !appState.currentSlide) return
+              if (!appState.currentFilePath || !appState.currentSlide || appState.readOnly) return
               // Snapshot every slide before the DB write so each slide's undo history
               // has a restore point. Non-current slides must be fetched from the DB first.
               const filePath = appState.currentFilePath

@@ -1,5 +1,231 @@
 import type { Database } from 'better-sqlite3'
 import { v4 as uuid_v4 } from 'uuid'
+
+// ============================================================================
+// .tb Format Versioning
+// ============================================================================
+
+/**
+ * SQLite `application_id` stamped on every twig-written `.tb` file.
+ *
+ * Value is ASCII "twig" (0x74 0x77 0x69 0x67). Lets any SQLite tool identify
+ * a twig presentation without opening it. See TWIG_SPEC.md §11.
+ */
+export const TWIG_APP_ID = 0x74776967
+
+/**
+ * `.tb` format revision this build writes. Bumped on schema-visible changes
+ * to how slides/elements/animations/etc. are represented. See TWIG_SPEC.md §12
+ * for the changelog.
+ */
+export const CURRENT_FORMAT_VERSION = 1
+
+/**
+ * String written to `settings.compat_notes` on every save. Read verbatim by
+ * older twig versions when they encounter a file whose `user_version` exceeds
+ * their supported format. v1 is the earliest versioned format, so there is
+ * nothing an older version needs to be warned about — the string is empty.
+ *
+ * Writers may store either:
+ *   - a plain string (displayed as-is), or
+ *   - a JSON object keyed by BCP-47 locale, e.g.
+ *     `{"en": "...", "zh": "...", "_default": "..."}`.
+ * Readers use `resolveCompatNotes(raw, locale)` to pick the best match with
+ * `_default` → `en` → any-key fallback.
+ */
+export const CURRENT_COMPAT_NOTES = ''
+
+/**
+ * Resolves a `compat_notes` raw value against a runtime locale.
+ *
+ * - If `raw` parses to a JSON object, the best match is returned from:
+ *   the exact locale, the language prefix (`zh-CN` → `zh`), `_default`,
+ *   `en`, then any remaining string value.
+ * - Otherwise `raw` is returned unchanged.
+ *
+ * Never throws — malformed JSON degrades to the raw string.
+ */
+export function resolveCompatNotes(raw: string, locale: string): string {
+  if (!raw) return ''
+  const trimmed = raw.trim()
+  if (!trimmed.startsWith('{')) return raw
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return raw
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return raw
+  const map = parsed as Record<string, unknown>
+  const candidates = [locale, locale.split('-')[0], '_default', 'en']
+  for (const key of candidates) {
+    const val = map[key]
+    if (typeof val === 'string' && val.length > 0) return val
+  }
+  for (const val of Object.values(map)) {
+    if (typeof val === 'string' && val.length > 0) return val
+  }
+  return ''
+}
+
+/**
+ * Settings keys reserved by the format metadata contract. The renderer cannot
+ * write these via `setSetting` — only `stampFileMetadata` touches them.
+ * `isBootstrapPresentation` ignores these when detecting untouched temp files.
+ */
+export const RESERVED_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+  'format_version',
+  'compat_notes',
+  'created_with_app_version',
+  'created_at',
+  'last_written_with_app_version'
+])
+
+/**
+ * Result of probing a `.tb` candidate file for its format identity.
+ *
+ * `fresh` — empty valid SQLite DB (no tables).
+ * `legacy` — pre-versioning twig file (`application_id == 0` but schema looks like twig).
+ * `current` — twig file at `CURRENT_FORMAT_VERSION`.
+ * `older` — twig file at a version below `CURRENT_FORMAT_VERSION` (migratable).
+ * `tooNew` — twig file at a version above `CURRENT_FORMAT_VERSION`. Open read-only with warning.
+ * `notTwig` — valid SQLite but not a twig file.
+ */
+export type FormatProbeStatus = 'fresh' | 'legacy' | 'current' | 'older' | 'tooNew' | 'notTwig'
+
+export interface FormatProbeResult {
+  status: FormatProbeStatus
+  /** Populated for `current`, `older`, `tooNew`, `legacy` (legacy reports 0). */
+  fileVersion?: number
+  /** Populated for `tooNew`. Empty string is valid. */
+  compatNotes?: string
+}
+
+/**
+ * Detects the format identity of a SQLite database on an already-open
+ * connection. Read-only — never mutates. Used by `probeDatabaseFormat` on a
+ * short-lived RO connection, and by `initializeDatabase` to dispatch on open.
+ */
+export function detectFormat(db: Database): FormatProbeResult {
+  const appId = (db.pragma('application_id', { simple: true }) as number) ?? 0
+
+  if (appId === TWIG_APP_ID) {
+    const fileVersion = (db.pragma('user_version', { simple: true }) as number) ?? 0
+    if (fileVersion > CURRENT_FORMAT_VERSION) {
+      let compatNotes = ''
+      try {
+        const row = db
+          .prepare("SELECT value FROM settings WHERE key = 'compat_notes'")
+          .get() as { value: string } | undefined
+        compatNotes = row?.value ?? ''
+      } catch {
+        // settings table missing from a too-new file: degrade to empty notes.
+      }
+      return { status: 'tooNew', fileVersion, compatNotes }
+    }
+    if (fileVersion === CURRENT_FORMAT_VERSION) {
+      return { status: 'current', fileVersion }
+    }
+    return { status: 'older', fileVersion }
+  }
+
+  if (appId !== 0) {
+    return { status: 'notTwig' }
+  }
+
+  // appId === 0: either a brand-new/empty SQLite file or a legacy twig file
+  // (pre-versioning) or some unrelated SQLite file.
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all() as { name: string }[]
+  const tableNames = new Set(tables.map((t) => t.name))
+
+  if (tableNames.size === 0) {
+    return { status: 'fresh' }
+  }
+
+  const REQUIRED_LEGACY_TABLES = ['slides', 'elements', 'fonts', 'settings']
+  if (REQUIRED_LEGACY_TABLES.every((t) => tableNames.has(t))) {
+    return { status: 'legacy', fileVersion: 0 }
+  }
+
+  return { status: 'notTwig' }
+}
+
+/**
+ * Writes format-identity pragmas and metadata settings rows to an already-open
+ * read-write connection. Idempotent. Runs in a single transaction so pragmas
+ * and settings cannot get partially updated if the surrounding write path
+ * fails.
+ *
+ * MUST be called AFTER `runMigrations`/table creation — relies on the
+ * `settings` table existing.
+ *
+ * `created_with_app_version` and `created_at` are written only on first stamp
+ * (via INSERT OR IGNORE). `last_written_with_app_version`, `format_version`,
+ * and `compat_notes` are refreshed on every call.
+ */
+export function stampFileMetadata(db: Database, appVersion: string): void {
+  const nowIso = new Date().toISOString()
+
+  const tx = db.transaction(() => {
+    db.pragma(`application_id = ${TWIG_APP_ID}`)
+    db.pragma(`user_version = ${CURRENT_FORMAT_VERSION}`)
+
+    const upsert = db.prepare(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
+    )
+    upsert.run('format_version', String(CURRENT_FORMAT_VERSION))
+    upsert.run('compat_notes', CURRENT_COMPAT_NOTES)
+    upsert.run('last_written_with_app_version', appVersion)
+
+    const firstWriteOnly = db.prepare(
+      'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
+    )
+    firstWriteOnly.run('created_with_app_version', appVersion)
+    firstWriteOnly.run('created_at', nowIso)
+  })
+
+  tx()
+}
+
+/**
+ * Applies schema drift-fixes and per-version migrations. Currently handles the
+ * legacy→v1 drift (columns added post-launch). Called by `initializeDatabase`
+ * after tables are created.
+ *
+ * `fromVersion == 0` covers both legacy files (pre-versioning) and brand-new
+ * files (no tables existed before initializeDatabase created them). Both paths
+ * benefit from the idempotent `ALTER TABLE` guards.
+ */
+export function runMigrations(db: Database, fromVersion: number, toVersion: number): void {
+  if (fromVersion >= toVersion) {
+    return
+  }
+
+  // legacy/fresh → v1: ensure all columns present on `elements`.
+  // SQLite lacks `ADD COLUMN IF NOT EXISTS`, so gate each ALTER on
+  // PRAGMA table_info. Safe to run on fresh DBs (CREATE TABLE already has
+  // the columns) and on legacy DBs missing any subset of them.
+  const elementCols = db.prepare('PRAGMA table_info(elements)').all() as Array<{
+    name: string
+  }>
+  const existing = new Set(elementCols.map((c) => c.name))
+  if (!existing.has('shape_params')) {
+    db.exec('ALTER TABLE elements ADD COLUMN shape_params TEXT')
+  }
+  if (!existing.has('fontWeight')) {
+    db.exec('ALTER TABLE elements ADD COLUMN fontWeight TEXT')
+  }
+  if (!existing.has('fontStyle')) {
+    db.exec('ALTER TABLE elements ADD COLUMN fontStyle TEXT')
+  }
+  if (!existing.has('underline')) {
+    db.exec('ALTER TABLE elements ADD COLUMN underline INTEGER')
+  }
+}
+
+
 import type {
   SlideBackground,
   AnimationStep,
@@ -155,20 +381,62 @@ export function configureDatabaseConnection(db: Database): void {
 // ============================================================================
 
 /**
- * Initializes the database schema by creating required tables if they don't exist.
+ * Thrown when `initializeDatabase` is asked to open a `.tb` whose format
+ * version exceeds `CURRENT_FORMAT_VERSION`. Callers should have probed with
+ * `probeDatabaseFormat` first and gone down the read-only-with-warning path.
+ */
+export class FileTooNewError extends Error {
+  constructor(
+    public readonly fileVersion: number,
+    public readonly compatNotes: string
+  ) {
+    super(`.tb file format version ${fileVersion} is newer than supported (${CURRENT_FORMAT_VERSION})`)
+    this.name = 'FileTooNewError'
+  }
+}
+
+/**
+ * Thrown when `initializeDatabase` sees a SQLite file that isn't a twig
+ * presentation (non-twig `application_id`, or unknown schema with default
+ * `application_id`).
+ */
+export class NotATwigFileError extends Error {
+  constructor() {
+    super('file is a valid SQLite database but is not a twig presentation')
+    this.name = 'NotATwigFileError'
+  }
+}
+
+/**
+ * Initializes a read-write database connection for twig.
  *
- * Schema consists of:
- * - slides table: Stores slide metadata and ordering
- * - elements table: Stores all properties of shapes and text on each slide
- * - fonts table: Stores embedded font files for presentation portability
+ * Creates required tables if they don't exist, applies migrations to upgrade
+ * legacy files in place, and stamps format-identity metadata (pragmas +
+ * settings rows). Stamping happens AFTER schema creation so the `settings`
+ * table is guaranteed to exist when we insert metadata rows.
+ *
+ * Refuses to open files that are newer than this build understands (throws
+ * `FileTooNewError`) or that aren't twig files (throws `NotATwigFileError`).
  *
  * @param db - The SQLite database connection to initialize
+ * @param appVersion - The twig app version, used for provenance metadata
  */
-export function initializeDatabase(db: Database): void {
+export function initializeDatabase(db: Database, appVersion: string): void {
   // Use WAL journal mode for normal runtime operation.
   db.pragma('journal_mode = WAL')
   // NORMAL is the recommended synchronous setting for WAL mode.
   db.pragma('synchronous = NORMAL')
+
+  // Detect format identity BEFORE creating tables so `fresh` (empty DB) can be
+  // distinguished from `legacy` (existing twig tables without stamps).
+  const initial = detectFormat(db)
+
+  if (initial.status === 'notTwig') {
+    throw new NotATwigFileError()
+  }
+  if (initial.status === 'tooNew') {
+    throw new FileTooNewError(initial.fileVersion ?? 0, initial.compatNotes ?? '')
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS slides (
@@ -208,22 +476,6 @@ export function initializeDatabase(db: Database): void {
     )
   `)
 
-  // Migration: add shape_params to pre-existing databases.
-  // SQLite lacks `ADD COLUMN IF NOT EXISTS`, so gate the ALTER on PRAGMA table_info.
-  const elementCols = db.prepare('PRAGMA table_info(elements)').all() as Array<{ name: string }>
-  if (!elementCols.some((c) => c.name === 'shape_params')) {
-    db.exec(`ALTER TABLE elements ADD COLUMN shape_params TEXT`)
-  }
-  if (!elementCols.some((c) => c.name === 'fontWeight')) {
-    db.exec(`ALTER TABLE elements ADD COLUMN fontWeight TEXT`)
-  }
-  if (!elementCols.some((c) => c.name === 'fontStyle')) {
-    db.exec(`ALTER TABLE elements ADD COLUMN fontStyle TEXT`)
-  }
-  if (!elementCols.some((c) => c.name === 'underline')) {
-    db.exec(`ALTER TABLE elements ADD COLUMN underline INTEGER`)
-  }
-
   db.exec(`
     CREATE TABLE IF NOT EXISTS fonts (
       id TEXT PRIMARY KEY,
@@ -240,6 +492,16 @@ export function initializeDatabase(db: Database): void {
       value TEXT
     )
   `)
+
+  // Legacy twig files (pre-versioning) report fileVersion 0; treat identically
+  // to fresh for migration purposes.
+  const fromVersion =
+    initial.status === 'current' || initial.status === 'older' ? initial.fileVersion ?? 0 : 0
+  runMigrations(db, fromVersion, CURRENT_FORMAT_VERSION)
+
+  // Stamp AFTER tables exist and migrations are complete. Transactional, so
+  // pragma and settings rows are all-or-nothing.
+  stampFileMetadata(db, appVersion)
 }
 
 // ============================================================================
@@ -1092,10 +1354,17 @@ export function isBootstrapPresentation(db: Database): boolean {
     return false
   }
 
-  const settingsCount = (
-    db.prepare('SELECT COUNT(*) AS total FROM settings').get() as { total: number }
+  // Ignore reserved format-metadata keys — they are stamped by
+  // `stampFileMetadata` on every fresh DB, so an untouched temp file always
+  // has those rows. Only non-reserved settings count as user-authored state.
+  const reservedKeys = Array.from(RESERVED_SETTINGS_KEYS)
+  const placeholders = reservedKeys.map(() => '?').join(',')
+  const userSettingsCount = (
+    db
+      .prepare(`SELECT COUNT(*) AS total FROM settings WHERE key NOT IN (${placeholders})`)
+      .get(...reservedKeys) as { total: number }
   ).total
-  return settingsCount === 0
+  return userSettingsCount === 0
 }
 
 /**
@@ -1140,8 +1409,15 @@ export function getSetting(db: Database, key: string): string | null {
 
 /**
  * Saves a setting value. Passing null removes the key.
+ *
+ * Refuses reserved format-metadata keys (see `RESERVED_SETTINGS_KEYS`). Those
+ * are owned by `stampFileMetadata` and must not be writable from the
+ * renderer.
  */
 export function setSetting(db: Database, key: string, value: string | null): void {
+  if (RESERVED_SETTINGS_KEYS.has(key)) {
+    throw new Error(`"${key}" is a reserved format-metadata key and cannot be set by the renderer`)
+  }
   if (value === null) {
     db.prepare('DELETE FROM settings WHERE key = ?').run(key)
   } else {
