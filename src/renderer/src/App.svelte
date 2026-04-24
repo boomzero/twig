@@ -253,6 +253,7 @@
       x: number,
       y: number
     ): boolean => {
+      if (appState.readOnly) return false
       const poly = transform.target as Polygon
       const element = getElement()
       if (!element || element.type !== 'arrow') return false
@@ -281,6 +282,7 @@
       x: number,
       y: number
     ): boolean => {
+      if (appState.readOnly) return false
       const poly = transform.target as Polygon
       const element = getElement()
       if (!element || element.type !== 'arrow') return false
@@ -303,12 +305,14 @@
     }
 
     const mouseDownHandler = (): boolean => {
+      if (appState.readOnly) return false
       // Capture pre-drag snapshot exactly once per drag.
       pushCheckpoint()
       return true
     }
 
     const mouseUpHandler = (): boolean => {
+      if (appState.readOnly) return false
       scheduleSave()
       scheduleThumbnailCapture()
       return true
@@ -845,6 +849,7 @@
   }
 
   function pushCheckpointForSlide(slide: Slide): void {
+    if (appState.readOnly) return
     const snapshot: SlideSnapshot = {
       elements: slide.elements.map(
         (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
@@ -868,6 +873,7 @@
   }
 
   function pushCheckpoint(): void {
+    if (appState.readOnly) return
     const slideId = appState.currentSlide?.id
     if (!slideId) return
     const snapshot = takeSnapshot()
@@ -936,6 +942,7 @@
   }
 
   function performUndo(): void {
+    if (appState.readOnly) return
     const slideId = appState.currentSlide?.id
     if (!slideId) return
     const h = getSlideHistory(slideId)
@@ -952,6 +959,7 @@
   }
 
   function performRedo(): void {
+    if (appState.readOnly) return
     const slideId = appState.currentSlide?.id
     if (!slideId) return
     const h = getSlideHistory(slideId)
@@ -976,6 +984,7 @@
   }
 
   function scheduleSave(): void {
+    if (appState.readOnly) return
     // Always mark as pending — a queued debounced save IS pending, even if
     // a save is currently in-flight. This prevents a false "Saved" indicator
     // during the window between an in-flight save completing and the next
@@ -1053,6 +1062,7 @@
   }
 
   async function captureAndStoreThumbnail(): Promise<void> {
+    if (appState.readOnly) return
     if (!fabCanvas || !appState.currentSlide || !appState.currentFilePath) return
     const dataUrl = captureCanvasSnapshot(0.7, 0.2)
     if (!dataUrl) return
@@ -1281,6 +1291,10 @@
   function renderMovePathOverlay(): void {
     clearMovePathOverlay()
     if (!fabCanvas) return
+    if (appState.readOnly) {
+      fabCanvas.requestRenderAll()
+      return
+    }
 
     const editable = getEditableMoveActionForSelection()
     if (!editable) {
@@ -1370,6 +1384,7 @@
   function toggleExpandedMovePath(event: MouseEvent): void {
     event.preventDefault()
     event.stopPropagation()
+    if (appState.readOnly) return
     if (!appState.selectedObjectId) return
     expandedMovePathElementId =
       expandedMovePathElementId === appState.selectedObjectId ? null : appState.selectedObjectId
@@ -1384,6 +1399,7 @@
     toY: number,
     persist: boolean
   ): void {
+    if (appState.readOnly) return
     const slide = appState.currentSlide
     if (!slide) return
 
@@ -1425,6 +1441,7 @@
   }
 
   function handleCanvasMouseDownBefore(event: { target?: FabricObject; e: MouseEvent }): void {
+    if (appState.readOnly) return
     const target = event.target as MovePathOverlayFabricObject | undefined
     if (!target?.overlayRole || !target.actionId || !appState.selectedObjectId) return
 
@@ -1451,6 +1468,7 @@
   }
 
   function handleMovePathWindowMouseMove(event: MouseEvent): void {
+    if (appState.readOnly) return
     if (!movePathDragState || !fabCanvas) return
     const point = fabCanvas.getScenePoint(event)
     setMoveActionTarget(
@@ -1464,6 +1482,13 @@
   }
 
   function handleMovePathWindowMouseUp(event: MouseEvent): void {
+    if (appState.readOnly) {
+      detachMovePathWindowListeners()
+      movePathDragState = null
+      movePathCheckpointPushed = false
+      suppressMovePathSelectionClear = false
+      return
+    }
     if (movePathDragState && fabCanvas) {
       const point = fabCanvas.getScenePoint(event)
       setMoveActionTarget(
@@ -1482,6 +1507,7 @@
   }
 
   function handleObjectMoving(event: { target?: TwigFabricObject | ActiveSelection }): void {
+    if (appState.readOnly) return
     const target = event.target
     if (!target || target.type === 'activeselection') return
 
@@ -1522,6 +1548,7 @@
    * and updates both the in-memory thumbnail map and the database.
    */
   async function regenerateAllThumbnails(background: SlideBackground | undefined): Promise<void> {
+    if (appState.readOnly) return
     if (!appState.currentFilePath) return
     const filePath = appState.currentFilePath
     const myGeneration = ++thumbnailRegenerationGeneration
@@ -1655,6 +1682,8 @@
       saveTimeoutId = null
     }
 
+    if (appState.readOnly) return
+
     // If a text object is actively being edited, sync its current content to
     // state before saving (normally this only happens on deselection via object:modified)
     if (activeTextObject?.id) {
@@ -1724,8 +1753,8 @@
     unsubscribeOpenFile = window.api?.app?.onOpenFile(async (filePath) => {
       try {
         await runGuardedPresentationTransition(async () => {
-          await openPresentationAtPath(filePath)
-          return { completed: true, mutatedState: true }
+          const opened = await openPresentationAtPath(filePath)
+          return { completed: opened, mutatedState: opened }
         })
       } catch (error) {
         console.error('Failed to open presentation from OS event:', error)
@@ -2173,7 +2202,28 @@
     const selection = new ActiveSelection(objects, { canvas: fabCanvas })
     selection.set(ROTATION_SNAP)
     applyControlLayout(selection as ControlLayoutTarget)
+    applyReadOnlyCanvasGuards(selection)
     return selection
+  }
+
+  function applyReadOnlyCanvasGuards(obj: FabricObject): void {
+    if (!appState.readOnly) return
+    obj.set({
+      hasControls: false,
+      hoverCursor: 'default',
+      moveCursor: 'default',
+      lockMovementX: true,
+      lockMovementY: true,
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      lockSkewingX: true,
+      lockSkewingY: true,
+      lockScalingFlip: true
+    })
+    if (obj instanceof Textbox) {
+      obj.set({ editable: false })
+    }
   }
 
   /**
@@ -2344,6 +2394,7 @@
           widthPx: element.width,
           heightPx: element.height
         })
+        applyReadOnlyCanvasGuards(fabObj)
         fabCanvas.add(fabObj)
       }
     })
@@ -2378,6 +2429,7 @@
         widthPx: element.width,
         heightPx: element.height
       })
+      applyReadOnlyCanvasGuards(img)
       const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
       ).length
@@ -2417,6 +2469,7 @@
               widthPx: element.width,
               heightPx: element.height
             })
+            applyReadOnlyCanvasGuards(img)
 
             // Count objects already on the canvas whose zIndex is lower than ours
             const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
@@ -2503,6 +2556,12 @@
    */
   function handleObjectModified(event: { target?: TwigFabricObject | ActiveSelection }): void {
     if (!appState.currentSlide) return
+    if (appState.readOnly) {
+      renderCanvasFromState().catch((err) =>
+        console.error('Canvas render failed while reverting read-only edit:', err)
+      )
+      return
+    }
     const target = event.target
     if (!target) return
 
@@ -2572,6 +2631,7 @@
    * from the object's transform matrix.
    */
   function updateStateFromObject(obj: TwigFabricObject): void {
+    if (appState.readOnly) return
     if (!obj.id || typeof obj.width !== 'number' || !appState.currentSlide) return
 
     const elementInState = appState.currentSlide.elements.find((el) => el.id === obj.id)
@@ -2615,6 +2675,7 @@
   }
 
   function syncTextEditState(obj: Textbox | null | undefined): void {
+    if (appState.readOnly) return
     if (!obj?.id || !appState.currentSlide) return
 
     const elementInState = appState.currentSlide.elements.find((el) => el.id === obj.id)
@@ -2639,6 +2700,7 @@
    * to the canvas object directly instead of relying on a full re-render.
    */
   function handlePropertyChange(): void {
+    if (appState.readOnly) return
     const el = appState.currentSlide?.elements.find((e) => e.id === appState.selectedObjectId)
     const obj = fabCanvas
       ?.getObjects()
@@ -2702,6 +2764,7 @@
   // ============================================================================
 
   function handleAnimationChange(elementId: string, animations: ElementAnimations): void {
+    if (appState.readOnly) return
     const el = appState.currentSlide?.elements.find((e) => e.id === elementId)
     if (!el || !appState.currentSlide) return
 
@@ -2884,6 +2947,12 @@
   }
 
   function handleTextChanged(event: { target?: TwigFabricObject }): void {
+    if (appState.readOnly) {
+      renderCanvasFromState().catch((err) =>
+        console.error('Canvas render failed while reverting read-only text edit:', err)
+      )
+      return
+    }
     const target = event.target
     if (!(target instanceof Textbox)) return
     const wrappingChanged = syncTextboxWrapping(target)
@@ -2904,6 +2973,7 @@
    * If no text is selected, applies the style to the entire text object.
    */
   function applyStyleToSelection(style: Record<string, string | number | boolean>): void {
+    if (appState.readOnly) return
     if (!activeTextObject) return
 
     const hasSelection = activeTextObject.selectionStart !== activeTextObject.selectionEnd
@@ -3288,9 +3358,6 @@
 
   async function openPresentationAtPath(filePath: string): Promise<boolean> {
     loadingScreenPhase = 'opening'
-    clearAllHistory()
-    imageElementCache.clear()
-    prefetchedSlideIds.clear()
     try {
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
@@ -3299,6 +3366,9 @@
       }
       throw error
     }
+    clearAllHistory()
+    imageElementCache.clear()
+    prefetchedSlideIds.clear()
     setSaveStatus('saved')
     prefetchAllSlideImages().catch(() => {})
     return true
@@ -4504,6 +4574,10 @@
   }
 
   function onSlideDragStart(e: DragEvent, id: string): void {
+    if (appState.readOnly) {
+      e.preventDefault()
+      return
+    }
     if (!e.dataTransfer) return
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', id)
@@ -4511,6 +4585,7 @@
   }
 
   function onSlideDragOver(e: DragEvent, id: string): void {
+    if (appState.readOnly) return
     e.preventDefault()
     if (!e.dataTransfer || id === slideDragSourceId) return
     e.dataTransfer.dropEffect = 'move'
@@ -4621,6 +4696,7 @@
   }
 
   function layerBringToFront(id: string): void {
+    if (appState.readOnly) return
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
@@ -4634,6 +4710,7 @@
   }
 
   function layerSendToBack(id: string): void {
+    if (appState.readOnly) return
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
@@ -4647,6 +4724,7 @@
   }
 
   function layerMoveUp(id: string): void {
+    if (appState.readOnly) return
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
@@ -4663,6 +4741,7 @@
   }
 
   function layerMoveDown(id: string): void {
+    if (appState.readOnly) return
     if (!appState.currentSlide) return
     const el = appState.currentSlide.elements.find((e) => e.id === id)
     if (!el) return
@@ -4759,6 +4838,7 @@
       )
       return
     }
+    if (appState.readOnly) return
 
     // --- Twig element clipboard ---
     const raw = event.clipboardData?.getData('text/plain') ?? ''
@@ -5614,7 +5694,7 @@
           <div
             class="relative w-full group"
             class:opacity-40={slideDragSourceId === slideId}
-            draggable={!loadingState.isLoadingSlide && !duplicatingSlideId}
+            draggable={!appState.readOnly && !loadingState.isLoadingSlide && !duplicatingSlideId}
             ondragstart={(e) => onSlideDragStart(e, slideId)}
             ondragover={(e) => onSlideDragOver(e, slideId)}
             ondragleave={onSlideDragLeave}
@@ -5651,7 +5731,7 @@
               class="absolute top-2 right-3 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-opacity z-10 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400 group/duplicate"
               onclick={async () => await duplicateSlideById(slideId)}
               aria-label={$_('slide.duplicate')}
-              disabled={loadingState.isLoadingSlide || !!duplicatingSlideId}
+              disabled={appState.readOnly || loadingState.isLoadingSlide || !!duplicatingSlideId}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -5676,7 +5756,7 @@
                   if (confirm(get(_)('slide.delete.confirm'))) deleteSlideById(slideId)
                 }}
                 aria-label={$_('slide.delete')}
-                disabled={loadingState.isLoadingSlide || !!duplicatingSlideId}
+                disabled={appState.readOnly || loadingState.isLoadingSlide || !!duplicatingSlideId}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -5706,6 +5786,7 @@
         {/each}
         <button
           onclick={addNewSlide}
+          disabled={appState.readOnly}
           class="w-[calc(100%-1rem)] mt-1 p-1.5 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-200"
         >
           {$_('slide.new')}
@@ -5803,6 +5884,7 @@
           <StackPanel
             onBeforeLayerChange={pushCheckpoint}
             onLayerChange={() => {
+              if (appState.readOnly) return
               applyZOrderToCanvas()
               scheduleSave()
               scheduleThumbnailCapture()
@@ -5825,6 +5907,7 @@
           <AnimationOrderPanel
             onBeforeChange={pushCheckpoint}
             onAfterChange={() => {
+              if (appState.readOnly) return
               renderMovePathOverlay()
               scheduleSave()
               scheduleThumbnailCapture()
@@ -5838,6 +5921,7 @@
             onAnimationChange={handleAnimationChange}
             slideTransition={appState.currentSlide?.transition}
             onSlideTransitionChange={(t) => {
+              if (appState.readOnly) return
               if (!appState.currentSlide) return
               if (!transitionCheckpointPushed) {
                 pushCheckpoint()
