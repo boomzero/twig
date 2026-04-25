@@ -581,6 +581,22 @@ describe('format versioning', () => {
     expect(map.compat_notes).toBe('')
   })
 
+  it('skips same-value pragma writes on repeated stamps', () => {
+    initializeDatabase(instance, TEST_APP_VERSION)
+    const originalPragma = instance.pragma.bind(instance)
+    const writes: string[] = []
+    instance.pragma = ((source: string, options?: unknown) => {
+      if (source.includes('=')) {
+        writes.push(source)
+      }
+      return originalPragma(source, options as never)
+    }) as typeof instance.pragma
+
+    stampFileMetadata(instance, TEST_APP_VERSION)
+
+    expect(writes).toEqual([])
+  })
+
   it('upgrades a legacy (pre-versioning) twig DB in place and stamps it', () => {
     // Simulate a legacy file: create the four twig tables without the newer
     // `shape_params` column and without stamping.

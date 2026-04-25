@@ -789,7 +789,7 @@ Since twig 1.1.0, every `.tb` file carries a small amount of format-identity met
 | `application_id` | `0x74776967` (ASCII `"twig"`) | Marks the SQLite file as a twig presentation.                 |
 | `user_version`   | `1` (current: v1)             | Format revision. Bumped when the schema changes incompatibly. |
 
-Both pragmas must be set on every write. Writers should set them **before** inserting any rows so that even a partially-written file is identifiable.
+Both pragmas must have these values on every write. Writers should set them **before** inserting any rows so that even a partially-written file is identifiable. Implementations may skip the physical PRAGMA write when the existing value is already correct.
 
 ### 11.2 Reserved `settings` rows
 
@@ -806,6 +806,8 @@ The same metadata is also mirrored as rows in the `settings` table so tools with
 **Reserved means reserved.** Writers must not store user content under these keys. Readers detecting "is this an untouched blank presentation?" must ignore these five keys and count only other rows.
 
 **Legacy files (written by twig 1.0.x, before format versioning existed):** on first open by a 1.1.0+ twig, the file is upgraded in place, pragmas are stamped, and the five rows are written. For such files `created_with_app_version` records **the twig version that first stamped the file** (not the original creator) and `created_at` records **the upgrade time**. Pre-versioning files carry no provenance to recover — this is the only faithful behaviour.
+
+Opening a file read-write may also refresh missing or outdated metadata rows during initialization, even before the user edits slide content. Readers that only probe or open a too-new file read-only must not perform this refresh.
 
 ### 11.3 Probe flow (how readers detect format status)
 
@@ -877,7 +879,7 @@ Readers must not attempt to interpret, translate, or abbreviate the text. Displa
 
 Writers should apply format metadata **before** any platform-specific shadow or backup copy is made. In twig's own implementation, `stampFileMetadata` runs on the read-write database handle immediately before the Mac App Store sandbox-shadow sync; reversing the order would let the shadow copy receive unstamped bytes.
 
-The stamp operation itself is idempotent: running it twice in a row produces the same rows and pragma values (modulo `last_written_with_app_version`, which may be refreshed to the same or a newer app version).
+The stamp operation itself is idempotent: running it twice in a row produces the same rows and pragma values (modulo `last_written_with_app_version`, which may be refreshed to the same or a newer app version). Implementations should avoid rewriting same-value pragmas and settings rows on hot save paths.
 
 ---
 

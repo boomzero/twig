@@ -102,9 +102,9 @@
   type NumericProperty = 'x' | 'y' | 'width' | 'height' | 'angle'
 
   function updateNumericProperty(key: NumericProperty, event: Event): void {
-    if (!selectedObject || !beginPropertyMutation()) return
     const value = (event.target as HTMLInputElement).valueAsNumber
     if (!Number.isFinite(value)) return
+    if (!selectedObject || !beginPropertyMutation()) return
     selectedObject[key] = value
     onPropertyChange?.()
   }

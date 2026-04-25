@@ -3323,6 +3323,10 @@
     })
   }
 
+  function isReadOnlyOpenAbort(error: unknown): boolean {
+    return error instanceof TooNewCancelledError || error instanceof EmptyReadOnlyPresentationError
+  }
+
   function cancelPendingPersistence(): void {
     if (saveTimeoutId) {
       clearTimeout(saveTimeoutId)
@@ -3345,10 +3349,7 @@
     try {
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
-      if (
-        error instanceof TooNewCancelledError ||
-        error instanceof EmptyReadOnlyPresentationError
-      ) {
+      if (isReadOnlyOpenAbort(error)) {
         return
       }
       throw error
@@ -3367,14 +3368,13 @@
     try {
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
-      if (error instanceof TooNewCancelledError) {
-        return false
-      }
-      if (error instanceof EmptyReadOnlyPresentationError) {
+      if (isReadOnlyOpenAbort(error)) {
         return false
       }
       throw error
     }
+    // Clear history only after a replacement file actually loads; canceling a
+    // too-new read-only open keeps the current presentation and undo stack.
     clearAllHistory()
     imageElementCache.clear()
     prefetchedSlideIds.clear()

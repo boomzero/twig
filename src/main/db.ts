@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3'
 import { v4 as uuid_v4 } from 'uuid'
+export { resolveCompatNotes } from '../shared/compatNotes'
 
 // ============================================================================
 // .tb Format Versioning
@@ -31,42 +32,9 @@ export const CURRENT_FORMAT_VERSION = 1
  *   - a JSON object keyed by BCP-47 locale, e.g.
  *     `{"en": "...", "zh": "...", "_default": "..."}`.
  * Readers use `resolveCompatNotes(raw, locale)` to pick the best match with
- * `_default` → `en` → any-key fallback.
+ * `_default` -> `en` -> any-key fallback.
  */
 export const CURRENT_COMPAT_NOTES = ''
-
-/**
- * Resolves a `compat_notes` raw value against a runtime locale.
- *
- * - If `raw` parses to a JSON object, the best match is returned from:
- *   the exact locale, the language prefix (`zh-CN` → `zh`), `_default`,
- *   `en`, then any remaining string value.
- * - Otherwise `raw` is returned unchanged.
- *
- * Never throws — malformed JSON degrades to the raw string.
- */
-export function resolveCompatNotes(raw: string, locale: string): string {
-  if (!raw) return ''
-  const trimmed = raw.trim()
-  if (!trimmed.startsWith('{')) return raw
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed)
-  } catch {
-    return raw
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return raw
-  const map = parsed as Record<string, unknown>
-  const candidates = [locale, locale.split('-')[0], '_default', 'en']
-  for (const key of candidates) {
-    const val = map[key]
-    if (typeof val === 'string' && val.length > 0) return val
-  }
-  for (const val of Object.values(map)) {
-    if (typeof val === 'string' && val.length > 0) return val
-  }
-  return ''
-}
 
 /**
  * Settings keys reserved by the format metadata contract. The renderer cannot
@@ -99,6 +67,17 @@ export interface FormatProbeResult {
   fileVersion?: number
   /** Populated for `tooNew`. Empty string is valid. */
   compatNotes?: string
+}
+
+function setNumericPragmaIfChanged(
+  db: Database,
+  key: 'application_id' | 'user_version',
+  value: number
+): void {
+  const current = (db.pragma(key, { simple: true }) as number) ?? 0
+  if (current !== value) {
+    db.pragma(`${key} = ${value}`)
+  }
 }
 
 /**
@@ -154,9 +133,10 @@ export function detectFormat(db: Database): FormatProbeResult {
 
 /**
  * Writes format-identity pragmas and metadata settings rows to an already-open
- * read-write connection. Idempotent. Runs in a single transaction so pragmas
- * and settings cannot get partially updated if the surrounding write path
- * fails.
+ * read-write connection. Idempotent: same-value stamps are skipped where
+ * possible so frequent saves do not churn header pages or reserved settings
+ * rows unnecessarily. Runs in a single transaction so pragmas and settings
+ * cannot get partially updated if the surrounding write path fails.
  *
  * MUST be called AFTER `runMigrations`/table creation — relies on the
  * `settings` table existing.
@@ -169,10 +149,14 @@ export function stampFileMetadata(db: Database, appVersion: string): void {
   const nowIso = new Date().toISOString()
 
   const tx = db.transaction(() => {
-    db.pragma(`application_id = ${TWIG_APP_ID}`)
-    db.pragma(`user_version = ${CURRENT_FORMAT_VERSION}`)
+    setNumericPragmaIfChanged(db, 'application_id', TWIG_APP_ID)
+    setNumericPragmaIfChanged(db, 'user_version', CURRENT_FORMAT_VERSION)
 
-    const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    const upsert = db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      WHERE settings.value IS NOT excluded.value
+    `)
     upsert.run('format_version', String(CURRENT_FORMAT_VERSION))
     upsert.run('compat_notes', CURRENT_COMPAT_NOTES)
     upsert.run('last_written_with_app_version', appVersion)
