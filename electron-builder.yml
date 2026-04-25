@@ -31,7 +31,7 @@ nsis:
   createDesktopShortcut: always
 mac:
   bundleShortVersion: 1.1.0
-  bundleVersion: 1.0.20
+  bundleVersion: 1.0.21
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
