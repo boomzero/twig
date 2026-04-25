@@ -1,12 +1,15 @@
-// Vendored from fabric v7 (MIT), unchanged except for a single patch:
+// Vendored from fabric v7 (MIT), unchanged except for twig hooks:
 //   1. Add getExtraSnapPoints(target) as a subclass hook (returns [] by default).
 //   2. Push its result into `list` in scalingOrResizing() and into `points` in moving().
+//   3. Add moving guide-point/cache/snap-application hooks for subclass geometry.
 // Every other line is upstream verbatim — see
 // node_modules/fabric/extensions/aligning_guidelines/index.ts for comparison.
 import {
   type BasicTransformEvent,
   type Canvas,
   type FabricObject,
+  type TOriginX,
+  type TOriginY,
   type TPointerEvent,
   type Point,
   util,
@@ -101,8 +104,32 @@ export class AligningGuidelines {
   getExtraSnapPoints(_target: FabricObject): Point[] {
     return [];
   }
+  /** [twig patch] Subclass hook: guide points used when moving/snapping. */
+  getGuidePoints(object: FabricObject): Point[] {
+    const value = object.getCoords();
+    value.push(object.getCenterPoint());
+    return value;
+  }
+  /** [twig patch] Subclass hook: whether moving guide points may be cached. */
+  shouldCacheGuidePoints(_object: FabricObject): boolean {
+    return true;
+  }
+  /** [twig patch] Subclass hook: apply a snap found from a guide point. */
+  applyTargetGuidePointSnap(
+    target: FabricObject,
+    point: Point,
+    origin: [TOriginX, TOriginY],
+    _delta: Point,
+    _pointIndex: number,
+  ): void {
+    target.setXY(point, ...origin);
+  }
   /** Users can customize. */
   getCaCheMapValue(object: FabricObject) {
+    if (!this.shouldCacheGuidePoints(object)) {
+      return this.getGuidePoints(object);
+    }
+
     const cacheKey = [
       object.calcTransformMatrix().toString(),
       object.width,
@@ -110,8 +137,7 @@ export class AligningGuidelines {
     ].join();
     const cacheValue = this.cacheMap.get(cacheKey);
     if (cacheValue) return cacheValue;
-    const value = object.getCoords();
-    value.push(object.getCenterPoint());
+    const value = this.getGuidePoints(object);
     this.cacheMap.set(cacheKey, value);
     return value;
   }
