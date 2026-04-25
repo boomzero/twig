@@ -33,6 +33,7 @@ type TextboxAlignmentSource = FabricObject & {
   __charBounds?: Array<Array<{ left?: number; width?: number }>>
   direction?: string
   getLineWidth?: (lineIndex: number) => number
+  _getWidthOfCharSpacing?: () => number
   _getLineLeftOffset?: (lineIndex: number) => number
 }
 
@@ -137,8 +138,16 @@ function getTextboxLineMetrics(
 function getRenderedLineWidth(target: TextboxAlignmentSource, lineIndex: number): number {
   const charBounds = target.__charBounds?.[lineIndex]
   const advance = charBounds?.[charBounds.length - 1]?.left
-  if (typeof advance === 'number' && Number.isFinite(advance)) return Math.max(0, advance)
+  if (typeof advance === 'number' && Number.isFinite(advance)) {
+    return Math.max(0, advance - getTrailingCharSpacing(target))
+  }
   return target.getLineWidth?.(lineIndex) ?? 0
+}
+
+function getTrailingCharSpacing(target: TextboxAlignmentSource): number {
+  if (typeof target._getWidthOfCharSpacing !== 'function') return 0
+  const spacing = target._getWidthOfCharSpacing()
+  return typeof spacing === 'number' && Number.isFinite(spacing) ? Math.max(0, spacing) : 0
 }
 
 function getTextboxAlignmentGeometry(object: FabricObject): ObjectAlignmentGeometry | null {

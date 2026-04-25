@@ -132,6 +132,37 @@ describe('src/renderer/src/lib/alignment-guides/geometry.ts', () => {
     ])
   })
 
+  it('trims Fabric trailing char spacing from char-bound rendered widths', () => {
+    const textbox = {
+      type: 'textbox',
+      isType: (type: string) => type === 'textbox',
+      width: 300,
+      height: 40,
+      _textLines: [['H', 'e', 'l', 'l', 'o']],
+      __charBounds: [
+        [
+          { left: 0, width: 24 },
+          { left: 109, width: 0 }
+        ]
+      ],
+      direction: 'ltr',
+      getLineWidth: () => 105,
+      _getLineLeftOffset: () => 0,
+      _getWidthOfCharSpacing: () => 4,
+      calcTransformMatrix: () => [1, 0, 0, 1, 0, 0]
+    } as unknown as FabricObject
+
+    const { guidePoints } = getObjectAlignmentGeometry(textbox)
+
+    expect(guidePoints.map(({ x, y }) => ({ x, y }))).toEqual([
+      { x: -150, y: -20 },
+      { x: -45, y: -20 },
+      { x: -45, y: 20 },
+      { x: -150, y: 20 },
+      { x: -97.5, y: 0 }
+    ])
+  })
+
   it('preserves Fabric geometry for non-text objects', () => {
     const coords = [new Point(1, 2), new Point(11, 2), new Point(11, 7), new Point(1, 7)]
     const center = new Point(6, 4.5)
