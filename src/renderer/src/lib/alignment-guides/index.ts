@@ -1,5 +1,6 @@
-import type { Canvas, FabricObject } from 'fabric'
+import type { Canvas, FabricObject, TOriginX, TOriginY } from 'fabric'
 import { Point } from 'fabric'
+import { getObjectAlignmentGeometry, isTextboxObject } from './geometry'
 import { AligningGuidelines } from './vendor/index'
 
 export type InstallOptions = {
@@ -91,6 +92,28 @@ export class TwigAligningGuidelines extends AligningGuidelines {
     ]
   }
 
+  getGuidePoints(object: FabricObject): Point[] {
+    return getObjectAlignmentGeometry(object).guidePoints
+  }
+
+  shouldCacheGuidePoints(object: FabricObject): boolean {
+    return !isTextboxObject(object)
+  }
+
+  applyTargetGuidePointSnap(
+    target: FabricObject,
+    point: Point,
+    origin: [TOriginX, TOriginY],
+    delta: Point
+  ): void {
+    if (isTextboxObject(target)) {
+      target.setXY(target.getXY().add(delta))
+      return
+    }
+
+    super.applyTargetGuidePointSnap(target, point, origin, delta, 0)
+  }
+
   // Guard: Fabric fires before:render from both main-canvas renderAll() and
   // offscreen toCanvasElement()/toDataURL() paths. In the latter, contextTop is
   // not involved in the output, and on some code paths (e.g. after dispose)
@@ -119,7 +142,7 @@ export class TwigAligningGuidelines extends AligningGuidelines {
     const siblings = this.getObjectsByTarget(target)
     if (siblings.size === 0) return
 
-    const tr = target.getBoundingRect()
+    const tr = getObjectAlignmentGeometry(target).boundingRect
     const tLeft = tr.left
     const tRight = tr.left + tr.width
     const tTop = tr.top
@@ -131,7 +154,7 @@ export class TwigAligningGuidelines extends AligningGuidelines {
     type Info = { left: number; right: number; top: number; bottom: number }
     const infos: Info[] = []
     for (const o of siblings) {
-      const r = o.getBoundingRect()
+      const r = getObjectAlignmentGeometry(o).boundingRect
       infos.push({
         left: r.left,
         right: r.left + r.width,

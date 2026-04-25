@@ -1,4 +1,4 @@
-import type { FabricObject, Point, TOriginX, TOriginY } from 'fabric';
+import { type FabricObject, Point, type TOriginX, type TOriginY } from 'fabric';
 import type { AligningGuidelines } from '..';
 import type { LineProps } from '../typedefs';
 import { getDistanceList } from './basic';
@@ -8,12 +8,11 @@ export function collectLine(
   target: FabricObject,
   points: Point[],
 ) {
-  const list = target.getCoords();
-  list.push(target.getCenterPoint());
+  const list = this.getGuidePoints(target);
   const margin = this.margin / this.canvas.getZoom();
   const opts = { target, list, points, margin };
-  const vLines = collectPoints({ ...opts, type: 'x' });
-  const hLines = collectPoints({ ...opts, type: 'y' });
+  const vLines = collectPoints.call(this, { ...opts, type: 'x' });
+  const hLines = collectPoints.call(this, { ...opts, type: 'y' });
 
   return { vLines, hLines };
 }
@@ -32,7 +31,7 @@ const originArr: [TOriginX, TOriginY][] = [
   ['left', 'bottom'],
   ['center', 'center'],
 ];
-function collectPoints(props: CollectItemLineProps) {
+function collectPoints(this: AligningGuidelines, props: CollectItemLineProps) {
   const { target, list, points, margin, type } = props;
   const res: LineProps[] = [];
   const arr: ReturnType<typeof getDistanceList>[] = [];
@@ -57,7 +56,8 @@ function collectPoints(props: CollectItemLineProps) {
     list.forEach((item) => {
       item[type] += d;
     });
-    target.setXY(list[i], ...originArr[i]);
+    const delta = type === 'x' ? new Point(d, 0) : new Point(0, d);
+    this.applyTargetGuidePointSnap(target, list[i], originArr[i], delta, i);
     target.setCoords();
   }
 
