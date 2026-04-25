@@ -156,7 +156,9 @@ function syncMasShadowCopy(filePath: string): void {
     return
   }
 
-  const db = connectionCache.get(filePath)
+  // Only the writable cache participates in shadow sync — RO connections
+  // never produce WAL changes to flush.
+  const db = rwConnectionCache.get(filePath)
   if (db) {
     db.pragma('wal_checkpoint(TRUNCATE)')
   }
@@ -226,45 +228,78 @@ function ensureTempDir(): void {
 // ============================================================================
 
 /**
- * Cache of open database connections, keyed by file path.
- * This prevents opening multiple connections to the same file and improves performance.
+ * Caches of open database connections, keyed by file path.
+ *
+ * Read-write and read-only connections are tracked separately so that a file
+ * opened read-only (because it was written by a newer twig format we can't
+ * fully edit) cannot accidentally be re-opened as writable by a later caller.
+ * Write paths must never see a file that is in the RO cache.
  */
-const connectionCache = new Map<string, Database.Database>()
+const rwConnectionCache = new Map<string, Database.Database>()
+const roConnectionCache = new Map<string, Database.Database>()
 
 /**
- * Maximum number of database connections to keep open simultaneously.
- * When this limit is exceeded, the least recently used connection is closed.
+ * Logical files that the user has opened in read-only mode.
+ *
+ * This is intentionally separate from `roConnectionCache`: cache entries are
+ * allowed to disappear on suspend, stale-connection recovery, or LRU eviction,
+ * but the open document should still be treated as read-only until the
+ * renderer explicitly closes it.
+ */
+const readOnlyOpenPaths = new Set<string>()
+
+/**
+ * Maximum number of database connections to keep open simultaneously, per
+ * cache. When this limit is exceeded, the least recently used connection in
+ * that cache is closed.
  */
 const MAX_CONNECTIONS = 3
 
 /**
- * Tracks the access order of database connections for LRU eviction.
+ * Tracks the access order of database connections for LRU eviction, per cache.
  * Most recently used connections are at the end of the array.
  */
-const accessOrder: string[] = []
+const rwAccessOrder: string[] = []
+const roAccessOrder: string[] = []
+
+/** True if the file is currently open in read-only mode. */
+export function isOpenReadOnly(filePath: string): boolean {
+  return readOnlyOpenPaths.has(filePath)
+}
+
+function touchAccessOrder(order: string[], filePath: string): void {
+  const index = order.indexOf(filePath)
+  if (index !== -1) {
+    order.splice(index, 1)
+  }
+  order.push(filePath)
+}
 
 /**
- * Retrieves or creates a database connection for the given file.
- * Connections are cached for reuse across multiple operations.
+ * Retrieves or creates a read-write database connection for the given file.
+ * Initializes schema, applies migrations, and stamps format metadata.
+ *
+ * Throws if the file is currently open as read-only — callers must close the
+ * RO connection first.
  *
  * @param filePath - Absolute path to the .tb file
  * @returns The database connection instance
- * @throws Error if the file is not a valid SQLite database
+ * @throws Error if the file is not a valid SQLite database, is newer than
+ *   supported, or is currently open read-only
  */
-function getDbConnection(filePath: string): Database.Database {
+function getWritableConnection(filePath: string): Database.Database {
+  if (readOnlyOpenPaths.has(filePath)) {
+    throw new Error(`Cannot open ${filePath} for writing: the file is currently open read-only`)
+  }
+
   ensureMasFileAccess(filePath)
   const runtimePath = getRuntimeDbPath(filePath)
   safeLog(`[db] opening connection for ${filePath} (runtime=${runtimePath})`)
 
   // Return cached connection if available
-  if (connectionCache.has(filePath)) {
-    // Update access order - move to end (most recently used)
-    const index = accessOrder.indexOf(filePath)
-    if (index !== -1) {
-      accessOrder.splice(index, 1)
-    }
-    accessOrder.push(filePath)
-    return connectionCache.get(filePath)!
+  if (rwConnectionCache.has(filePath)) {
+    touchAccessOrder(rwAccessOrder, filePath)
+    return rwConnectionCache.get(filePath)!
   }
 
   // Check if file exists and validate it's a SQLite database (if it exists)
@@ -338,12 +373,12 @@ function getDbConnection(filePath: string): Database.Database {
       safeLog(`[db] skipping quick_check for MAS external file ${runtimePath}`, 'warn')
     }
 
-    dbService.initializeDatabase(db)
+    dbService.initializeDatabase(db, app.getVersion())
 
     // Implement LRU eviction: if cache is full, close least recently used connection
-    if (connectionCache.size >= MAX_CONNECTIONS) {
-      const lruPath = accessOrder.shift() // Remove least recently used
-      if (lruPath && connectionCache.has(lruPath)) {
+    if (rwConnectionCache.size >= MAX_CONNECTIONS) {
+      const lruPath = rwAccessOrder.shift() // Remove least recently used
+      if (lruPath && rwConnectionCache.has(lruPath)) {
         try {
           closeDbConnection(lruPath, 'none')
           safeLog(`Closed LRU database connection: ${lruPath}`)
@@ -355,13 +390,146 @@ function getDbConnection(filePath: string): Database.Database {
     }
 
     // Cache the new connection and add to access order
-    connectionCache.set(filePath, db)
-    accessOrder.push(filePath)
+    rwConnectionCache.set(filePath, db)
+    rwAccessOrder.push(filePath)
     return db
   } catch (error) {
     // Close connection on initialization error to prevent leak
     db.close()
     throw error
+  }
+}
+
+/**
+ * Retrieves or creates a read-only database connection for a `.tb` file that
+ * the user asked to open read-only (typically because it's newer than this
+ * build understands). Never mutates the file: no schema creation, no
+ * migrations, no stamping.
+ *
+ * Validates that the file is actually a twig presentation before caching.
+ * Refuses fresh/empty SQLite files (there's nothing to view).
+ */
+function getReadOnlyConnection(filePath: string): Database.Database {
+  if (rwConnectionCache.has(filePath)) {
+    throw new Error(`Cannot open ${filePath} read-only: the file is already open for writing`)
+  }
+
+  ensureMasFileAccess(filePath)
+  const runtimePath = getRuntimeDbPath(filePath)
+
+  if (roConnectionCache.has(filePath)) {
+    touchAccessOrder(roAccessOrder, filePath)
+    return roConnectionCache.get(filePath)!
+  }
+
+  const fileExists = fs.existsSync(runtimePath)
+  if (!fileExists) {
+    throw new Error(`File does not exist: ${runtimePath}`)
+  }
+
+  let db: Database.Database
+  try {
+    db = new Database(runtimePath, { readonly: true })
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not a database')) {
+      throw new Error(
+        `File ${runtimePath} is not a valid SQLite database. Please select a valid twig presentation file.`
+      )
+    }
+    throw error
+  }
+
+  try {
+    dbService.configureDatabaseConnection(db)
+
+    const format = dbService.detectFormat(db)
+    if (format.status === 'notTwig') {
+      throw new dbService.NotATwigFileError()
+    }
+    // Read-only mode exists for one reason: the file is too new to migrate
+    // safely. For every other status (fresh, legacy, current, older) the
+    // correct open mode is read-write. This enforcement is the main-process
+    // defense-in-depth; the renderer is expected to have probed first and
+    // only request RO when status is `tooNew`.
+    if (format.status !== 'tooNew') {
+      throw new Error(
+        `Read-only open is only for files newer than this build; got status "${format.status}"`
+      )
+    }
+
+    if (roConnectionCache.size >= MAX_CONNECTIONS) {
+      const lruPath = roAccessOrder.shift()
+      if (lruPath && roConnectionCache.has(lruPath)) {
+        try {
+          closeDbConnection(lruPath, 'none')
+        } catch (closeError) {
+          console.error(`Error closing LRU RO connection for ${lruPath}:`, closeError)
+        }
+      }
+    }
+
+    roConnectionCache.set(filePath, db)
+    readOnlyOpenPaths.add(filePath)
+    roAccessOrder.push(filePath)
+    return db
+  } catch (error) {
+    db.close()
+    throw error
+  }
+}
+
+/**
+ * Returns a readable connection for `filePath`. Prefers an existing read-only
+ * connection if one is cached; if the logical file is open read-only but its
+ * cached connection was evicted/closed, re-establishes a read-only connection.
+ * Otherwise falls through to the writable connection (which is also readable).
+ * Use this for read-only operations inside `withDbConnection({ write: false })`.
+ */
+function getReadableConnection(filePath: string): Database.Database {
+  if (roConnectionCache.has(filePath)) {
+    touchAccessOrder(roAccessOrder, filePath)
+    return roConnectionCache.get(filePath)!
+  }
+  if (readOnlyOpenPaths.has(filePath)) {
+    return getReadOnlyConnection(filePath)
+  }
+  return getWritableConnection(filePath)
+}
+
+/**
+ * Probes a `.tb` candidate file for its format identity without mutating it.
+ * Opens a short-lived read-only SQLite connection that bypasses the cache.
+ *
+ * Used by the renderer's open flow to detect files newer than this build
+ * understands (so it can show a compat-notes warning) and to reject non-twig
+ * SQLite files up front with a clear error.
+ */
+function probeDatabaseFormat(filePath: string): dbService.FormatProbeResult {
+  ensureMasFileAccess(filePath)
+
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File does not exist: ${filePath}`)
+  }
+
+  let db: Database.Database
+  try {
+    db = new Database(filePath, { readonly: true })
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not a database')) {
+      return { status: 'notTwig' }
+    }
+    throw error
+  }
+
+  try {
+    dbService.configureDatabaseConnection(db)
+    return dbService.detectFormat(db)
+  } finally {
+    try {
+      db.close()
+    } catch (closeError) {
+      safeLog(`[db] failed to close probe connection: ${formatError(closeError)}`, 'warn')
+    }
   }
 }
 
@@ -513,13 +681,16 @@ function ensureMasFileAccess(filePath: string): void {
  */
 function closeDbConnection(
   filePath: string,
-  checkpointMode: 'none' | 'passive' | 'truncate' = 'none'
+  checkpointMode: 'none' | 'passive' | 'truncate' = 'none',
+  options: { forgetReadOnly?: boolean } = {}
 ): void {
   const hasShadowCopy = masShadowCopies.has(filePath)
 
-  if (connectionCache.has(filePath)) {
+  // Close the writable connection (if any). Shadow sync + WAL checkpoint only
+  // apply here — RO connections never mutate the file.
+  if (rwConnectionCache.has(filePath)) {
     try {
-      const db = connectionCache.get(filePath)!
+      const db = rwConnectionCache.get(filePath)!
 
       if (hasShadowCopy) {
         try {
@@ -544,19 +715,34 @@ function closeDbConnection(
       db.close()
     } catch (error) {
       safeLog(`Error closing database connection for ${filePath}: ${error}`, 'error')
-      // Continue anyway - we still want to remove it from cache
     }
-    connectionCache.delete(filePath)
+    rwConnectionCache.delete(filePath)
+    const rwIndex = rwAccessOrder.indexOf(filePath)
+    if (rwIndex !== -1) {
+      rwAccessOrder.splice(rwIndex, 1)
+    }
+  }
 
-    // Remove from access order
-    const index = accessOrder.indexOf(filePath)
-    if (index !== -1) {
-      accessOrder.splice(index, 1)
+  // Close the read-only connection (if any).
+  if (roConnectionCache.has(filePath)) {
+    try {
+      roConnectionCache.get(filePath)!.close()
+    } catch (error) {
+      safeLog(`Error closing RO database connection for ${filePath}: ${error}`, 'error')
+    }
+    roConnectionCache.delete(filePath)
+    const roIndex = roAccessOrder.indexOf(filePath)
+    if (roIndex !== -1) {
+      roAccessOrder.splice(roIndex, 1)
     }
   }
 
   if (hasShadowCopy) {
     disposeMasShadowCopy(filePath)
+  }
+
+  if (options.forgetReadOnly) {
+    readOnlyOpenPaths.delete(filePath)
   }
 }
 
@@ -573,10 +759,22 @@ function closeDbConnection(
 function withDbConnection<T>(
   filePath: string,
   fn: (db: Database.Database) => T,
-  options: { syncShadowBack?: boolean } = {}
+  options: { syncShadowBack?: boolean; write?: boolean } = {}
 ): T {
   const runOperation = (): T => {
-    const result = fn(getDbConnection(filePath))
+    // Write paths must refuse files that are open read-only.
+    if (options.write && readOnlyOpenPaths.has(filePath)) {
+      throw new Error(
+        `Presentation is open read-only: ${filePath}. Writes are disabled for files written by a newer version of twig.`
+      )
+    }
+    const db = options.write ? getWritableConnection(filePath) : getReadableConnection(filePath)
+    const result = fn(db)
+    // Stamp provenance BEFORE the MAS shadow is flushed, so the copy sees the
+    // refreshed `last_written_with_app_version` row.
+    if (options.write) {
+      dbService.stampFileMetadata(db, app.getVersion())
+    }
     if (options.syncShadowBack) {
       syncMasShadowCopy(filePath)
     }
@@ -1159,10 +1357,12 @@ app.whenReady().then(() => {
   setupMacAppMenu()
 
   // Close all cached database connections before the system sleeps so that
-  // connections are never stale after wake (SQLITE_READONLY_DBMOVED).
+  // connections are never stale after wake (SQLITE_READONLY_DBMOVED). Iterate
+  // both RW and RO caches (closeDbConnection tolerates either).
   powerMonitor.on('suspend', () => {
     safeLog('System suspending — closing all database connections')
-    for (const [filePath] of connectionCache) {
+    const openPaths = new Set<string>([...rwConnectionCache.keys(), ...roConnectionCache.keys()])
+    for (const filePath of openPaths) {
       closeDbConnection(filePath, 'passive')
     }
   })
@@ -1367,7 +1567,8 @@ app.whenReady().then(() => {
     try {
       validateFilePath(filePath)
       return withDbConnection(filePath, (db) => dbService.createSlide(db), {
-        syncShadowBack: true
+        syncShadowBack: true,
+        write: true
       })
     } catch (error) {
       console.error('Error in db:create-slide:', error)
@@ -1383,7 +1584,8 @@ app.whenReady().then(() => {
       validateFilePath(filePath)
       validateSlideId(slideId)
       return withDbConnection(filePath, (db) => dbService.duplicateSlide(db, slideId), {
-        syncShadowBack: true
+        syncShadowBack: true,
+        write: true
       })
     } catch (error) {
       console.error('Error in db:duplicate-slide:', error)
@@ -1399,7 +1601,8 @@ app.whenReady().then(() => {
       validateFilePath(filePath)
       validateSlideId(slide.id)
       withDbConnection(filePath, (db) => dbService.saveSlide(db, slide), {
-        syncShadowBack: true
+        syncShadowBack: true,
+        write: true
       })
     } catch (error) {
       console.error('Error in db:save-slide:', error)
@@ -1417,7 +1620,8 @@ app.whenReady().then(() => {
         validateFilePath(filePath)
         validateSlideId(slideId)
         withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail), {
-          syncShadowBack: true
+          syncShadowBack: true,
+          write: true
         })
       } catch (error) {
         console.error('Error in db:save-thumbnail:', error)
@@ -1455,7 +1659,8 @@ app.whenReady().then(() => {
       try {
         validateFilePath(filePath)
         withDbConnection(filePath, (db) => dbService.setSetting(db, key, value), {
-          syncShadowBack: true
+          syncShadowBack: true,
+          write: true
         })
       } catch (error) {
         console.error('Error in db:set-setting:', error)
@@ -1470,7 +1675,8 @@ app.whenReady().then(() => {
       try {
         validateFilePath(filePath)
         withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background), {
-          syncShadowBack: true
+          syncShadowBack: true,
+          write: true
         })
       } catch (error) {
         console.error('Error in db:apply-background-to-all:', error)
@@ -1484,7 +1690,8 @@ app.whenReady().then(() => {
       validateFilePath(filePath)
       validateSlideId(slideId)
       withDbConnection(filePath, (db) => dbService.deleteSlide(db, slideId), {
-        syncShadowBack: true
+        syncShadowBack: true,
+        write: true
       })
     } catch (error) {
       console.error('Error in db:delete-slide:', error)
@@ -1497,7 +1704,8 @@ app.whenReady().then(() => {
       validateFilePath(filePath)
       for (const id of orderedIds) validateSlideId(id)
       withDbConnection(filePath, (db) => dbService.reorderSlides(db, orderedIds), {
-        syncShadowBack: true
+        syncShadowBack: true,
+        write: true
       })
     } catch (error) {
       console.error('Error in db:reorder-slides:', error)
@@ -1518,7 +1726,7 @@ app.whenReady().then(() => {
         validateSlideId(slide.id)
       }
       // Close any existing connection to this file path
-      closeDbConnection(filePath)
+      closeDbConnection(filePath, 'none', { forgetReadOnly: true })
 
       // Delete the file if it exists to ensure a clean overwrite
       // We try to delete it atomically, and handle common error cases
@@ -1545,7 +1753,8 @@ app.whenReady().then(() => {
 
       // Create a new database and save all slides in a single transaction
       withDbConnection(filePath, (db) => dbService.saveAllSlides(db, slides), {
-        syncShadowBack: true
+        syncShadowBack: true,
+        write: true
       })
     } catch (error) {
       console.error('Error in db:save-as:', error)
@@ -1560,8 +1769,51 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('db:close-connection', (_event, filePath: string): void => {
     validateFilePath(filePath)
-    closeDbConnection(filePath, 'passive')
+    closeDbConnection(filePath, 'passive', { forgetReadOnly: true })
   })
+
+  /**
+   * Probes a `.tb` candidate for its format identity without mutating it or
+   * caching a connection. Used by the renderer's open flow to distinguish
+   * fresh/legacy/current/tooNew/notTwig before committing to an open mode.
+   */
+  ipcMain.handle('db:probe-format', (_event, filePath: string): dbService.FormatProbeResult => {
+    try {
+      validateFilePath(filePath)
+      return probeDatabaseFormat(filePath)
+    } catch (error) {
+      console.error('Error in db:probe-format:', error)
+      throw error
+    }
+  })
+
+  /**
+   * Opens a presentation for editing or read-only viewing. In read-only mode
+   * the file is validated as a twig file first (refuses fresh/notTwig/older);
+   * callers should only use `readOnly: true` after a probe reports `tooNew`.
+   * Returns slide IDs so the renderer can begin loading thumbnails.
+   */
+  ipcMain.handle(
+    'db:open-for-edit',
+    (_event, filePath: string, options?: { readOnly?: boolean }): string[] => {
+      try {
+        validateFilePath(filePath)
+        const readOnly = options?.readOnly === true
+        if (readOnly) {
+          // getReadOnlyConnection validates format via detectFormat and only
+          // allows `tooNew` files, which are the whole reason read-only mode
+          // exists.
+          const db = getReadOnlyConnection(filePath)
+          return dbService.getSlideIds(db)
+        }
+        const db = getWritableConnection(filePath)
+        return dbService.getSlideIds(db)
+      } catch (error) {
+        console.error('Error in db:open-for-edit:', error)
+        throw error
+      }
+    }
+  )
 
   /**
    * Creates a new temporary database for an unsaved presentation.
@@ -1572,8 +1824,8 @@ app.whenReady().then(() => {
       ensureTempDir()
       const tempPath = join(TEMP_DIR, `temp-${crypto.randomUUID()}.tb`)
 
-      // Create and initialize the database
-      getDbConnection(tempPath)
+      // Create and initialize the database (stamps format metadata).
+      getWritableConnection(tempPath)
 
       // Track this as a temp file for cleanup
       tempFilePaths.add(tempPath)
@@ -1633,7 +1885,7 @@ app.whenReady().then(() => {
       }
 
       // Close any connection to this file
-      closeDbConnection(filePath)
+      closeDbConnection(filePath, 'none', { forgetReadOnly: true })
 
       // Delete the file if it exists
       if (fs.existsSync(filePath)) {
@@ -1673,9 +1925,18 @@ app.whenReady().then(() => {
           throw new Error(`Source file does not exist: ${sourcePath}`)
         }
 
+        // Reject Save if the source was opened read-only (newer-than-supported
+        // file): the user explicitly declined to migrate it, so we must not
+        // write its bytes to a new location under a writable connection.
+        if (readOnlyOpenPaths.has(sourcePath)) {
+          throw new Error(
+            'Cannot save a file that was opened read-only. Close and reopen it after upgrading twig, or save a copy through your file manager.'
+          )
+        }
+
         // Close connections to both paths and checkpoint WAL with full TRUNCATE
-        closeDbConnection(sourcePath, 'truncate')
-        closeDbConnection(destPath, 'truncate')
+        closeDbConnection(sourcePath, 'truncate', { forgetReadOnly: true })
+        closeDbConnection(destPath, 'truncate', { forgetReadOnly: true })
 
         // Delete destination if it exists (with retry logic for file locks)
         if (fs.existsSync(destPath)) {
@@ -1784,12 +2045,17 @@ app.whenReady().then(() => {
         // Remove from temp files set
         tempFilePaths.delete(sourcePath)
 
-        // Evict source path from connection cache to prevent memory leak
-        // The connection was already closed before the move operation
-        connectionCache.delete(sourcePath)
+        // Evict source path from both connection caches to prevent memory leak
+        // (the connection was already closed before the move operation).
+        rwConnectionCache.delete(sourcePath)
+        roConnectionCache.delete(sourcePath)
+        readOnlyOpenPaths.delete(sourcePath)
 
-        // Open connection at destination
-        getDbConnection(destPath)
+        // Open a writable connection at the destination. `getWritableConnection`
+        // runs `initializeDatabase`, which stamps format metadata, so the
+        // newly-placed file carries the same pragmas and settings rows as any
+        // other saved .tb.
+        getWritableConnection(destPath)
 
         safeLog(`Moved temp database from ${sourcePath} to ${destPath}`)
         return destPath
@@ -1828,9 +2094,18 @@ app.whenReady().then(() => {
           throw new Error(`Source file does not exist: ${sourcePath}`)
         }
 
+        // A read-only source means the user opened it without agreeing to
+        // migrate. Copying it as a new writable twig file would stamp metadata
+        // from this build onto bytes written by a future format — refuse.
+        if (readOnlyOpenPaths.has(sourcePath)) {
+          throw new Error(
+            'Cannot copy a file that was opened read-only. Close and reopen it after upgrading twig, or copy it through your file manager.'
+          )
+        }
+
         // Close connections and checkpoint WAL with full TRUNCATE
         closeDbConnection(sourcePath, 'truncate')
-        closeDbConnection(destPath, 'truncate')
+        closeDbConnection(destPath, 'truncate', { forgetReadOnly: true })
 
         // Delete destination if it exists (with retry logic)
         if (fs.existsSync(destPath)) {
@@ -1881,8 +2156,9 @@ app.whenReady().then(() => {
           )
         }
 
-        // Open connection at destination
-        getDbConnection(destPath)
+        // Open a writable connection at the destination. `getWritableConnection`
+        // runs `initializeDatabase`, which stamps format metadata on the copy.
+        getWritableConnection(destPath)
 
         safeLog(`Copied database from ${sourcePath} to ${destPath}`)
         return destPath
@@ -1951,7 +2227,8 @@ app.whenReady().then(() => {
           variant
         }
         withDbConnection(filePath, (db) => dbService.addFont(db, font), {
-          syncShadowBack: true
+          syncShadowBack: true,
+          write: true
         })
       } catch (error) {
         console.error('Error in fonts:embed-font:', error)
@@ -2229,9 +2506,11 @@ async function cleanupResources(): Promise<void> {
   if (cleanupPromise) return cleanupPromise
 
   cleanupPromise = (async () => {
-    // Close all database connections with full WAL checkpoint
-    // Copy keys to array to avoid modifying map while iterating
-    const filePaths = Array.from(connectionCache.keys())
+    // Close all database connections with full WAL checkpoint. Iterate both
+    // RW and RO caches (RO close skips the checkpoint internally).
+    const filePaths = Array.from(
+      new Set<string>([...rwConnectionCache.keys(), ...roConnectionCache.keys()])
+    )
     for (const filePath of filePaths) {
       closeDbConnection(filePath, 'truncate')
     }

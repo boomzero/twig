@@ -69,6 +69,7 @@
    * sortedElements is front-to-back (index 0 = front = highest zIndex).
    */
   function reorderElements(fromDisplayIndex: number, toDisplayIndex: number): void {
+    if (appState.readOnly) return
     if (!appState.currentSlide) return
     if (fromDisplayIndex === toDisplayIndex) return
 
@@ -93,11 +94,16 @@
   let dragOverPosition = $state<'before' | 'after'>('before')
 
   function onDragStart(e: DragEvent, id: string): void {
+    if (appState.readOnly) {
+      e.preventDefault()
+      return
+    }
     e.dataTransfer?.setData('text/plain', id)
     dragSourceId = id
   }
 
   function onDragOver(e: DragEvent, id: string): void {
+    if (appState.readOnly) return
     e.preventDefault()
     dragOverId = id
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -182,7 +188,7 @@
               selectElement(el.id)
             }
           }}
-          draggable={true}
+          draggable={!appState.readOnly}
           ondragstart={(e) => onDragStart(e, el.id)}
           ondragover={(e) => onDragOver(e, el.id)}
           ondragleave={(e) => onDragLeave(e)}
@@ -227,7 +233,7 @@
               }}
               onmouseenter={(e) => showTooltip(e, $_('layers.front'))}
               onmouseleave={hideTooltip}
-              disabled={isFirst}
+              disabled={isFirst || appState.readOnly}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label={$_('layers.front')}
             >
@@ -244,7 +250,7 @@
               }}
               onmouseenter={(e) => showTooltip(e, $_('layers.up'))}
               onmouseleave={hideTooltip}
-              disabled={isFirst}
+              disabled={isFirst || appState.readOnly}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label={$_('layers.up')}
             >
@@ -260,7 +266,7 @@
               }}
               onmouseenter={(e) => showTooltip(e, $_('layers.down'))}
               onmouseleave={hideTooltip}
-              disabled={isLast}
+              disabled={isLast || appState.readOnly}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label={$_('layers.down')}
             >
@@ -276,7 +282,7 @@
               }}
               onmouseenter={(e) => showTooltip(e, $_('layers.back'))}
               onmouseleave={hideTooltip}
-              disabled={isLast}
+              disabled={isLast || appState.readOnly}
               class="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
               aria-label={$_('layers.back')}
             >

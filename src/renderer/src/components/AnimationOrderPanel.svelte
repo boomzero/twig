@@ -28,6 +28,7 @@
   let snapshotPushed = false
 
   function applyOrderChange(newOrder: AnimationStep[]): void {
+    if (appState.readOnly) return
     if (!appState.currentSlide) return
     if (!isValidAnimationOrder(newOrder)) return
     if (!snapshotPushed) {
@@ -83,11 +84,16 @@
   let dragOverPosition = $state<'before' | 'after'>('before')
 
   function onDragStart(e: DragEvent, index: number): void {
+    if (appState.readOnly) {
+      e.preventDefault()
+      return
+    }
     e.dataTransfer?.setData('text/plain', String(index))
     dragSourceIndex = index
   }
 
   function onDragOver(e: DragEvent, index: number): void {
+    if (appState.readOnly) return
     e.preventDefault()
     dragOverIndex = index
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -145,7 +151,7 @@
         <div
           class="relative flex items-center gap-1.5 px-2 py-1.5 border-b border-gray-100 hover:bg-gray-50 transition-colors"
           class:opacity-40={isDragSource}
-          draggable={true}
+          draggable={!appState.readOnly}
           ondragstart={(e) => onDragStart(e, i)}
           ondragover={(e) => onDragOver(e, i)}
           ondragleave={(e) => onDragLeave(e)}
@@ -194,7 +200,8 @@
           <!-- Remove button -->
           <button
             onclick={() => onRemoveStep?.(step)}
-            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50"
+            disabled={appState.readOnly}
+            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-300"
             aria-label={$_('anim_panel.remove_step.title')}
             title={$_('anim_panel.remove_step.title')}
           >

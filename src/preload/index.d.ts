@@ -40,6 +40,19 @@ export interface ImageData {
 }
 
 /**
+ * Result of probing a candidate `.tb` file for its format identity.
+ */
+export type FormatProbeStatus = 'fresh' | 'legacy' | 'current' | 'older' | 'tooNew' | 'notTwig'
+
+export interface FormatProbeResult {
+  status: FormatProbeStatus
+  /** Populated for `current`, `older`, `tooNew`, `legacy` (legacy reports 0). */
+  fileVersion?: number
+  /** Populated for `tooNew`. Empty string is valid. */
+  compatNotes?: string
+}
+
+/**
  * Represents a snapshot of the application state for debugging
  */
 export interface DebugState {
@@ -95,6 +108,8 @@ declare global {
         saveSlide: (filePath: string, slide: Slide) => Promise<void>
         saveAs: (filePath: string, slides: Slide[]) => Promise<void>
         closeConnection: (filePath: string) => Promise<void>
+        probeFormat: (filePath: string) => Promise<FormatProbeResult>
+        openForEdit: (filePath: string, options?: { readOnly?: boolean }) => Promise<string[]>
         createTemp: () => Promise<string>
         isTempFile: (filePath: string) => Promise<boolean>
         isBootstrapPresentation: (filePath: string) => Promise<boolean>

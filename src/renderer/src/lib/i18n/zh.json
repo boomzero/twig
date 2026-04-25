@@ -209,5 +209,16 @@
   "debug.view_json": "查看 JSON",
   "debug.view_json.title": "在新窗口中打开状态 JSON",
   "debug.copy_clipboard": "复制到剪贴板",
-  "debug.copy_clipboard.title": "将状态 JSON 复制到剪贴板"
+  "debug.copy_clipboard.title": "将状态 JSON 复制到剪贴板",
+  "open.not_twig": "此文件不是 twig 演示文稿。",
+  "open.empty_readonly": "这个较新版本的 twig 文件没有可查看的幻灯片。",
+  "open.too_new_title": "此文件由较新版本的 twig 创建",
+  "open.too_new_body": "你当前的 twig 可能无法正确渲染其中的所有元素。你可以以只读方式打开查看，或先升级 twig 后再打开。",
+  "open.too_new_open_readonly": "以只读方式打开",
+  "open.too_new_cancel": "取消",
+  "open.too_new_file_version": "文件格式：v{fileVersion}",
+  "open.too_new_your_version": "当前 twig 支持：v{currentVersion}",
+  "readonly.banner": "只读模式 — 此文件由较新版本的 twig 创建。",
+  "readonly.compat_notes_label": "兼容性说明：",
+  "readonly.write_blocked": "查看较新文件时已禁用编辑。"
 }

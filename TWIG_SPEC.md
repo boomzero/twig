@@ -1,8 +1,10 @@
 # .tb File Format
 
-> This document describes the `.tb` format as implemented in **twig 1.0.1**.
+> This document describes the `.tb` format as implemented in **twig 1.1.0** (format version **v1**).
 
 A `.tb` file is a standard SQLite database that stores a twig presentation. You can create, read, or modify one with any SQLite tooling — no proprietary library required.
+
+Since twig 1.1.0, every `.tb` file carries a **machine-readable format identity** (`PRAGMA application_id`, `PRAGMA user_version`) and **human-readable provenance metadata** (rows in the `settings` table). Readers use these to distinguish twig files from other SQLite files and to warn users when a file is newer than the reader supports. See [§11](#11-format-version-provenance-and-forward-compatibility).
 
 ---
 
@@ -24,6 +26,8 @@ A `.tb` file is a standard SQLite database that stores a twig presentation. You 
 8. [Fonts table](#8-fonts-table)
 9. [Complete worked example (Python)](#9-complete-worked-example-python)
 10. [Checklist for AI-generated files](#10-checklist-for-ai-generated-files)
+11. [Format version, provenance, and forward compatibility](#11-format-version-provenance-and-forward-compatibility)
+12. [Format changelog](#12-format-changelog)
 
 ---
 
@@ -79,7 +83,16 @@ CREATE TABLE fonts (
   variant    TEXT NOT NULL           -- '<weight>-<style>' e.g. 'normal-normal'
 );
 
--- Key/value store for application settings (currently unused by the format itself).
+-- Key/value store for per-presentation settings AND format-identity metadata.
+-- Five keys are RESERVED by the format (see §11) — writers must not store
+-- user content under these keys, and readers must ignore them when detecting
+-- "is this an untouched blank presentation?":
+--   format_version
+--   compat_notes
+--   created_with_app_version
+--   created_at
+--   last_written_with_app_version
+-- All other keys are available for app-level settings (e.g. default_background).
 CREATE TABLE settings (
   key   TEXT PRIMARY KEY,
   value TEXT
@@ -556,6 +569,12 @@ Requires only Python 3.6+ and its built-in sqlite3 module.
 import sqlite3
 import json
 import uuid
+from datetime import datetime, timezone
+
+# Format identity (see §11). 0x74776967 is ASCII for "twig".
+TWIG_APPLICATION_ID = 0x74776967
+CURRENT_FORMAT_VERSION = 1
+APP_VERSION = "external-script-1.0"  # whatever your tool calls itself
 
 def new_id():
     return str(uuid.uuid4())
@@ -563,6 +582,12 @@ def new_id():
 def create_presentation(path: str) -> None:
     db = sqlite3.connect(path)
     db.execute("PRAGMA foreign_keys = ON")
+
+    # ── Format identity pragmas ───────────────────────────────────────────────
+    # Stamp these BEFORE any inserts so twig recognises the file as a twig
+    # presentation and not an unrelated SQLite DB.
+    db.execute(f"PRAGMA application_id = {TWIG_APPLICATION_ID}")
+    db.execute(f"PRAGMA user_version = {CURRENT_FORMAT_VERSION}")
 
     # ── Schema ────────────────────────────────────────────────────────────────
     db.executescript("""
@@ -587,7 +612,8 @@ def create_presentation(path: str) -> None:
             styles TEXT,
             src TEXT, filename TEXT,
             z_index INTEGER NOT NULL DEFAULT 0,
-            animations TEXT
+            animations TEXT,
+            shape_params TEXT
         );
         CREATE TABLE IF NOT EXISTS fonts (
             id TEXT PRIMARY KEY,
@@ -600,6 +626,21 @@ def create_presentation(path: str) -> None:
             key TEXT PRIMARY KEY, value TEXT
         );
     """)
+
+    # ── Reserved format-metadata rows (see §11) ──────────────────────────────
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    db.executemany(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+        [
+            ("format_version", str(CURRENT_FORMAT_VERSION)),
+            # Empty for v1 writers. Future writers put a forward-compat message
+            # here (plain string OR a JSON object keyed by BCP-47 locale).
+            ("compat_notes", ""),
+            ("created_with_app_version", APP_VERSION),
+            ("created_at", now_iso),
+            ("last_written_with_app_version", APP_VERSION),
+        ],
+    )
 
     # ── Slide 1: title slide ──────────────────────────────────────────────────
     s1_id = new_id()
@@ -715,6 +756,8 @@ if __name__ == "__main__":
 
 Use this list to validate a `.tb` file before opening it in twig.
 
+- [ ] **Format identity pragmas set**: `PRAGMA application_id = 0x74776967` and `PRAGMA user_version = 1` (see §11)
+- [ ] **Reserved `settings` rows present**: `format_version`, `compat_notes`, `created_with_app_version`, `created_at`, `last_written_with_app_version` (see §11)
 - [ ] **All four tables exist**: `slides`, `elements`, `fonts`, `settings`
 - [ ] **`slide_order`** is 0-based, sequential, no gaps, no duplicates
 - [ ] **All UUIDs are unique** across the entire file (slides, elements, fonts)
@@ -728,3 +771,126 @@ Use this list to validate a `.tb` file before opening it in twig.
 - [ ] **`z_index` values are non-negative integers**; at least 0 on every element
 - [ ] **Element coordinates** are within `[0, 959] × [0, 539]` (not required, but out-of-bounds elements will be partially off-canvas)
 - [ ] **`PRAGMA foreign_keys = ON`** is set before any inserts if you want SQLite to enforce referential integrity during creation
+
+---
+
+## 11. Format version, provenance, and forward compatibility
+
+Since twig 1.1.0, every `.tb` file carries a small amount of format-identity metadata that lets readers:
+
+1. **Distinguish twig files from other SQLite files** without having to poke at table names.
+2. **Detect files written by a newer twig** and refuse to silently misread them.
+3. **Display a writer-supplied, human-readable message** to the user when a newer file is opened by an older twig — so the writer can explain what the older reader will get wrong, without the reader needing to know what was added.
+
+### 11.1 Format identity pragmas
+
+| Pragma           | Value                         | Meaning                                                       |
+| ---------------- | ----------------------------- | ------------------------------------------------------------- |
+| `application_id` | `0x74776967` (ASCII `"twig"`) | Marks the SQLite file as a twig presentation.                 |
+| `user_version`   | `1` (current: v1)             | Format revision. Bumped when the schema changes incompatibly. |
+
+Both pragmas must have these values on every write. Writers should set them **before** inserting any rows so that even a partially-written file is identifiable. Implementations may skip the physical PRAGMA write when the existing value is already correct.
+
+### 11.2 Reserved `settings` rows
+
+The same metadata is also mirrored as rows in the `settings` table so tools without PRAGMA access can still read it. Five keys are reserved by the format:
+
+| Key                             | Value                                  | Lifetime                                                |
+| ------------------------------- | -------------------------------------- | ------------------------------------------------------- |
+| `format_version`                | decimal integer as string (`"1"`)      | Refreshed on every write.                               |
+| `compat_notes`                  | string (plain text or JSON; see §11.4) | Refreshed on every write. Empty string in v1.           |
+| `created_with_app_version`      | app version string (`"1.1.0"`)         | Written once via `INSERT OR IGNORE`; never overwritten. |
+| `created_at`                    | ISO-8601 UTC timestamp                 | Written once via `INSERT OR IGNORE`; never overwritten. |
+| `last_written_with_app_version` | app version string                     | Refreshed on every write.                               |
+
+**Reserved means reserved.** Writers must not store user content under these keys. Readers detecting "is this an untouched blank presentation?" must ignore these five keys and count only other rows.
+
+**Legacy files (written by twig 1.0.x, before format versioning existed):** on first open by a 1.1.0+ twig, the file is upgraded in place, pragmas are stamped, and the five rows are written. For such files `created_with_app_version` records **the twig version that first stamped the file** (not the original creator) and `created_at` records **the upgrade time**. Pre-versioning files carry no provenance to recover — this is the only faithful behaviour.
+
+Opening a file read-write may also refresh missing or outdated metadata rows during initialization, even before the user edits slide content. Readers that only probe or open a too-new file read-only must not perform this refresh.
+
+### 11.3 Probe flow (how readers detect format status)
+
+Readers must not open a possibly-unknown `.tb` file for read-write access without first probing it. The probe uses a short-lived **read-only** SQLite connection so the file's bytes are never mutated on disk:
+
+```
+fileAppId       = PRAGMA application_id
+fileUserVersion = PRAGMA user_version
+tableNames      = SELECT name FROM sqlite_master WHERE type='table'
+
+if fileAppId == 0x74776967:
+    # Tagged twig file — dispatch on version.
+    if fileUserVersion == CURRENT_FORMAT_VERSION:   → 'current'
+    elif fileUserVersion < CURRENT_FORMAT_VERSION:  → 'older'   (schema migrate on open)
+    else:                                           → 'tooNew'  (show compat_notes; offer read-only open)
+elif fileAppId == 0:
+    # Default SQLite app_id — no twig tag.
+    if tableNames is empty:                         → 'fresh'
+    elif {slides, elements, fonts, settings} ⊆ tableNames:
+                                                    → 'legacy'  (pre-1.1.0 twig — upgrade on open)
+    else:                                           → 'notTwig'
+else:
+    → 'notTwig'
+```
+
+Readers must refuse to treat `status == 'tooNew'` files as read-write. They may offer the user a **read-only** open that displays the file but disables every mutation path.
+
+### 11.4 `compat_notes` — forward-compatibility messaging
+
+`compat_notes` is the bridge between a newer writer and an older reader. The newer writer knows what it added; the older reader doesn't — so the writer puts a human-readable explanation in this field, and the older reader displays it verbatim.
+
+Two forms are supported:
+
+**Plain string** (simplest):
+
+```
+"Uses curved-arrow shapes introduced in twig 1.2. Older twig renders them as straight arrows."
+```
+
+**Locale-keyed JSON object** (recommended for published writers):
+
+```json
+{
+  "en": "Uses curved-arrow shapes introduced in twig 1.2. Older twig renders them as straight arrows.",
+  "zh": "使用 twig 1.2 引入的曲线箭头形状。旧版 twig 会渲染为直线箭头。",
+  "_default": "Some shapes were introduced in a newer twig."
+}
+```
+
+Readers resolve a locale-keyed object against the current UI locale using this priority:
+
+1. Exact locale tag (e.g. `zh-CN`)
+2. Language prefix of the tag (e.g. `zh-CN` → `zh`)
+3. `_default`
+4. `en`
+5. Any remaining string value
+
+Malformed JSON or a non-object JSON payload is treated as a plain string (the reader must not throw). An empty string means the writer has nothing to say.
+
+Writers:
+
+- v1 twig writes `""` (empty) — there is nothing older to warn.
+- A future writer that introduces an incompatible element type, field, or rendering behaviour writes a short, user-facing sentence describing what will be lost or misrendered.
+- Each writer refreshes `compat_notes` on every write — the message always reflects what the **current writer version** wants older readers to know, not history.
+
+Readers must not attempt to interpret, translate, or abbreviate the text. Display it verbatim (after locale resolution).
+
+### 11.5 Stamping ordering and atomicity
+
+Writers should apply format metadata **before** any platform-specific shadow or backup copy is made. In twig's own implementation, `stampFileMetadata` runs on the read-write database handle immediately before the Mac App Store sandbox-shadow sync; reversing the order would let the shadow copy receive unstamped bytes.
+
+The stamp operation itself is idempotent: running it twice in a row produces the same rows and pragma values (modulo `last_written_with_app_version`, which may be refreshed to the same or a newer app version). Implementations should avoid rewriting same-value pragmas and settings rows on hot save paths.
+
+---
+
+## 12. Format changelog
+
+### v1 — 2026-04-24 (shipped in twig 1.1.0)
+
+First versioned revision.
+
+- Added `PRAGMA application_id = 0x74776967` and `PRAGMA user_version = 1` as format identity.
+- Added five reserved `settings` rows: `format_version`, `compat_notes`, `created_with_app_version`, `created_at`, `last_written_with_app_version`.
+- Added `compat_notes` writer contract (plain string or locale-keyed JSON object; see §11.4).
+- `elements` schema of record includes `shape_params`, `fontWeight`, `fontStyle`, `underline` (previously added silently during the 1.1.0 dev cycle).
+- Legacy 1.0.x files are upgraded in place on first open: missing columns added, pragmas stamped, reserved rows written. `created_with_app_version` records the upgrading twig version and `created_at` records the upgrade time.

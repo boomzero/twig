@@ -80,7 +80,20 @@ export const appState = $state({
   thumbnails: {} as Record<string, string>,
 
   /** Whether alignment-guide snapping is enabled (mirrors main-owned `snapToGuides` pref) */
-  snapEnabled: true
+  snapEnabled: true,
+
+  /**
+   * Whether the current presentation was opened read-only because its format
+   * is newer than this build supports. Gates all write paths in the UI; the
+   * main process also refuses writes when a file is opened read-only.
+   */
+  readOnly: false,
+
+  /** Raw compat_notes payload (possibly JSON) from a tooNew file, or '' */
+  compatNotesRaw: '',
+
+  /** File format version of a tooNew file, or null when not applicable. */
+  fileVersion: null as number | null
 })
 
 /**
@@ -107,6 +120,53 @@ export function resetState(): void {
   appState.isTempFile = false
   appState.selectedObjectId = null
   appState.thumbnails = {}
+  appState.readOnly = false
+  appState.compatNotesRaw = ''
+  appState.fileVersion = null
+}
+
+/**
+ * Information about a file that's newer than this build understands.
+ * Passed to `onTooNewFile` so the caller (App.svelte) can show a modal.
+ */
+export interface TooNewFileInfo {
+  filePath: string
+  fileVersion: number
+  compatNotesRaw: string
+}
+
+export type TooNewChoice = 'readonly' | 'cancel'
+
+/**
+ * Thrown by `loadPresentation` when the user dismisses the too-new-file modal.
+ * Callers should catch this specifically and treat it as a benign abort rather
+ * than a load failure (no error alert, no telemetry).
+ */
+export class TooNewCancelledError extends Error {
+  constructor() {
+    super('user cancelled tooNew open')
+    this.name = 'TooNewCancelledError'
+  }
+}
+
+/**
+ * Thrown by `loadPresentation` after it has shown a specific message for a
+ * newer-format file that cannot be displayed because it has no slides.
+ */
+export class EmptyReadOnlyPresentationError extends Error {
+  constructor() {
+    super('cannot open an empty newer-format file read-only')
+    this.name = 'EmptyReadOnlyPresentationError'
+  }
+}
+
+export interface LoadPresentationOptions {
+  /**
+   * Called when the file is newer than this build supports. Resolves to
+   * `'readonly'` to open the file read-only, or `'cancel'` to abort.
+   * When omitted, `loadPresentation` aborts on `tooNew`.
+   */
+  onTooNewFile?: (info: TooNewFileInfo) => Promise<TooNewChoice>
 }
 
 /**
@@ -119,8 +179,43 @@ export function resetState(): void {
  *
  * @param filePath - Absolute path to the .tb file to load
  */
-export async function loadPresentation(filePath: string): Promise<void> {
-  const ids = await window.api.db.getSlideIds(filePath)
+export async function loadPresentation(
+  filePath: string,
+  options: LoadPresentationOptions = {}
+): Promise<void> {
+  // Probe first so we can branch without mutating anything on disk. The probe
+  // opens a short-lived read-only connection and closes it.
+  const probe = await window.api.db.probeFormat(filePath)
+
+  if (probe.status === 'notTwig') {
+    alert(get(_)('open.not_twig'))
+    throw new Error('not a twig file')
+  }
+
+  let readOnly = false
+  if (probe.status === 'tooNew') {
+    const info: TooNewFileInfo = {
+      filePath,
+      fileVersion: probe.fileVersion ?? 0,
+      compatNotesRaw: probe.compatNotes ?? ''
+    }
+    const choice = options.onTooNewFile ? await options.onTooNewFile(info) : 'cancel'
+    if (choice === 'cancel') {
+      throw new TooNewCancelledError()
+    }
+    readOnly = true
+  }
+
+  const ids = await window.api.db.openForEdit(filePath, { readOnly })
+  if (readOnly && ids.length === 0) {
+    try {
+      await window.api.db.closeConnection(filePath)
+    } catch (error) {
+      console.warn('Failed to close empty read-only presentation after aborting open:', error)
+    }
+    alert(get(_)('open.empty_readonly'))
+    throw new EmptyReadOnlyPresentationError()
+  }
 
   // Clear current slide BEFORE changing currentFilePath to prevent
   // flushPendingSave() in loadSlide() from saving old slide into new database
@@ -129,15 +224,18 @@ export async function loadPresentation(filePath: string): Promise<void> {
 
   // Set file path and check if it's temporary
   appState.currentFilePath = filePath
-  appState.isTempFile = await window.api.db.isTempFile(filePath)
+  appState.isTempFile = readOnly ? false : await window.api.db.isTempFile(filePath)
   appState.slideIds = ids
   appState.selectedObjectId = null
   appState.thumbnails = await window.api.db.getThumbnails(filePath)
+  appState.readOnly = readOnly
+  appState.compatNotesRaw = readOnly ? (probe.compatNotes ?? '') : ''
+  appState.fileVersion = readOnly ? (probe.fileVersion ?? null) : null
 
   // Load the first slide, or create one if the file is empty
   if (ids.length > 0) {
     await loadSlide(ids[0])
-  } else {
+  } else if (!readOnly) {
     // Empty file - create the first slide with error handling
     try {
       const newSlide = await window.api.db.createSlide(filePath)

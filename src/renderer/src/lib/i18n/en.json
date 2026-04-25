@@ -209,5 +209,16 @@
   "debug.view_json": "View JSON",
   "debug.view_json.title": "Open state JSON in a new window",
   "debug.copy_clipboard": "Copy to Clipboard",
-  "debug.copy_clipboard.title": "Copy state JSON to clipboard"
+  "debug.copy_clipboard.title": "Copy state JSON to clipboard",
+  "open.not_twig": "This file isn't a twig presentation.",
+  "open.empty_readonly": "This newer twig file has no slides to view.",
+  "open.too_new_title": "This file was made with a newer version of twig",
+  "open.too_new_body": "Your copy of twig may not render every element correctly. You can open it read-only to view it, or cancel and upgrade twig first.",
+  "open.too_new_open_readonly": "Open read-only",
+  "open.too_new_cancel": "Cancel",
+  "open.too_new_file_version": "File format: v{fileVersion}",
+  "open.too_new_your_version": "This twig supports: v{currentVersion}",
+  "readonly.banner": "Opened read-only — written by a newer version of twig.",
+  "readonly.compat_notes_label": "Compatibility notes:",
+  "readonly.write_blocked": "Edits are disabled while viewing a newer file."
 }
