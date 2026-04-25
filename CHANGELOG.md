@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.1.0] - 2026-04-24
+## [1.1.0] - 2026-04-25
 
 ### Added
 
@@ -17,6 +17,7 @@
 - Presentation mode z-ordering
 - CJK textbox wrapping
 - Base text style persistence and compact controls for tiny selections (#47)
+- Alignment guides now use the rendered textbox width (trimming trailing character spacing) instead of the raw bounding box, so guides line up with the visible text on wrapped and CJK content
 
 ### Changed
 
