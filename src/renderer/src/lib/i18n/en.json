@@ -211,6 +211,7 @@
   "debug.copy_clipboard": "Copy to Clipboard",
   "debug.copy_clipboard.title": "Copy state JSON to clipboard",
   "open.not_twig": "This file isn't a twig presentation.",
+  "open.empty_readonly": "This newer twig file has no slides to view.",
   "open.too_new_title": "This file was made with a newer version of twig",
   "open.too_new_body": "Your copy of twig may not render every element correctly. You can open it read-only to view it, or cancel and upgrade twig first.",
   "open.too_new_open_readonly": "Open read-only",

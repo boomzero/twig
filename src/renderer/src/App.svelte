@@ -28,6 +28,7 @@
     loadPresentation,
     loadSlide,
     loadingState,
+    EmptyReadOnlyPresentationError,
     TooNewCancelledError
   } from './lib/state.svelte'
   import { registerFlushSave, unregisterFlushSave } from './lib/saveCallbacks'
@@ -3344,7 +3345,12 @@
     try {
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
-      if (error instanceof TooNewCancelledError) return
+      if (
+        error instanceof TooNewCancelledError ||
+        error instanceof EmptyReadOnlyPresentationError
+      ) {
+        return
+      }
       throw error
     }
 
@@ -3362,6 +3368,9 @@
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
       if (error instanceof TooNewCancelledError) {
+        return false
+      }
+      if (error instanceof EmptyReadOnlyPresentationError) {
         return false
       }
       throw error

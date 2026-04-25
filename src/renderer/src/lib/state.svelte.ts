@@ -149,6 +149,17 @@ export class TooNewCancelledError extends Error {
   }
 }
 
+/**
+ * Thrown by `loadPresentation` after it has shown a specific message for a
+ * newer-format file that cannot be displayed because it has no slides.
+ */
+export class EmptyReadOnlyPresentationError extends Error {
+  constructor() {
+    super('cannot open an empty newer-format file read-only')
+    this.name = 'EmptyReadOnlyPresentationError'
+  }
+}
+
 export interface LoadPresentationOptions {
   /**
    * Called when the file is newer than this build supports. Resolves to
@@ -196,6 +207,15 @@ export async function loadPresentation(
   }
 
   const ids = await window.api.db.openForEdit(filePath, { readOnly })
+  if (readOnly && ids.length === 0) {
+    try {
+      await window.api.db.closeConnection(filePath)
+    } catch (error) {
+      console.warn('Failed to close empty read-only presentation after aborting open:', error)
+    }
+    alert(get(_)('open.empty_readonly'))
+    throw new EmptyReadOnlyPresentationError()
+  }
 
   // Clear current slide BEFORE changing currentFilePath to prevent
   // flushPendingSave() in loadSlide() from saving old slide into new database

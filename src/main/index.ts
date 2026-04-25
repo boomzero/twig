@@ -506,15 +506,14 @@ function getReadableConnection(filePath: string): Database.Database {
  */
 function probeDatabaseFormat(filePath: string): dbService.FormatProbeResult {
   ensureMasFileAccess(filePath)
-  const runtimePath = getRuntimeDbPath(filePath)
 
-  if (!fs.existsSync(runtimePath)) {
-    throw new Error(`File does not exist: ${runtimePath}`)
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File does not exist: ${filePath}`)
   }
 
   let db: Database.Database
   try {
-    db = new Database(runtimePath, { readonly: true })
+    db = new Database(filePath, { readonly: true })
   } catch (error) {
     if (error instanceof Error && error.message.includes('not a database')) {
       return { status: 'notTwig' }
