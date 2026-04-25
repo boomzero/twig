@@ -239,6 +239,16 @@ const rwConnectionCache = new Map<string, Database.Database>()
 const roConnectionCache = new Map<string, Database.Database>()
 
 /**
+ * Logical files that the user has opened in read-only mode.
+ *
+ * This is intentionally separate from `roConnectionCache`: cache entries are
+ * allowed to disappear on suspend, stale-connection recovery, or LRU eviction,
+ * but the open document should still be treated as read-only until the
+ * renderer explicitly closes it.
+ */
+const readOnlyOpenPaths = new Set<string>()
+
+/**
  * Maximum number of database connections to keep open simultaneously, per
  * cache. When this limit is exceeded, the least recently used connection in
  * that cache is closed.
@@ -252,9 +262,9 @@ const MAX_CONNECTIONS = 3
 const rwAccessOrder: string[] = []
 const roAccessOrder: string[] = []
 
-/** True if the file is currently open as a read-only connection. */
+/** True if the file is currently open in read-only mode. */
 export function isOpenReadOnly(filePath: string): boolean {
-  return roConnectionCache.has(filePath)
+  return readOnlyOpenPaths.has(filePath)
 }
 
 function touchAccessOrder(order: string[], filePath: string): void {
@@ -278,7 +288,7 @@ function touchAccessOrder(order: string[], filePath: string): void {
  *   supported, or is currently open read-only
  */
 function getWritableConnection(filePath: string): Database.Database {
-  if (roConnectionCache.has(filePath)) {
+  if (readOnlyOpenPaths.has(filePath)) {
     throw new Error(`Cannot open ${filePath} for writing: the file is currently open read-only`)
   }
 
@@ -459,6 +469,7 @@ function getReadOnlyConnection(filePath: string): Database.Database {
     }
 
     roConnectionCache.set(filePath, db)
+    readOnlyOpenPaths.add(filePath)
     roAccessOrder.push(filePath)
     return db
   } catch (error) {
@@ -469,14 +480,18 @@ function getReadOnlyConnection(filePath: string): Database.Database {
 
 /**
  * Returns a readable connection for `filePath`. Prefers an existing read-only
- * connection if one is cached; otherwise falls through to the writable
- * connection (which is also readable). Use this for read-only operations
- * inside `withDbConnection({ write: false })`.
+ * connection if one is cached; if the logical file is open read-only but its
+ * cached connection was evicted/closed, re-establishes a read-only connection.
+ * Otherwise falls through to the writable connection (which is also readable).
+ * Use this for read-only operations inside `withDbConnection({ write: false })`.
  */
 function getReadableConnection(filePath: string): Database.Database {
   if (roConnectionCache.has(filePath)) {
     touchAccessOrder(roAccessOrder, filePath)
     return roConnectionCache.get(filePath)!
+  }
+  if (readOnlyOpenPaths.has(filePath)) {
+    return getReadOnlyConnection(filePath)
   }
   return getWritableConnection(filePath)
 }
@@ -667,7 +682,8 @@ function ensureMasFileAccess(filePath: string): void {
  */
 function closeDbConnection(
   filePath: string,
-  checkpointMode: 'none' | 'passive' | 'truncate' = 'none'
+  checkpointMode: 'none' | 'passive' | 'truncate' = 'none',
+  options: { forgetReadOnly?: boolean } = {}
 ): void {
   const hasShadowCopy = masShadowCopies.has(filePath)
 
@@ -725,6 +741,10 @@ function closeDbConnection(
   if (hasShadowCopy) {
     disposeMasShadowCopy(filePath)
   }
+
+  if (options.forgetReadOnly) {
+    readOnlyOpenPaths.delete(filePath)
+  }
 }
 
 /**
@@ -744,7 +764,7 @@ function withDbConnection<T>(
 ): T {
   const runOperation = (): T => {
     // Write paths must refuse files that are open read-only.
-    if (options.write && roConnectionCache.has(filePath)) {
+    if (options.write && readOnlyOpenPaths.has(filePath)) {
       throw new Error(
         `Presentation is open read-only: ${filePath}. Writes are disabled for files written by a newer version of twig.`
       )
@@ -1707,7 +1727,7 @@ app.whenReady().then(() => {
         validateSlideId(slide.id)
       }
       // Close any existing connection to this file path
-      closeDbConnection(filePath)
+      closeDbConnection(filePath, 'none', { forgetReadOnly: true })
 
       // Delete the file if it exists to ensure a clean overwrite
       // We try to delete it atomically, and handle common error cases
@@ -1750,7 +1770,7 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('db:close-connection', (_event, filePath: string): void => {
     validateFilePath(filePath)
-    closeDbConnection(filePath, 'passive')
+    closeDbConnection(filePath, 'passive', { forgetReadOnly: true })
   })
 
   /**
@@ -1781,11 +1801,9 @@ app.whenReady().then(() => {
         validateFilePath(filePath)
         const readOnly = options?.readOnly === true
         if (readOnly) {
-          // getReadOnlyConnection validates format via detectFormat and refuses
-          // notTwig/fresh. It does not refuse `tooNew` — that's the whole point
-          // of read-only mode. Older/current files are technically openable RO
-          // too, but callers should use RW for those; we don't enforce that
-          // here, only that the file is a recognizable twig file.
+          // getReadOnlyConnection validates format via detectFormat and only
+          // allows `tooNew` files, which are the whole reason read-only mode
+          // exists.
           const db = getReadOnlyConnection(filePath)
           return dbService.getSlideIds(db)
         }
@@ -1868,7 +1886,7 @@ app.whenReady().then(() => {
       }
 
       // Close any connection to this file
-      closeDbConnection(filePath)
+      closeDbConnection(filePath, 'none', { forgetReadOnly: true })
 
       // Delete the file if it exists
       if (fs.existsSync(filePath)) {
@@ -1911,15 +1929,15 @@ app.whenReady().then(() => {
         // Reject Save if the source was opened read-only (newer-than-supported
         // file): the user explicitly declined to migrate it, so we must not
         // write its bytes to a new location under a writable connection.
-        if (roConnectionCache.has(sourcePath)) {
+        if (readOnlyOpenPaths.has(sourcePath)) {
           throw new Error(
             'Cannot save a file that was opened read-only. Close and reopen it after upgrading twig, or save a copy through your file manager.'
           )
         }
 
         // Close connections to both paths and checkpoint WAL with full TRUNCATE
-        closeDbConnection(sourcePath, 'truncate')
-        closeDbConnection(destPath, 'truncate')
+        closeDbConnection(sourcePath, 'truncate', { forgetReadOnly: true })
+        closeDbConnection(destPath, 'truncate', { forgetReadOnly: true })
 
         // Delete destination if it exists (with retry logic for file locks)
         if (fs.existsSync(destPath)) {
@@ -2032,6 +2050,7 @@ app.whenReady().then(() => {
         // (the connection was already closed before the move operation).
         rwConnectionCache.delete(sourcePath)
         roConnectionCache.delete(sourcePath)
+        readOnlyOpenPaths.delete(sourcePath)
 
         // Open a writable connection at the destination. `getWritableConnection`
         // runs `initializeDatabase`, which stamps format metadata, so the
@@ -2079,7 +2098,7 @@ app.whenReady().then(() => {
         // A read-only source means the user opened it without agreeing to
         // migrate. Copying it as a new writable twig file would stamp metadata
         // from this build onto bytes written by a future format — refuse.
-        if (roConnectionCache.has(sourcePath)) {
+        if (readOnlyOpenPaths.has(sourcePath)) {
           throw new Error(
             'Cannot copy a file that was opened read-only. Close and reopen it after upgrading twig, or copy it through your file manager.'
           )
@@ -2087,7 +2106,7 @@ app.whenReady().then(() => {
 
         // Close connections and checkpoint WAL with full TRUNCATE
         closeDbConnection(sourcePath, 'truncate')
-        closeDbConnection(destPath, 'truncate')
+        closeDbConnection(destPath, 'truncate', { forgetReadOnly: true })
 
         // Delete destination if it exists (with retry logic)
         if (fs.existsSync(destPath)) {

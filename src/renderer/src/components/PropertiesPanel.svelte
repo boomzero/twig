@@ -80,6 +80,12 @@
     return () => document.removeEventListener('mousedown', onMousedown)
   })
 
+  $effect(() => {
+    if (appState.readOnly && richText?.fontDropdownOpen) {
+      richText.closeFontDropdown()
+    }
+  })
+
   // One-shot checkpoint guard: push a history checkpoint on the first real value
   // change per focus session, not on focus itself (which would clear redo even
   // if the user never edits anything). Reset on blur so the next session is fresh.
@@ -210,7 +216,8 @@
           <div class="flex gap-1 mb-2">
             <button
               onclick={richText.toggleBold}
-              class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md focus:outline-none"
+              disabled={appState.readOnly}
+              class="w-8 h-8 flex items-center justify-center font-bold text-sm rounded-md focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
               class:bg-gray-200={richText.isBold}
               class:text-gray-700={richText.isBold}
               class:text-gray-600={!richText.isBold}
@@ -218,7 +225,8 @@
             >
             <button
               onclick={richText.toggleItalic}
-              class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md focus:outline-none"
+              disabled={appState.readOnly}
+              class="w-8 h-8 flex items-center justify-center italic text-sm rounded-md focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
               class:bg-gray-200={richText.isItalic}
               class:text-gray-700={richText.isItalic}
               class:text-gray-600={!richText.isItalic}
@@ -226,7 +234,8 @@
             >
             <button
               onclick={richText.toggleUnderline}
-              class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md focus:outline-none"
+              disabled={appState.readOnly}
+              class="w-8 h-8 flex items-center justify-center underline text-sm rounded-md focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed"
               class:bg-gray-200={richText.isUnderlined}
               class:text-gray-700={richText.isUnderlined}
               class:text-gray-600={!richText.isUnderlined}
@@ -239,6 +248,7 @@
               onkeydown={(e) => e.stopPropagation()}
               min="1"
               max="500"
+              disabled={appState.readOnly}
               class="flex-1 h-8 px-2 text-sm border border-gray-300 rounded-md"
               placeholder={$_('props.size.placeholder')}
             />
@@ -246,7 +256,8 @@
               type="color"
               value={richText.fillColor}
               oninput={(e) => richText?.applyStyle({ fill: (e.target as HTMLInputElement).value })}
-              class="w-8 h-8 p-0 border-none bg-transparent cursor-pointer"
+              disabled={appState.readOnly}
+              class="w-8 h-8 p-0 border-none bg-transparent cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               title={$_('props.text_color.title')}
             />
           </div>
@@ -255,7 +266,8 @@
             <button
               onclick={richText.toggleFontDropdown}
               onkeydown={(e) => e.stopPropagation()}
-              class="w-full h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center relative"
+              disabled={appState.readOnly}
+              class="w-full h-8 px-2 pr-6 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 flex items-center relative disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-white"
               style={richText.fontFamily !== 'Multiple'
                 ? `font-family: ${richText.escapeFont(richText.fontFamily)}`
                 : ''}
@@ -292,6 +304,7 @@
                     oninput={(e) =>
                       richText?.setFontSearchQuery((e.target as HTMLInputElement).value)}
                     placeholder={$_('props.search_fonts')}
+                    disabled={appState.readOnly}
                     class="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-white"
                     onkeydown={(e) => e.stopPropagation()}
                   />
@@ -303,7 +316,8 @@
                     <button
                       onclick={() => richText?.selectFont(font)}
                       onmouseenter={() => richText?.previewFont(font)}
-                      class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base"
+                      disabled={appState.readOnly}
+                      class="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center text-base disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                       class:bg-blue-100={font === richText.fontFamily}
                       style="font-family: {richText.escapeFont(font)}; contain: layout style;"
                       >{font}</button
