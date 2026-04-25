@@ -507,28 +507,59 @@ function getReadableConnection(filePath: string): Database.Database {
 function probeDatabaseFormat(filePath: string): dbService.FormatProbeResult {
   ensureMasFileAccess(filePath)
 
-  if (!fs.existsSync(filePath)) {
+  let probePath = filePath
+  let disposableProbePath: string | null = null
+
+  if (isMasExternalFilePath(filePath)) {
+    ensureTempDir()
+    disposableProbePath = join(TEMP_DIR, `probe-${crypto.randomUUID()}.tb`)
+    fs.copyFileSync(filePath, disposableProbePath)
+    probePath = disposableProbePath
+    safeLog(`[db] probing MAS external file via temp copy ${probePath} for ${filePath}`)
+  }
+
+  if (!fs.existsSync(probePath)) {
     throw new Error(`File does not exist: ${filePath}`)
   }
 
-  let db: Database.Database
+  let db: Database.Database | null = null
   try {
-    db = new Database(filePath, { readonly: true })
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not a database')) {
-      return { status: 'notTwig' }
+    try {
+      db = new Database(probePath, { readonly: true })
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not a database')) {
+        return { status: 'notTwig' }
+      }
+      throw error
     }
-    throw error
-  }
 
-  try {
     dbService.configureDatabaseConnection(db)
     return dbService.detectFormat(db)
   } finally {
-    try {
-      db.close()
-    } catch (closeError) {
-      safeLog(`[db] failed to close probe connection: ${formatError(closeError)}`, 'warn')
+    if (db) {
+      try {
+        db.close()
+      } catch (closeError) {
+        safeLog(`[db] failed to close probe connection: ${formatError(closeError)}`, 'warn')
+      }
+    }
+    if (disposableProbePath) {
+      for (const candidatePath of [
+        disposableProbePath,
+        `${disposableProbePath}-wal`,
+        `${disposableProbePath}-shm`
+      ]) {
+        try {
+          if (fs.existsSync(candidatePath)) {
+            fs.unlinkSync(candidatePath)
+          }
+        } catch (cleanupError) {
+          safeLog(
+            `[db] failed to clean up probe copy ${candidatePath}: ${formatError(cleanupError)}`,
+            'warn'
+          )
+        }
+      }
     }
   }
 }
