@@ -76,6 +76,8 @@ export interface DebugState {
       height: number
       angle: number
       fill?: string
+      stroke?: string
+      strokeWidth?: number
       text?: string
       fontSize?: number
       fontFamily?: string

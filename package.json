@@ -1,6 +1,6 @@
 {
   "name": "twig",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A presentation editor built with Electron, Svelte, and fabric.js",
   "main": "./out/main/index.js",
   "author": "boomzero",
@@ -9,7 +9,7 @@
     "format": "prettier --plugin prettier-plugin-svelte --write .",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
-    "svelte-check": "svelte-check --tsconfig ./tsconfig.json",
+    "svelte-check": "svelte-check --tsconfig ./tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run svelte-check",
     "test": "node ./scripts/run-tests.mjs run",
     "test:watch": "node ./scripts/run-tests.mjs watch",

@@ -20,7 +20,8 @@
     type FabricObject,
     Gradient,
     Point,
-    util
+    util,
+    type TextboxProps
   } from 'fabric'
   import type {
     TwigElement,
@@ -32,10 +33,11 @@
   } from './lib/types'
   import { DEFAULT_ARROW_SHAPE } from './lib/types'
   import { isStepConfiguredForElement } from './lib/animationUtils'
-  import { normalizeFontBytes } from './lib/fontUtils'
+  import { normalizeFontBytes, type FontBytes } from './lib/fontUtils'
+  import { shapeStyle } from './lib/shapeStyle'
   import { getTextboxWrappingOptions } from './lib/textboxUtils'
 
-  export interface PresentationState {
+  interface PresentationState {
     /** ID of the slide to display — presentation window fetches the full slide from DB */
     slideId: string | null
     slideIndex: number
@@ -45,6 +47,25 @@
   }
 
   type PresentationFabricObject = FabricObject & { id?: string }
+  type FabricFontStyle = TextboxProps['fontStyle']
+
+  function setPresentationId<T extends FabricObject>(obj: T, id: string): T & { id: string } {
+    const typed = obj as T & { id: string }
+    typed.id = id
+    return typed
+  }
+
+  function toFabricFontStyle(value: string | undefined): FabricFontStyle | undefined {
+    if (value === '' || value === 'normal' || value === 'italic' || value === 'oblique') {
+      return value
+    }
+    return undefined
+  }
+
+  function setArrowPolygonBox(poly: Polygon, width: number, height: number): void {
+    poly.set({ width, height, scaleX: 1, scaleY: 1 })
+    poly.pathOffset = new Point(width / 2, height / 2)
+  }
 
   // ============================================================================
   // Shape Geometry Helpers (must stay in sync with App.svelte)
@@ -246,8 +267,10 @@
     const W = SLIDE_WIDTH,
       H = SLIDE_HEIGHT
     presentationCanvas.backgroundImage = undefined
-    if (!bg || bg.type === 'solid') {
-      presentationCanvas.backgroundColor = bg?.color ?? '#ffffff'
+    if (!bg) {
+      presentationCanvas.backgroundColor = '#ffffff'
+    } else if (bg.type === 'solid') {
+      presentationCanvas.backgroundColor = bg.color
     } else if (bg.type === 'gradient') {
       const rad = (bg.angle * Math.PI) / 180
       const grad = new Gradient({
@@ -286,7 +309,7 @@
 
   function captureSlide(): string | null {
     if (!presentationCanvas) return null
-    return presentationCanvas.toDataURL({ format: 'jpeg', quality: 0.85 })
+    return presentationCanvas.toDataURL({ format: 'jpeg', quality: 0.85, multiplier: 1 })
   }
 
   async function handleSlideChange(slide: Slide): Promise<void> {
@@ -369,93 +392,101 @@
       let fabObj: FabricObject | undefined
 
       if (element.type === 'rect') {
-        fabObj = new Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          selectable: false,
-          evented: false
-        })
+        fabObj = setPresentationId(
+          new Rect({
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            angle: element.angle,
+            ...shapeStyle(element),
+            selectable: false,
+            evented: false
+          }),
+          element.id
+        )
       } else if (element.type === 'ellipse') {
-        fabObj = new Ellipse({
-          left: element.x,
-          top: element.y,
-          rx: element.width / 2,
-          ry: element.height / 2,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          selectable: false,
-          evented: false
-        })
+        fabObj = setPresentationId(
+          new Ellipse({
+            left: element.x,
+            top: element.y,
+            rx: element.width / 2,
+            ry: element.height / 2,
+            angle: element.angle,
+            ...shapeStyle(element),
+            selectable: false,
+            evented: false
+          }),
+          element.id
+        )
       } else if (element.type === 'triangle') {
-        fabObj = new Triangle({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          selectable: false,
-          evented: false
-        })
+        fabObj = setPresentationId(
+          new Triangle({
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            angle: element.angle,
+            ...shapeStyle(element),
+            selectable: false,
+            evented: false
+          }),
+          element.id
+        )
       } else if (element.type === 'star') {
-        fabObj = new Polygon(makeStarPoints(), {
-          left: element.x,
-          top: element.y,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          scaleX: element.width / STAR_CANONICAL_W,
-          scaleY: element.height / STAR_CANONICAL_H,
-          selectable: false,
-          evented: false
-        })
+        fabObj = setPresentationId(
+          new Polygon(makeStarPoints(), {
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            ...shapeStyle(element),
+            scaleX: element.width / STAR_CANONICAL_W,
+            scaleY: element.height / STAR_CANONICAL_H,
+            selectable: false,
+            evented: false
+          }),
+          element.id
+        )
       } else if (element.type === 'arrow') {
         const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
         // Guard against persisted signed dimensions (pre-fix saves, etc.).
         const w = Math.abs(element.width)
         const h = Math.abs(element.height)
-        fabObj = new Polygon(makeArrowPoints(w, h, shape), {
-          left: element.x,
-          top: element.y,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          width: w,
-          height: h,
-          pathOffset: new Point(w / 2, h / 2),
-          scaleX: 1,
-          scaleY: 1,
-          selectable: false,
-          evented: false
-        })
+        fabObj = setPresentationId(
+          new Polygon(makeArrowPoints(w, h, shape), {
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            ...shapeStyle(element),
+            selectable: false,
+            evented: false
+          }),
+          element.id
+        )
+        setArrowPolygonBox(fabObj as Polygon, w, h)
       } else if (element.type === 'text') {
-        fabObj = new Textbox(element.text || '', {
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          fontFamily: element.fontFamily,
-          fontSize: element.fontSize,
-          fontWeight: element.fontWeight,
-          fontStyle: element.fontStyle,
-          underline: element.underline,
-          styles: element.styles || {},
-          ...getTextboxWrappingOptions(element.text),
-          selectable: false,
-          evented: false,
-          editable: false,
-          objectCaching: false,
-          lockScalingY: true
-        })
+        fabObj = setPresentationId(
+          new Textbox(element.text || '', {
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            angle: element.angle,
+            fill: element.fill,
+            fontFamily: element.fontFamily,
+            fontSize: element.fontSize,
+            fontWeight: element.fontWeight,
+            fontStyle: toFabricFontStyle(element.fontStyle),
+            underline: element.underline,
+            styles: element.styles || {},
+            ...getTextboxWrappingOptions(element.text),
+            selectable: false,
+            evented: false,
+            editable: false,
+            objectCaching: false,
+            lockScalingY: true
+          }),
+          element.id
+        )
       }
 
       if (fabObj) {
@@ -479,10 +510,10 @@
             angle: element.angle,
             scaleX: element.width / (img.width || 1),
             scaleY: element.height / (img.height || 1),
-            id: element.id,
             selectable: false,
             evented: false
           })
+          setPresentationId(img, element.id)
           const insertIndex = (
             presentationCanvas.getObjects() as PresentationFabricObject[]
           ).filter((obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < element.zIndex).length
@@ -585,7 +616,7 @@
             fabObj.set({ opacity: v })
             canvas.renderAll()
           },
-          onComplete: resolve
+          onComplete: () => resolve()
         })
       } else if (category === 'buildOut' && anim.buildOut?.type === 'disappear') {
         // Instant disappear
@@ -602,7 +633,7 @@
             fabObj.set({ opacity: v })
             canvas.renderAll()
           },
-          onComplete: resolve
+          onComplete: () => resolve()
         })
       } else if (category === 'action') {
         const action = anim.actions?.find((a) => a.id === actionId)
@@ -698,7 +729,7 @@
 
   async function injectFont(
     fontFamily: string,
-    fontData: unknown,
+    fontData: FontBytes,
     variant: string = 'normal-normal'
   ): Promise<void> {
     const key = `${fontFamily}-${variant}`
@@ -710,8 +741,10 @@
 
       const [weight, style] = variant.split('-')
       const normalizedStyle = style === 'italic' ? 'italic' : 'normal'
+      const fontBuffer = new ArrayBuffer(bytes.byteLength)
+      new Uint8Array(fontBuffer).set(bytes)
 
-      const fontFace = new FontFace(fontFamily, bytes, { weight, style: normalizedStyle })
+      const fontFace = new FontFace(fontFamily, fontBuffer, { weight, style: normalizedStyle })
       await fontFace.load()
       document.fonts.add(fontFace)
       loadedFontKeys.add(key)

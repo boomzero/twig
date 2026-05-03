@@ -15,7 +15,7 @@
   let { open, fileVersion, currentVersion, compatNotesRaw, onOpenReadOnly, onCancel }: Props =
     $props()
 
-  let dialogEl: HTMLDivElement | null = null
+  let dialogEl: HTMLDivElement | null = $state(null)
   let previousFocusedElement: HTMLElement | null = null
 
   const resolvedCompatNotes = $derived(resolveCompatNotes(compatNotesRaw, $locale ?? 'en'))
@@ -59,7 +59,7 @@
   }
 
   $effect(() => {
-    if (!open) return
+    if (!open) return undefined
     previousFocusedElement =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     void tick().then(() => {
