@@ -399,10 +399,9 @@
   // ============================================================================
 
   // Canvas element reference (bound to the <canvas> element in the template).
-  // Intentionally a plain `let` — the binding is read once inside $effect after
-  // mount and doesn't need to be a reactive dependency.
-  // svelte-ignore non_reactive_update
-  let canvasEl: HTMLCanvasElement
+  // `$state` so the main rendering effect re-runs when the binding rebinds
+  // (e.g. when the DOM is rebuilt on presentation-mode exit).
+  let canvasEl: HTMLCanvasElement | undefined = $state()
 
   // fabric.js Canvas instance (initialized in $effect)
   let fabCanvas: Canvas | undefined
@@ -2015,23 +2014,9 @@
       return
     }
 
-    // canvasEl binding might not be ready yet after exiting presentation mode
-    // Use requestAnimationFrame to defer to the next frame when DOM is ready
-    if (!canvasEl) {
-      requestAnimationFrame(() => {
-        if (canvasEl && appState.currentSlide) {
-          if (!fabCanvas) {
-            fabCanvas = new Canvas(canvasEl)
-            alignmentGuides?.dispose()
-            alignmentGuides = installAlignmentGuides(fabCanvas, {
-              isEnabled: () => appState.snapEnabled
-            })
-          }
-          renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
-        }
-      })
-      return
-    }
+    // canvasEl is $state, so the effect re-runs once bind:this populates it
+    // (e.g. after presentation-mode exit rebuilds the DOM).
+    if (!canvasEl) return
 
     // Step 1: Capture current selection state before re-rendering
     let selectionStateToRestore: SelectionState | null = null
