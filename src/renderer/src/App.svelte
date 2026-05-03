@@ -1034,7 +1034,7 @@
     if (!bg) {
       c.backgroundColor = '#ffffff'
     } else if (bg.type === 'solid') {
-      c.backgroundColor = bg.color
+      c.backgroundColor = bg.color ?? '#ffffff'
     } else if (bg.type === 'gradient') {
       const rad = (bg.angle * Math.PI) / 180
       const grad = new Gradient({
