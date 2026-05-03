@@ -398,7 +398,10 @@
   // Component State
   // ============================================================================
 
-  // Canvas element reference (bound to the <canvas> element in the template)
+  // Canvas element reference (bound to the <canvas> element in the template).
+  // Intentionally a plain `let` — the binding is read once inside $effect after
+  // mount and doesn't need to be a reactive dependency.
+  // svelte-ignore non_reactive_update
   let canvasEl: HTMLCanvasElement
 
   // fabric.js Canvas instance (initialized in $effect)
@@ -642,7 +645,9 @@
   // Starts as null (no save has occurred yet). The toolbar is only rendered when
   // appState.currentSlide is set, which happens after handleNewPresentation/handleOpen
   // complete — both call setSaveStatus('saved'), so lastSavedAt is set before the
-  // idle indicator ever appears.
+  // idle indicator ever appears. Re-renders are driven by the reactive `now` tick
+  // and `saveStatus`, so this intentionally doesn't need to be `$state`.
+  // svelte-ignore non_reactive_update
   let lastSavedAt: number | null = null
 
   // Reactive clock for updating the relative timestamp in idle state.
@@ -5909,6 +5914,7 @@
         style="width: {stackPanelWidth}px;"
       >
         <!-- Resize handle on the left edge -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
           class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
           onmousedown={startStackPanelResize}

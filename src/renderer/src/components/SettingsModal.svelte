@@ -130,6 +130,7 @@
     }}
     onkeydown={onKeydown}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-label={$_('settings.title')}
   >

@@ -101,6 +101,7 @@
     }}
     onkeydown={onKeydown}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-label={$_('temp_guard.title')}
   >

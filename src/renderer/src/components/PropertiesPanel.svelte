@@ -391,6 +391,7 @@
               </svg>
             </button>
             {#if richText.fontDropdownOpen}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div
                 class="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg"
                 onkeydown={(e) => e.stopPropagation()}
@@ -644,8 +645,9 @@
 
         <!-- Build In -->
         <div class="mb-2">
-          <label class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_in')}</label>
+          <label for="pp-anim-build-in" class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_in')}</label>
           <select
+            id="pp-anim-build-in"
             class="block w-full rounded border-gray-300 text-xs py-1"
             value={selectedObject.animations?.buildIn?.type ?? 'none'}
             onchange={(e) => {
@@ -713,7 +715,7 @@
         <!-- Actions (multiple) -->
         <div class="mb-2">
           <div class="flex items-center justify-between mb-1">
-            <label class="block text-xs font-medium text-gray-500">{$_('anim.actions')}</label>
+            <span class="block text-xs font-medium text-gray-500">{$_('anim.actions')}</span>
             <button
               class="text-xs text-indigo-600 hover:text-indigo-700"
               onclick={() => {
@@ -748,8 +750,9 @@
               </div>
               <div class="space-y-1">
                 <div class="flex gap-1 items-center">
-                  <label class="text-xs text-gray-400 w-8">{$_('anim.to_x')}</label>
+                  <label for="pp-action-{action.id}-x" class="text-xs text-gray-400 w-8">{$_('anim.to_x')}</label>
                   <input
+                    id="pp-action-{action.id}-x"
                     type="number"
                     value={action.toX}
                     oninput={(e) => {
@@ -772,8 +775,9 @@
                   />
                 </div>
                 <div class="flex gap-1 items-center">
-                  <label class="text-xs text-gray-400 w-8">{$_('anim.to_y')}</label>
+                  <label for="pp-action-{action.id}-y" class="text-xs text-gray-400 w-8">{$_('anim.to_y')}</label>
                   <input
+                    id="pp-action-{action.id}-y"
                     type="number"
                     value={action.toY}
                     oninput={(e) => {
@@ -844,8 +848,9 @@
 
         <!-- Build Out -->
         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_out')}</label>
+          <label for="pp-anim-build-out" class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_out')}</label>
           <select
+            id="pp-anim-build-out"
             class="block w-full rounded border-gray-300 text-xs py-1"
             value={selectedObject.animations?.buildOut?.type ?? 'none'}
             onchange={(e) => {
@@ -939,8 +944,9 @@
 
       {#if activeTab === 'solid'}
         <div>
-          <label class="block text-sm font-medium text-gray-600">{$_('bg.color')}</label>
+          <label for="pp-bg-color" class="block text-sm font-medium text-gray-600">{$_('bg.color')}</label>
           <input
+            id="pp-bg-color"
             type="color"
             value={currentBg?.type === 'solid' ? currentBg.color : '#ffffff'}
             oninput={(e) => emitSolid((e.target as HTMLInputElement).value)}
@@ -950,8 +956,9 @@
       {:else if activeTab === 'gradient'}
         <div class="space-y-2">
           <div>
-            <label class="block text-sm font-medium text-gray-600">{$_('bg.start_color')}</label>
+            <label for="pp-bg-start-color" class="block text-sm font-medium text-gray-600">{$_('bg.start_color')}</label>
             <input
+              id="pp-bg-start-color"
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5'}
               oninput={(e) =>
@@ -964,8 +971,9 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600">{$_('bg.end_color')}</label>
+            <label for="pp-bg-end-color" class="block text-sm font-medium text-gray-600">{$_('bg.end_color')}</label>
             <input
+              id="pp-bg-end-color"
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'}
               oninput={(e) =>
@@ -978,7 +986,7 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600">{$_('bg.angle')}</label>
+            <span class="block text-sm font-medium text-gray-600">{$_('bg.angle')}</span>
             <div class="flex gap-1 mt-1 flex-wrap">
               {#each [[0, '→'], [90, '↓'], [45, '↘'], [135, '↙'], [180, '←'], [270, '↑']] as [deg, label] (deg)}
                 <button
@@ -1005,7 +1013,7 @@
             </div>
             <p class="text-xs text-gray-400 truncate">{currentBg.filename ?? 'image'}</p>
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">{$_('bg.fit')}</label>
+              <span class="block text-xs font-medium text-gray-500 mb-1">{$_('bg.fit')}</span>
               <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
                 {#each [['stretch', $_('bg.stretch')], ['contain', $_('bg.contain')], ['cover', $_('bg.cover')]] as [val, label] (val)}
                   <button
@@ -1073,12 +1081,13 @@
         </div>
         {#if slideTransition && slideTransition.type !== 'none'}
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">
+            <label for="pp-transition-duration" class="block text-xs font-medium text-gray-500 mb-1">
               {$_('transition.duration', {
                 values: { duration: slideTransition.duration.toFixed(2) }
               })}
             </label>
             <input
+              id="pp-transition-duration"
               type="range"
               min="0.1"
               max="2.0"
