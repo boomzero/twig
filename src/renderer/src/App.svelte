@@ -58,15 +58,44 @@
     Polygon,
     FabricImage,
     ActiveSelection,
-    Control,
-    Point,
     util,
     cache,
     Gradient,
+    type Control,
     type TextboxProps,
     type TPointerEventInfo
   } from 'fabric'
-  import { DEFAULT_ARROW_SHAPE, type ArrowShape } from './lib/types'
+  import {
+    DEFAULT_ARROW_SHAPE,
+    ARROW_HEAD_ACTION,
+    ARROW_SHAFT_ACTION,
+    ARROW_HEAD_CONTROL_KEY,
+    STAR_CANONICAL_W,
+    STAR_CANONICAL_H,
+    setArrowPolygonBox,
+    makeArrowPoints,
+    ensureArrowShape,
+    applyArrowGeometry,
+    makeStarPoints,
+    installArrowAdjustmentHandles
+  } from './lib/arrowGeometry'
+  import {
+    compactZIndexes,
+    applyZOrderToCanvas,
+    canBringToFront,
+    canSendToBack,
+    canMoveUp,
+    canMoveDown,
+    applyBringToFront,
+    applySendToBack,
+    applyMoveUp,
+    applyMoveDown
+  } from './lib/zOrder'
+  import {
+    serializeElementsForClipboard,
+    parseClipboardPayload,
+    cloneElementsForPaste
+  } from './lib/clipboard'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
   import StackPanel from './components/StackPanel.svelte'
@@ -104,111 +133,9 @@
     return undefined
   }
 
-  function setArrowPolygonBox(poly: Polygon, width: number, height: number): void {
-    poly.set({ width, height, scaleX: 1, scaleY: 1, dirty: true })
-    poly.pathOffset = new Point(width / 2, height / 2)
-  }
-
   // ============================================================================
   // Shape Geometry Helpers
   // ============================================================================
-
-  // Arrow: 7-point right-pointing block arrow parameterized by three ratios.
-  // Point order matches the legacy (pre-parameterization) order (CCW from the
-  // top-left of the shaft). Indices (used by adjustment-handle positionHandlers):
-  //   0: left-top of shaft       (0,       shaftTop)
-  //   1: right-top of shaft      (w-headL, shaftTop)
-  //   2: head base top           (w-headL, headTop )   ← junction handle anchor
-  //   3: tip                     (w,       h/2     )
-  //   4: head base bottom        (w-headL, headBot )
-  //   5: right-bottom of shaft   (w-headL, shaftBot)
-  //   6: left-bottom of shaft    (0,       shaftBot)
-  function makeArrowPoints(
-    w: number,
-    h: number,
-    shape: ArrowShape
-  ): Array<{ x: number; y: number }> {
-    const headW = h * shape.headWidthRatio
-    const headL = w * shape.headLengthRatio
-    const shaftT = headW * shape.shaftThicknessRatio
-    const shaftTop = (h - shaftT) / 2
-    const shaftBot = (h + shaftT) / 2
-    const headTop = (h - headW) / 2
-    const headBot = (h + headW) / 2
-    return [
-      { x: 0, y: shaftTop },
-      { x: w - headL, y: shaftTop },
-      { x: w - headL, y: headTop },
-      { x: w, y: h / 2 },
-      { x: w - headL, y: headBot },
-      { x: w - headL, y: shaftBot },
-      { x: 0, y: shaftBot }
-    ]
-  }
-
-  /**
-   * Ensures an arrow element has its geometry ratios populated. Every code
-   * path that inserts or restores an arrow in memory funnels through this,
-   * so downstream (properties panel, handles, serialize) can rely on the
-   * field being present.
-   *
-   * Merge-fills partial objects (e.g. from a pasted payload that only carries
-   * one of the three ratios) so `undefined` ratios can't leak into
-   * makeArrowPoints() and produce NaN polygon points. Short-circuits when the
-   * shape is already complete to avoid spurious reactivity.
-   */
-  function ensureArrowShape(el: TwigElement): void {
-    if (el.type !== 'arrow') return
-    const s = el.arrowShape
-    if (
-      s &&
-      typeof s.headWidthRatio === 'number' &&
-      typeof s.headLengthRatio === 'number' &&
-      typeof s.shaftThicknessRatio === 'number'
-    ) {
-      return
-    }
-    el.arrowShape = { ...DEFAULT_ARROW_SHAPE, ...(s ?? {}) }
-  }
-
-  /**
-   * Applies an arrow element's (width, height, arrowShape) to a fabric Polygon.
-   * Sets points, resets scale to 1, and pins width/height/pathOffset to the
-   * element's nominal bounding box so hit-testing and control placement stay
-   * predictable regardless of the ratio values.
-   *
-   * Intentionally does NOT call Polygon.setBoundingBox(): when headWidthRatio<1
-   * the points bbox is smaller than the user's nominal h, and we want the
-   * fabric bbox to remain (w, h). pathOffset is supplied explicitly so it
-   * tracks the new points.
-   *
-   * Fabric's polygon geometry (bbox, hit-testing, pathOffset) breaks with
-   * negative intrinsic width/height, so Math.abs absorbs the sign from
-   * mirrored drags before points are built.
-   */
-  function applyArrowGeometry(obj: Polygon, el: TwigElement): void {
-    const shape = el.arrowShape ?? DEFAULT_ARROW_SHAPE
-    const w = Math.abs(el.width)
-    const h = Math.abs(el.height)
-    obj.set({
-      points: makeArrowPoints(w, h, shape),
-      dirty: true
-    })
-    setArrowPolygonBox(obj, w, h)
-    obj.setCoords()
-  }
-
-  // Action names for the custom arrow controls. Detected in handleObjectModified
-  // so the generic pushCheckpoint()/updateStateFromObject path is skipped
-  // (their work is handled inline by the control callbacks).
-  const ARROW_HEAD_ACTION = 'arrowHeadAdjust'
-  const ARROW_SHAFT_ACTION = 'arrowShaftAdjust'
-  const ARROW_HEAD_CONTROL_KEY = 'arrowHead'
-  const ARROW_SHAFT_CONTROL_KEY = 'arrowShaft'
-
-  function clamp(v: number, lo: number, hi: number): number {
-    return v < lo ? lo : v > hi ? hi : v
-  }
 
   // Render the yellow-diamond adjustment handle. Called by fabric for each frame.
   function renderAdjustmentDiamond(ctx: CanvasRenderingContext2D, left: number, top: number): void {
@@ -224,174 +151,6 @@
     ctx.fill()
     ctx.stroke()
     ctx.restore()
-  }
-
-  /**
-   * Installs two yellow adjustment handles on an arrow Polygon:
-   *   - "junction" control (points index 2) adjusts headLengthRatio and headWidthRatio.
-   *   - "shaft" control (points index 0) adjusts shaftThicknessRatio.
-   *
-   * positionHandler mirrors fabric's built-in polyControl pattern so the handles
-   * track the polygon correctly under arbitrary rotation/scale (see
-   * node_modules/fabric/src/controls/polyControl.ts).
-   *
-   * actionHandler converts the viewport pointer to the polygon's local point
-   * space via util.sendPointToPlane + pathOffset (same as polyActionHandler),
-   * recomputes ratios, calls applyArrowGeometry, and schedules a save. It does
-   * NOT push an undo checkpoint on every frame — a single pre-drag snapshot is
-   * pushed from mouseDownHandler, and handleObjectModified skips its usual
-   * post-drag checkpoint for these action names.
-   */
-  function installArrowAdjustmentHandles(obj: Polygon, el: TwigElement): void {
-    const ownerId = el.id
-
-    const makePositionHandler = (pointIndex: number) => {
-      return (_dim: Point, _finalMatrix: unknown, polyObject: FabricObject): Point => {
-        const poly = polyObject as Polygon
-        return new Point(poly.points[pointIndex].x, poly.points[pointIndex].y)
-          .subtract(poly.pathOffset)
-          .transform(
-            util.multiplyTransformMatrices(poly.getViewportTransform(), poly.calcTransformMatrix())
-          )
-      }
-    }
-
-    // Resolve the canonical element off the state each time (never close over
-    // a stale reference — the element may be swapped out by undo/redo or
-    // cross-slide navigation while an arrow Polygon is still attached).
-    const getElement = (): TwigElement | undefined => {
-      return appState.currentSlide?.elements.find((e) => e.id === ownerId)
-    }
-
-    const localPointerOnPoly = (poly: Polygon, x: number, y: number): Point => {
-      return util
-        .sendPointToPlane(new Point(x, y), undefined, poly.calcOwnMatrix())
-        .add(poly.pathOffset)
-    }
-
-    const junctionActionHandler = (
-      _eventData: unknown,
-      transform: { target: FabricObject },
-      x: number,
-      y: number
-    ): boolean => {
-      if (appState.readOnly) return false
-      const poly = transform.target as Polygon
-      const element = getElement()
-      if (!element || element.type !== 'arrow') return false
-      const w = element.width
-      const h = element.height
-      if (w <= 0 || h <= 0) return false
-      const lp = localPointerOnPoly(poly, x, y)
-      const newHeadLen = clamp(1 - lp.x / w, 0.05, 0.95)
-      // Keep this clamp in sync with PropertiesPanel's headWidth input bounds
-      // (5%–100%) so an arrow authored through the panel round-trips through
-      // a handle drag without getting silently renormalized.
-      const newHeadWid = clamp(1 - (2 * lp.y) / h, 0.05, 1.0)
-      ensureArrowShape(element)
-      element.arrowShape = {
-        ...(element.arrowShape ?? DEFAULT_ARROW_SHAPE),
-        headLengthRatio: newHeadLen,
-        headWidthRatio: newHeadWid
-      }
-      applyArrowGeometry(poly, element)
-      return true
-    }
-
-    const shaftActionHandler = (
-      _eventData: unknown,
-      transform: { target: FabricObject },
-      x: number,
-      y: number
-    ): boolean => {
-      if (appState.readOnly) return false
-      const poly = transform.target as Polygon
-      const element = getElement()
-      if (!element || element.type !== 'arrow') return false
-      const w = element.width
-      const h = element.height
-      if (w <= 0 || h <= 0) return false
-      const lp = localPointerOnPoly(poly, x, y)
-      const headW = h * (element.arrowShape?.headWidthRatio ?? DEFAULT_ARROW_SHAPE.headWidthRatio)
-      if (headW <= 0) return false
-      // Shaft top y in local points space is (h - shaftT) / 2. Inverting:
-      // shaftT = h - 2 * lp.y. Ratio = shaftT / headW.
-      const newShaft = clamp((h - 2 * lp.y) / headW, 0.05, 1.0)
-      ensureArrowShape(element)
-      element.arrowShape = {
-        ...(element.arrowShape ?? DEFAULT_ARROW_SHAPE),
-        shaftThicknessRatio: newShaft
-      }
-      applyArrowGeometry(poly, element)
-      return true
-    }
-
-    const mouseDownHandler = (): boolean => {
-      if (appState.readOnly) return false
-      // Capture pre-drag snapshot exactly once per drag.
-      pushCheckpoint()
-      return true
-    }
-
-    const mouseUpHandler = (): boolean => {
-      if (appState.readOnly) return false
-      scheduleSave()
-      scheduleThumbnailCapture()
-      return true
-    }
-
-    const diamondRender = (ctx: CanvasRenderingContext2D, left: number, top: number): void => {
-      renderAdjustmentDiamond(ctx, left, top)
-    }
-
-    const junction = new Control({
-      actionName: ARROW_HEAD_ACTION,
-      positionHandler: makePositionHandler(2) as Control['positionHandler'],
-      actionHandler: junctionActionHandler as Control['actionHandler'],
-      mouseDownHandler: mouseDownHandler as Control['mouseDownHandler'],
-      mouseUpHandler: mouseUpHandler as Control['mouseUpHandler'],
-      render: diamondRender as Control['render'],
-      cursorStyle: 'crosshair'
-    })
-
-    const shaft = new Control({
-      actionName: ARROW_SHAFT_ACTION,
-      positionHandler: makePositionHandler(0) as Control['positionHandler'],
-      actionHandler: shaftActionHandler as Control['actionHandler'],
-      mouseDownHandler: mouseDownHandler as Control['mouseDownHandler'],
-      mouseUpHandler: mouseUpHandler as Control['mouseUpHandler'],
-      render: diamondRender as Control['render'],
-      cursorStyle: 'ns-resize'
-    })
-
-    obj.controls = {
-      ...obj.controls,
-      [ARROW_HEAD_CONTROL_KEY]: junction,
-      [ARROW_SHAFT_CONTROL_KEY]: shaft
-    }
-  }
-
-  // Star: 5-point star with outer radius 100 and inner radius 42.
-  // Raw points are normalized to an exact 200×200 bounding box so that
-  // STAR_CANONICAL_W/H are always precisely 200 — no approximation drift.
-  const STAR_CANONICAL_W = 200
-  const STAR_CANONICAL_H = 200
-  function makeStarPoints(): Array<{ x: number; y: number }> {
-    const raw = Array.from({ length: 10 }, (_, i) => {
-      const angle = (i * 36 - 90) * (Math.PI / 180)
-      const r = i % 2 === 0 ? 100 : 42
-      return { x: r * Math.cos(angle), y: r * Math.sin(angle) }
-    })
-    const minX = Math.min(...raw.map((p) => p.x))
-    const maxX = Math.max(...raw.map((p) => p.x))
-    const minY = Math.min(...raw.map((p) => p.y))
-    const maxY = Math.max(...raw.map((p) => p.y))
-    const bboxW = maxX - minX
-    const bboxH = maxY - minY
-    return raw.map((p) => ({
-      x: (p.x - minX - bboxW / 2) * (200 / bboxW),
-      y: (p.y - minY - bboxH / 2) * (200 / bboxH)
-    }))
   }
 
   // ============================================================================
@@ -2370,7 +2129,14 @@
           element.id
         )
         setArrowPolygonBox(arrowPoly, element.width, element.height)
-        installArrowAdjustmentHandles(arrowPoly, element)
+        installArrowAdjustmentHandles(arrowPoly, element, {
+          getElement: (id) => appState.currentSlide?.elements.find((e) => e.id === id),
+          isReadOnly: () => appState.readOnly,
+          pushCheckpoint,
+          scheduleSave,
+          scheduleThumbnailCapture,
+          renderAdjustmentDiamond
+        })
         fabObj = arrowPoly
       } else if (element.type === 'text') {
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
@@ -4691,52 +4457,17 @@
   // Layer Reorder Helpers (used by StackPanel and ContextMenu)
   // ============================================================================
 
-  /**
-   * Compact all element zIndex values to sequential integers 0..n-1 after any
-   * reorder operation. Mutates elements in-place on appState. Keeps DB values clean.
-   */
-  function compactZIndexes(): void {
-    if (!appState.currentSlide) return
-    const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
-    sorted.forEach((el, i) => {
-      el.zIndex = i
-    })
-  }
-
-  /**
-   * Reorders existing canvas objects to match the current zIndex values in state
-   * without clearing or reloading the canvas. Used by all layer reorder operations
-   * (buttons and drag) to avoid triggering async image reloads and flicker.
-   *
-   * All objects are already on the canvas when this runs, so selection restore is
-   * synchronous — no Promise needed and no generation guard required.
-   */
-  function applyZOrderToCanvas(): void {
-    if (!fabCanvas || !appState.currentSlide) return
-    const sorted = [...appState.currentSlide.elements].sort((a, b) => a.zIndex - b.zIndex)
-    const objs = fabCanvas.getObjects() as TwigFabricObject[]
-    sorted.forEach((el, targetIndex) => {
-      const obj = objs.find((o) => o.id === el.id)
-      if (obj) fabCanvas.moveObjectTo(obj, targetIndex)
-    })
-    const savedId = appState.selectedObjectId
-    if (savedId) {
-      const obj = (fabCanvas.getObjects() as TwigFabricObject[]).find((o) => o.id === savedId)
-      if (obj) fabCanvas.setActiveObject(obj)
-    }
-    fabCanvas.requestRenderAll()
-  }
-
   function layerBringToFront(id: string): void {
     if (appState.readOnly) return
     if (!appState.currentSlide) return
-    const el = appState.currentSlide.elements.find((e) => e.id === id)
-    if (!el) return
+    const elements = appState.currentSlide.elements
+    if (!canBringToFront(elements, id)) return
     pushCheckpoint()
-    const max = appState.currentSlide.elements.reduce((m, e) => Math.max(m, e.zIndex), -Infinity)
-    el.zIndex = max + 1
-    compactZIndexes()
-    applyZOrderToCanvas()
+    applyBringToFront(elements, id)
+    compactZIndexes(elements)
+    if (fabCanvas) {
+      applyZOrderToCanvas({ elements, fabCanvas, selectedId: appState.selectedObjectId })
+    }
     scheduleSave()
     scheduleThumbnailCapture()
   }
@@ -4744,13 +4475,14 @@
   function layerSendToBack(id: string): void {
     if (appState.readOnly) return
     if (!appState.currentSlide) return
-    const el = appState.currentSlide.elements.find((e) => e.id === id)
-    if (!el) return
+    const elements = appState.currentSlide.elements
+    if (!canSendToBack(elements, id)) return
     pushCheckpoint()
-    const min = appState.currentSlide.elements.reduce((m, e) => Math.min(m, e.zIndex), Infinity)
-    el.zIndex = min - 1
-    compactZIndexes()
-    applyZOrderToCanvas()
+    applySendToBack(elements, id)
+    compactZIndexes(elements)
+    if (fabCanvas) {
+      applyZOrderToCanvas({ elements, fabCanvas, selectedId: appState.selectedObjectId })
+    }
     scheduleSave()
     scheduleThumbnailCapture()
   }
@@ -4758,16 +4490,14 @@
   function layerMoveUp(id: string): void {
     if (appState.readOnly) return
     if (!appState.currentSlide) return
-    const el = appState.currentSlide.elements.find((e) => e.id === id)
-    if (!el) return
-    const above = appState.currentSlide.elements
-      .filter((e) => e.zIndex > el.zIndex)
-      .sort((a, b) => a.zIndex - b.zIndex)[0]
-    if (!above) return
+    const elements = appState.currentSlide.elements
+    if (!canMoveUp(elements, id)) return
     pushCheckpoint()
-    ;[el.zIndex, above.zIndex] = [above.zIndex, el.zIndex]
-    compactZIndexes()
-    applyZOrderToCanvas()
+    applyMoveUp(elements, id)
+    compactZIndexes(elements)
+    if (fabCanvas) {
+      applyZOrderToCanvas({ elements, fabCanvas, selectedId: appState.selectedObjectId })
+    }
     scheduleSave()
     scheduleThumbnailCapture()
   }
@@ -4775,16 +4505,14 @@
   function layerMoveDown(id: string): void {
     if (appState.readOnly) return
     if (!appState.currentSlide) return
-    const el = appState.currentSlide.elements.find((e) => e.id === id)
-    if (!el) return
-    const below = appState.currentSlide.elements
-      .filter((e) => e.zIndex < el.zIndex)
-      .sort((a, b) => b.zIndex - a.zIndex)[0]
-    if (!below) return
+    const elements = appState.currentSlide.elements
+    if (!canMoveDown(elements, id)) return
     pushCheckpoint()
-    ;[el.zIndex, below.zIndex] = [below.zIndex, el.zIndex]
-    compactZIndexes()
-    applyZOrderToCanvas()
+    applyMoveDown(elements, id)
+    compactZIndexes(elements)
+    if (fabCanvas) {
+      applyZOrderToCanvas({ elements, fabCanvas, selectedId: appState.selectedObjectId })
+    }
     scheduleSave()
     scheduleThumbnailCapture()
   }
@@ -4810,16 +4538,15 @@
     const activeObjects = fabCanvas?.getActiveObjects() ?? []
     if (activeObjects.length === 0) return false
     const ids = new Set(activeObjects.map((o) => (o as TwigFabricObject).id).filter(Boolean))
-    const elements = (appState.currentSlide?.elements ?? [])
-      .filter((el) => ids.has(el.id))
-      .map((el) => ({
-        ...el,
-        src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
-      }))
+    const elements = (appState.currentSlide?.elements ?? []).filter((el) => ids.has(el.id))
     // copyId is an intentional uniqueness nonce: it makes every copy's JSON string
     // distinct so raw !== lastCopiedPayload reliably resets pasteCount even when
     // the same selection is copied again (including from another window).
-    const payload = JSON.stringify({ __twig_clipboard__: true, copyId: uuid_v4(), elements })
+    const payload = serializeElementsForClipboard({
+      elements,
+      imageSrcOf: (id) => imageAssets.get(id),
+      idFactory: uuid_v4
+    })
     event.clipboardData?.setData('text/plain', payload)
     event.preventDefault()
     pasteCount = 0
@@ -4838,13 +4565,12 @@
     const activeObjects = fabCanvas?.getActiveObjects() ?? []
     if (activeObjects.length === 0) return
     const ids = new Set(activeObjects.map((o) => (o as TwigFabricObject).id).filter(Boolean))
-    const elements = (appState.currentSlide?.elements ?? [])
-      .filter((el) => ids.has(el.id))
-      .map((el) => ({
-        ...el,
-        src: el.type === 'image' ? (imageAssets.get(el.id) ?? el.src) : undefined
-      }))
-    const payload = JSON.stringify({ __twig_clipboard__: true, copyId: uuid_v4(), elements })
+    const elements = (appState.currentSlide?.elements ?? []).filter((el) => ids.has(el.id))
+    const payload = serializeElementsForClipboard({
+      elements,
+      imageSrcOf: (id) => imageAssets.get(id),
+      idFactory: uuid_v4
+    })
     navigator.clipboard.writeText(payload).catch(() => {})
     pasteCount = 0
     lastCopiedPayload = payload
@@ -4880,37 +4606,9 @@
       'isTwigPayload:',
       raw.includes('__twig_clipboard__')
     )
-    let parsed: { __twig_clipboard__?: boolean; elements?: unknown[] } = {}
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      /* not JSON */
-    }
-    if (parsed.__twig_clipboard__ && Array.isArray(parsed.elements) && appState.currentSlide) {
-      const validElements = parsed.elements.filter((el): el is TwigElement => {
-        if (typeof el !== 'object' || el === null) return false
-        const e = el as Record<string, unknown>
-        const type = e.type
-        if (typeof e.id !== 'string') return false
-        if (
-          type !== 'rect' &&
-          type !== 'ellipse' &&
-          type !== 'triangle' &&
-          type !== 'star' &&
-          type !== 'arrow' &&
-          type !== 'text' &&
-          type !== 'image'
-        )
-          return false
-        if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
-        if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
-        if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
-        if (e.stroke !== undefined && typeof e.stroke !== 'string') return false
-        if (e.strokeWidth !== undefined && typeof e.strokeWidth !== 'number') return false
-        if (type === 'image' && typeof e.src !== 'string') return false
-        return true
-      })
-      console.log('[paste] validElements:', validElements.length, 'of', parsed.elements?.length)
+    const validElements = parseClipboardPayload(raw)
+    if (validElements !== null && appState.currentSlide) {
+      console.log('[paste] validElements:', validElements.length)
       if (validElements.length === 0) {
         console.log('[paste] all elements failed validation')
         return
@@ -4929,25 +4627,15 @@
 
       const CANVAS_W = 960,
         CANVAS_H = 540
-      const sortedElements = [...validElements].sort((a, b) => a.zIndex - b.zIndex)
-      const newElements: TwigElement[] = sortedElements.map((el, i) => {
-        const prefix = el.id.split('_')[0] ?? el.type
-        const newId = `${prefix}_${uuid_v4()}`
-        if (el.type === 'image' && el.src) imageAssets.set(newId, el.src)
-        // Clamp so repeated pastes don't walk elements off canvas
-        const x = Math.min(el.x + offset, CANVAS_W - 1)
-        const y = Math.min(el.y + offset, CANVAS_H - 1)
-        // Pasted elements start with no animation config (new IDs, no stale steps)
-        const cloned: TwigElement = {
-          ...el,
-          id: newId,
-          x,
-          y,
-          zIndex: baseZ + i,
-          animations: undefined
-        }
-        ensureArrowShape(cloned)
-        return cloned
+      const newElements = cloneElementsForPaste({
+        elements: validElements,
+        baseZ,
+        offset,
+        canvasW: CANVAS_W,
+        canvasH: CANVAS_H,
+        idFactory: uuid_v4,
+        registerImageSrc: (newId, src) => imageAssets.set(newId, src),
+        ensureArrowShape
       })
 
       pushCheckpoint()
@@ -5919,7 +5607,13 @@
             onBeforeLayerChange={pushCheckpoint}
             onLayerChange={() => {
               if (appState.readOnly) return
-              applyZOrderToCanvas()
+              if (appState.currentSlide && fabCanvas) {
+                applyZOrderToCanvas({
+                  elements: appState.currentSlide.elements,
+                  fabCanvas,
+                  selectedId: appState.selectedObjectId
+                })
+              }
               scheduleSave()
               scheduleThumbnailCapture()
             }}

@@ -19,15 +19,40 @@ import {
   Menu
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { join, isAbsolute, normalize, basename, extname, sep } from 'path'
+import { join, normalize, basename, extname, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import Database from 'better-sqlite3'
 import * as dbService from './db'
 import type { Slide, FontData } from './db'
 import { getPref, setPref } from './prefs'
 import * as bookmarksService from './bookmarks'
 import { createWindowCloseController } from './windowCloseController'
+import { safeLog, formatError } from './logging'
+import {
+  getTempDir,
+  ensureTempDir,
+  createTempDbPath,
+  registerTempFile,
+  unregisterTempFile,
+  isTempFile,
+  cleanupAllTempFiles,
+  removeTempDir
+} from './files/tempManager'
+import {
+  validateFilePath,
+  validateSlideId,
+  withDbConnection,
+  getWritableConnection,
+  getReadOnlyConnection,
+  closeDbConnection,
+  evictConnectionCaches,
+  getOpenConnectionPaths,
+  isOpenedReadOnly,
+  probeDatabaseFormat,
+  verifyDatabaseIntegrity,
+  retryFileOperation,
+  ensureMasFileAccess
+} from './db/connection'
 import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
@@ -43,791 +68,15 @@ process.stderr.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code !== 'EIO') throw err
 })
 
-// ============================================================================
-// Input Validation
-// ============================================================================
-
-/**
- * Validates that a file path is safe to use.
- * Prevents path traversal and ensures the file has the correct extension.
- *
- * @param filePath - The file path to validate
- * @throws Error if the file path is invalid
- */
-function validateFilePath(filePath: string): void {
-  // Ensure it's an absolute path
-  if (!isAbsolute(filePath)) {
-    throw new Error('File path must be absolute')
-  }
-
-  // Ensure it ends with .tb
-  if (!filePath.endsWith('.tb')) {
-    throw new Error('Invalid file extension. Expected .tb file')
-  }
-
-  // Prevent path traversal by ensuring normalized path matches original
-  const normalized = normalize(filePath)
-  if (normalized !== filePath) {
-    throw new Error('Invalid file path: path traversal detected')
-  }
-}
-
-/**
- * Validates that a slide ID is a valid UUID v4.
- *
- * @param slideId - The slide ID to validate
- * @throws Error if the slide ID is invalid
- */
-function validateSlideId(slideId: string): void {
-  // UUID v4 regex pattern
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-  if (!uuidRegex.test(slideId)) {
-    throw new Error('Invalid slide ID format. Expected UUID v4')
-  }
-}
-
-// ============================================================================
-// Temp Directory Management
-// ============================================================================
-
-/**
- * Temporary directory for unsaved presentations.
- * Each new presentation gets a temp database here until the user saves it.
- * Uses userData directory (user-specific) instead of system temp for security.
- */
-const TEMP_DIR = join(app.getPath('userData'), 'temp')
-
-/**
- * Maximum age for orphaned temp files before automatic cleanup (24 hours).
- */
-const TEMP_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
-
-/**
- * Tracks which database file paths are temporary files.
- * Used to clean up temp files on app shutdown.
- */
-const tempFilePaths = new Set<string>()
-const masShadowCopies = new Map<string, string>()
+// (validateFilePath / validateSlideId moved to ./db/connection.)
+// (TEMP_DIR / tempFilePaths / ensureTempDir moved to ./files/tempManager.)
+// (MAS shadow copies, connection caches, withDbConnection, integrity checks
+//  moved to ./db/connection.)
 
 const PRIVACY_POLICY_URL = 'https://twig.boomzero.uk/privacy/'
 const isStoreManagedBuild =
   process.mas === true ||
   (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true
-
-function isMasExternalFilePath(filePath: string): boolean {
-  return process.mas && !filePath.startsWith(TEMP_DIR)
-}
-
-function getMasShadowPath(filePath: string): string {
-  if (!isMasExternalFilePath(filePath)) {
-    return filePath
-  }
-
-  const existingShadowPath = masShadowCopies.get(filePath)
-  if (existingShadowPath && fs.existsSync(existingShadowPath)) {
-    return existingShadowPath
-  }
-  if (existingShadowPath) {
-    masShadowCopies.delete(filePath)
-    tempFilePaths.delete(existingShadowPath)
-  }
-
-  ensureMasFileAccess(filePath)
-  ensureTempDir()
-  const shadowPath = join(TEMP_DIR, `shadow-${crypto.randomUUID()}.tb`)
-  if (fs.existsSync(filePath)) {
-    fs.copyFileSync(filePath, shadowPath)
-    safeLog(`[db] created MAS shadow copy ${shadowPath} for ${filePath}`)
-  } else {
-    safeLog(`[db] reserved MAS shadow path ${shadowPath} for ${filePath}`)
-  }
-  tempFilePaths.add(shadowPath)
-  masShadowCopies.set(filePath, shadowPath)
-  return shadowPath
-}
-
-function getRuntimeDbPath(filePath: string): string {
-  return isMasExternalFilePath(filePath) ? getMasShadowPath(filePath) : filePath
-}
-
-function syncMasShadowCopy(filePath: string): void {
-  const shadowPath = masShadowCopies.get(filePath)
-  if (!shadowPath) {
-    return
-  }
-
-  // Only the writable cache participates in shadow sync — RO connections
-  // never produce WAL changes to flush.
-  const db = rwConnectionCache.get(filePath)
-  if (db) {
-    db.pragma('wal_checkpoint(TRUNCATE)')
-  }
-
-  ensureMasFileAccess(filePath)
-  fs.copyFileSync(shadowPath, filePath)
-  safeLog(`[db] synced MAS shadow copy ${shadowPath} -> ${filePath}`)
-}
-
-function disposeMasShadowCopy(filePath: string): void {
-  const shadowPath = masShadowCopies.get(filePath)
-  if (!shadowPath) {
-    return
-  }
-
-  masShadowCopies.delete(filePath)
-  tempFilePaths.delete(shadowPath)
-
-  for (const candidatePath of [shadowPath, `${shadowPath}-wal`, `${shadowPath}-shm`]) {
-    try {
-      if (fs.existsSync(candidatePath)) {
-        fs.unlinkSync(candidatePath)
-      }
-    } catch (error) {
-      safeLog(`Failed to delete MAS shadow file ${candidatePath}: ${formatError(error)}`, 'warn')
-    }
-  }
-}
-
-/**
- * Ensures the temp directory exists and cleans up old orphaned temp files.
- * Called on app startup and when creating new temp databases.
- */
-function ensureTempDir(): void {
-  // Create temp directory with restrictive permissions (user-only access)
-  // Mode 0o700 = rwx------ (owner read/write/execute only)
-  fs.mkdirSync(TEMP_DIR, { recursive: true, mode: 0o700 })
-
-  // Clean up orphaned temp files older than 24 hours (crash recovery)
-  try {
-    const now = Date.now()
-
-    if (fs.existsSync(TEMP_DIR)) {
-      const files = fs.readdirSync(TEMP_DIR)
-      for (const file of files) {
-        if (file.endsWith('.tb')) {
-          const filePath = join(TEMP_DIR, file)
-          try {
-            const stats = fs.statSync(filePath)
-            if (now - stats.mtimeMs > TEMP_FILE_MAX_AGE_MS) {
-              fs.unlinkSync(filePath)
-              console.log(`Cleaned up orphaned temp file: ${filePath}`)
-            }
-          } catch (err) {
-            console.warn(`Failed to clean up temp file ${filePath}:`, err)
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to clean up temp directory:', error)
-  }
-}
-
-// ============================================================================
-// Database Connection Management
-// ============================================================================
-
-/**
- * Caches of open database connections, keyed by file path.
- *
- * Read-write and read-only connections are tracked separately so that a file
- * opened read-only (because it was written by a newer twig format we can't
- * fully edit) cannot accidentally be re-opened as writable by a later caller.
- * Write paths must never see a file that is in the RO cache.
- */
-const rwConnectionCache = new Map<string, Database.Database>()
-const roConnectionCache = new Map<string, Database.Database>()
-
-/**
- * Logical files that the user has opened in read-only mode.
- *
- * This is intentionally separate from `roConnectionCache`: cache entries are
- * allowed to disappear on suspend, stale-connection recovery, or LRU eviction,
- * but the open document should still be treated as read-only until the
- * renderer explicitly closes it.
- */
-const readOnlyOpenPaths = new Set<string>()
-
-/**
- * Maximum number of database connections to keep open simultaneously, per
- * cache. When this limit is exceeded, the least recently used connection in
- * that cache is closed.
- */
-const MAX_CONNECTIONS = 3
-
-/**
- * Tracks the access order of database connections for LRU eviction, per cache.
- * Most recently used connections are at the end of the array.
- */
-const rwAccessOrder: string[] = []
-const roAccessOrder: string[] = []
-
-/** True if the file is currently open in read-only mode. */
-export function isOpenReadOnly(filePath: string): boolean {
-  return readOnlyOpenPaths.has(filePath)
-}
-
-function touchAccessOrder(order: string[], filePath: string): void {
-  const index = order.indexOf(filePath)
-  if (index !== -1) {
-    order.splice(index, 1)
-  }
-  order.push(filePath)
-}
-
-/**
- * Retrieves or creates a read-write database connection for the given file.
- * Initializes schema, applies migrations, and stamps format metadata.
- *
- * Throws if the file is currently open as read-only — callers must close the
- * RO connection first.
- *
- * @param filePath - Absolute path to the .tb file
- * @returns The database connection instance
- * @throws Error if the file is not a valid SQLite database, is newer than
- *   supported, or is currently open read-only
- */
-function getWritableConnection(filePath: string): Database.Database {
-  if (readOnlyOpenPaths.has(filePath)) {
-    throw new Error(`Cannot open ${filePath} for writing: the file is currently open read-only`)
-  }
-
-  ensureMasFileAccess(filePath)
-  const runtimePath = getRuntimeDbPath(filePath)
-  safeLog(`[db] opening connection for ${filePath} (runtime=${runtimePath})`)
-
-  // Return cached connection if available
-  if (rwConnectionCache.has(filePath)) {
-    touchAccessOrder(rwAccessOrder, filePath)
-    return rwConnectionCache.get(filePath)!
-  }
-
-  // Check if file exists and validate it's a SQLite database (if it exists)
-  const fileExists = fs.existsSync(runtimePath)
-  safeLog(`[db] file exists=${fileExists} path=${runtimePath} logical=${filePath}`)
-  if (fileExists) {
-    let fd: number | undefined
-    try {
-      // Read the first 16 bytes to check for SQLite magic header
-      fd = fs.openSync(runtimePath, 'r')
-      const buffer = Buffer.alloc(16)
-      fs.readSync(fd, buffer, 0, 16, 0)
-
-      // SQLite files start with "SQLite format 3\0"
-      const fileHeader = buffer.toString('utf8', 0, 16)
-
-      if (!fileHeader.startsWith('SQLite format 3')) {
-        throw new Error(
-          `File ${runtimePath} is not a valid SQLite database. Please select a valid twig presentation file.`
-        )
-      }
-    } catch (error) {
-      // If it's our validation error, re-throw it
-      if (error instanceof Error && error.message.includes('not a valid SQLite database')) {
-        throw error
-      }
-      // For other errors (e.g., file access errors), log and continue
-      // The Database constructor will provide a more specific error
-      console.warn('Could not validate database file header:', error)
-    } finally {
-      // Always close the file descriptor to prevent leaks
-      if (fd !== undefined) {
-        try {
-          fs.closeSync(fd)
-        } catch (closeError) {
-          console.error('Failed to close file descriptor:', closeError)
-        }
-      }
-    }
-  }
-
-  // Create new connection, initialize schema, and cache it.
-  // If the path is under TEMP_DIR, recreate the directory in case it was
-  // deleted externally (e.g. after the system woke from sleep).
-  if (runtimePath.startsWith(TEMP_DIR)) {
-    ensureTempDir()
-  }
-
-  let db: Database.Database
-  try {
-    db = new Database(runtimePath)
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not a database')) {
-      throw new Error(
-        `File ${runtimePath} is not a valid SQLite database. Please select a valid twig presentation file.`
-      )
-    }
-    safeLog(
-      `[db] Database constructor failed for ${filePath} (runtime=${runtimePath}): ${formatError(error)}`,
-      'error'
-    )
-    throw error
-  }
-
-  try {
-    dbService.configureDatabaseConnection(db)
-
-    if (fileExists && !shouldSkipExternalIntegrityChecks(runtimePath)) {
-      verifyDatabaseQuickCheck(db, runtimePath)
-    } else if (fileExists) {
-      safeLog(`[db] skipping quick_check for MAS external file ${runtimePath}`, 'warn')
-    }
-
-    dbService.initializeDatabase(db, app.getVersion())
-
-    // Implement LRU eviction: if cache is full, close least recently used connection
-    if (rwConnectionCache.size >= MAX_CONNECTIONS) {
-      const lruPath = rwAccessOrder.shift() // Remove least recently used
-      if (lruPath && rwConnectionCache.has(lruPath)) {
-        try {
-          closeDbConnection(lruPath, 'none')
-          safeLog(`Closed LRU database connection: ${lruPath}`)
-        } catch (closeError) {
-          console.error(`Error closing LRU connection for ${lruPath}:`, closeError)
-          // Continue anyway - we'll still add the new connection
-        }
-      }
-    }
-
-    // Cache the new connection and add to access order
-    rwConnectionCache.set(filePath, db)
-    rwAccessOrder.push(filePath)
-    return db
-  } catch (error) {
-    // Close connection on initialization error to prevent leak
-    db.close()
-    throw error
-  }
-}
-
-/**
- * Retrieves or creates a read-only database connection for a `.tb` file that
- * the user asked to open read-only (typically because it's newer than this
- * build understands). Never mutates the file: no schema creation, no
- * migrations, no stamping.
- *
- * Validates that the file is actually a twig presentation before caching.
- * Refuses fresh/empty SQLite files (there's nothing to view).
- */
-function getReadOnlyConnection(filePath: string): Database.Database {
-  if (rwConnectionCache.has(filePath)) {
-    throw new Error(`Cannot open ${filePath} read-only: the file is already open for writing`)
-  }
-
-  ensureMasFileAccess(filePath)
-  const runtimePath = getRuntimeDbPath(filePath)
-
-  if (roConnectionCache.has(filePath)) {
-    touchAccessOrder(roAccessOrder, filePath)
-    return roConnectionCache.get(filePath)!
-  }
-
-  const fileExists = fs.existsSync(runtimePath)
-  if (!fileExists) {
-    throw new Error(`File does not exist: ${runtimePath}`)
-  }
-
-  let db: Database.Database
-  try {
-    db = new Database(runtimePath, { readonly: true })
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('not a database')) {
-      throw new Error(
-        `File ${runtimePath} is not a valid SQLite database. Please select a valid twig presentation file.`
-      )
-    }
-    throw error
-  }
-
-  try {
-    dbService.configureDatabaseConnection(db)
-
-    const format = dbService.detectFormat(db)
-    if (format.status === 'notTwig') {
-      throw new dbService.NotATwigFileError()
-    }
-    // Read-only mode exists for one reason: the file is too new to migrate
-    // safely. For every other status (fresh, legacy, current, older) the
-    // correct open mode is read-write. This enforcement is the main-process
-    // defense-in-depth; the renderer is expected to have probed first and
-    // only request RO when status is `tooNew`.
-    if (format.status !== 'tooNew') {
-      throw new Error(
-        `Read-only open is only for files newer than this build; got status "${format.status}"`
-      )
-    }
-
-    if (roConnectionCache.size >= MAX_CONNECTIONS) {
-      const lruPath = roAccessOrder.shift()
-      if (lruPath && roConnectionCache.has(lruPath)) {
-        try {
-          closeDbConnection(lruPath, 'none')
-        } catch (closeError) {
-          console.error(`Error closing LRU RO connection for ${lruPath}:`, closeError)
-        }
-      }
-    }
-
-    roConnectionCache.set(filePath, db)
-    readOnlyOpenPaths.add(filePath)
-    roAccessOrder.push(filePath)
-    return db
-  } catch (error) {
-    db.close()
-    throw error
-  }
-}
-
-/**
- * Returns a readable connection for `filePath`. Prefers an existing read-only
- * connection if one is cached; if the logical file is open read-only but its
- * cached connection was evicted/closed, re-establishes a read-only connection.
- * Otherwise falls through to the writable connection (which is also readable).
- * Use this for read-only operations inside `withDbConnection({ write: false })`.
- */
-function getReadableConnection(filePath: string): Database.Database {
-  if (roConnectionCache.has(filePath)) {
-    touchAccessOrder(roAccessOrder, filePath)
-    return roConnectionCache.get(filePath)!
-  }
-  if (readOnlyOpenPaths.has(filePath)) {
-    return getReadOnlyConnection(filePath)
-  }
-  return getWritableConnection(filePath)
-}
-
-/**
- * Probes a `.tb` candidate file for its format identity without mutating it.
- * Opens a short-lived read-only SQLite connection that bypasses the cache.
- *
- * Used by the renderer's open flow to detect files newer than this build
- * understands (so it can show a compat-notes warning) and to reject non-twig
- * SQLite files up front with a clear error.
- */
-function probeDatabaseFormat(filePath: string): dbService.FormatProbeResult {
-  ensureMasFileAccess(filePath)
-
-  let probePath = filePath
-  let disposableProbePath: string | null = null
-
-  if (isMasExternalFilePath(filePath)) {
-    ensureTempDir()
-    disposableProbePath = join(TEMP_DIR, `probe-${crypto.randomUUID()}.tb`)
-    fs.copyFileSync(filePath, disposableProbePath)
-    probePath = disposableProbePath
-    safeLog(`[db] probing MAS external file via temp copy ${probePath} for ${filePath}`)
-  }
-
-  if (!fs.existsSync(probePath)) {
-    throw new Error(`File does not exist: ${filePath}`)
-  }
-
-  let db: Database.Database | null = null
-  try {
-    try {
-      db = new Database(probePath, { readonly: true })
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('not a database')) {
-        return { status: 'notTwig' }
-      }
-      throw error
-    }
-
-    dbService.configureDatabaseConnection(db)
-    return dbService.detectFormat(db)
-  } finally {
-    if (db) {
-      try {
-        db.close()
-      } catch (closeError) {
-        safeLog(`[db] failed to close probe connection: ${formatError(closeError)}`, 'warn')
-      }
-    }
-    if (disposableProbePath) {
-      for (const candidatePath of [
-        disposableProbePath,
-        `${disposableProbePath}-wal`,
-        `${disposableProbePath}-shm`
-      ]) {
-        try {
-          if (fs.existsSync(candidatePath)) {
-            fs.unlinkSync(candidatePath)
-          }
-        } catch (cleanupError) {
-          safeLog(
-            `[db] failed to clean up probe copy ${candidatePath}: ${formatError(cleanupError)}`,
-            'warn'
-          )
-        }
-      }
-    }
-  }
-}
-
-/**
- * Error codes that indicate file is locked or inaccessible and should be retried.
- */
-const RETRYABLE_FILE_ERROR_CODES = ['EBUSY', 'EPERM', 'EACCES']
-
-/**
- * Retry a file operation with exponential backoff on Windows.
- * On Windows, closing a database connection doesn't immediately release the file lock.
- * This function retries the operation with increasing delays.
- *
- * @param operation - The file operation to retry
- * @param maxRetries - Maximum number of retry attempts (default: 5)
- * @returns The result of the successful operation
- * @throws The last error if all retries fail
- */
-async function retryFileOperation<T>(operation: () => T, maxRetries: number = 5): Promise<T> {
-  let lastError: Error | null = null
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return operation()
-    } catch (error) {
-      const errCode = (error as NodeJS.ErrnoException).code
-
-      // Only retry on file locking errors
-      if (!RETRYABLE_FILE_ERROR_CODES.includes(errCode || '')) {
-        throw error
-      }
-
-      lastError = error as Error
-
-      // Don't wait after the last attempt
-      if (attempt < maxRetries - 1) {
-        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
-        const delay = 50 * Math.pow(2, attempt)
-        console.log(
-          `File operation failed (${errCode}), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`
-        )
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
-    }
-  }
-
-  // All retries failed
-  throw lastError || new Error('File operation failed after all retries')
-}
-
-/**
- * Verifies database integrity using PRAGMA integrity_check.
- * Performs robust validation of the pragma result format.
- *
- * @param filePath - Path to the database file to check
- * @param context - Description of when/why this check is being performed (for error messages)
- * @throws Error if integrity check fails or returns unexpected format
- */
-function verifyDatabaseIntegrity(filePath: string, context: string): void {
-  if (shouldSkipExternalIntegrityChecks(filePath)) {
-    safeLog(`[db] skipping integrity_check for MAS external file ${filePath} (${context})`, 'warn')
-    return
-  }
-  ensureMasFileAccess(filePath)
-  const testDb = new Database(filePath, { readonly: true })
-
-  try {
-    dbService.configureDatabaseConnection(testDb)
-    verifyPragmaCheck(testDb.pragma('integrity_check'), 'integrity_check')
-  } finally {
-    testDb.close()
-  }
-
-  safeLog(`Database integrity verified (${context}): ${filePath}`)
-}
-
-/**
- * Validates the output shape for SQLite integrity-style PRAGMAs.
- */
-function verifyPragmaCheck(result: unknown, pragmaName: 'integrity_check' | 'quick_check'): void {
-  if (!Array.isArray(result)) {
-    throw new Error(`${pragmaName} returned non-array result: ${JSON.stringify(result)}`)
-  }
-
-  if (result.length === 0) {
-    throw new Error(`${pragmaName} returned empty array`)
-  }
-
-  const firstRow = result[0] as Record<string, unknown> | undefined
-  const pragmaValue = firstRow?.[pragmaName]
-  if (pragmaValue !== 'ok') {
-    throw new Error(`${pragmaName} failed: ${JSON.stringify(result)}`)
-  }
-}
-
-/**
- * Runs a lightweight consistency check when opening an existing presentation.
- *
- * Note: this is intentionally called after {@link dbService.configureDatabaseConnection},
- * which sets mmap_size = 0. SQLite's quick_check does not require mmap-backed I/O and
- * still detects corruption correctly with mmap disabled.
- */
-function verifyDatabaseQuickCheck(db: Database.Database, filePath: string): void {
-  verifyPragmaCheck(db.pragma('quick_check'), 'quick_check')
-  safeLog(`Database quick_check verified on open: ${filePath}`)
-}
-
-function shouldSkipExternalIntegrityChecks(filePath: string): boolean {
-  return process.mas && !filePath.startsWith(TEMP_DIR)
-}
-
-/**
- * Safely logs a message, ignoring errors if console is unavailable (e.g., during shutdown).
- * This prevents crashes when logging during application exit.
- */
-function safeLog(message: string, level: 'log' | 'warn' | 'error' = 'log'): void {
-  try {
-    console[level](message)
-  } catch {
-    // Ignore logging errors during shutdown - console streams may be closed
-  }
-}
-
-/** Format unknown thrown values for diagnostic logging. */
-function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.stack || error.message
-  }
-  return String(error)
-}
-
-/**
- * Re-activates a stored security-scoped bookmark before touching a user-selected
- * file in MAS builds. Temp files live under the app container and do not need it.
- */
-function ensureMasFileAccess(filePath: string): void {
-  if (!process.mas) return
-  if (filePath.startsWith(TEMP_DIR)) return
-  const hasAccess = bookmarksService.ensureAccess(filePath)
-  safeLog(`[bookmarks] ensureMasFileAccess path=${filePath} active=${hasAccess}`)
-}
-
-/**
- * Closes and removes a database connection from the cache.
- * This should be called before overwriting or deleting a database file.
- *
- * @param filePath - Absolute path to the .tb file
- * @param checkpointMode - WAL checkpoint mode: 'none' (no checkpoint), 'passive' (non-blocking), 'truncate' (full checkpoint)
- */
-function closeDbConnection(
-  filePath: string,
-  checkpointMode: 'none' | 'passive' | 'truncate' = 'none',
-  options: { forgetReadOnly?: boolean } = {}
-): void {
-  const hasShadowCopy = masShadowCopies.has(filePath)
-
-  // Close the writable connection (if any). Shadow sync + WAL checkpoint only
-  // apply here — RO connections never mutate the file.
-  if (rwConnectionCache.has(filePath)) {
-    try {
-      const db = rwConnectionCache.get(filePath)!
-
-      if (hasShadowCopy) {
-        try {
-          syncMasShadowCopy(filePath)
-        } catch (checkpointError) {
-          safeLog(
-            `Failed to sync MAS shadow copy for ${filePath}: ${formatError(checkpointError)}`,
-            'warn'
-          )
-        }
-      } else if (checkpointMode !== 'none') {
-        try {
-          const mode = checkpointMode === 'passive' ? 'PASSIVE' : 'TRUNCATE'
-          db.pragma(`wal_checkpoint(${mode})`)
-          safeLog(`Checkpointed WAL (${mode}) for ${filePath}`)
-        } catch (checkpointError) {
-          safeLog(`Failed to checkpoint WAL for ${filePath}: ${checkpointError}`, 'warn')
-          // Continue anyway - close will still work
-        }
-      }
-
-      db.close()
-    } catch (error) {
-      safeLog(`Error closing database connection for ${filePath}: ${error}`, 'error')
-    }
-    rwConnectionCache.delete(filePath)
-    const rwIndex = rwAccessOrder.indexOf(filePath)
-    if (rwIndex !== -1) {
-      rwAccessOrder.splice(rwIndex, 1)
-    }
-  }
-
-  // Close the read-only connection (if any).
-  if (roConnectionCache.has(filePath)) {
-    try {
-      roConnectionCache.get(filePath)!.close()
-    } catch (error) {
-      safeLog(`Error closing RO database connection for ${filePath}: ${error}`, 'error')
-    }
-    roConnectionCache.delete(filePath)
-    const roIndex = roAccessOrder.indexOf(filePath)
-    if (roIndex !== -1) {
-      roAccessOrder.splice(roIndex, 1)
-    }
-  }
-
-  if (hasShadowCopy) {
-    disposeMasShadowCopy(filePath)
-  }
-
-  if (options.forgetReadOnly) {
-    readOnlyOpenPaths.delete(filePath)
-  }
-}
-
-/**
- * Executes a database operation.
- * The powerMonitor 'suspend' handler closes all connections before sleep, so
- * SQLITE_READONLY_DBMOVED should never occur. If it somehow does (e.g. forced
- * hibernate), we evict the stale connection and surface the error clearly so
- * the renderer can recover gracefully.
- *
- * @param filePath - Absolute path to the .tb file
- * @param fn - Database operation to run
- */
-function withDbConnection<T>(
-  filePath: string,
-  fn: (db: Database.Database) => T,
-  options: { syncShadowBack?: boolean; write?: boolean } = {}
-): T {
-  const runOperation = (): T => {
-    // Write paths must refuse files that are open read-only.
-    if (options.write && readOnlyOpenPaths.has(filePath)) {
-      throw new Error(
-        `Presentation is open read-only: ${filePath}. Writes are disabled for files written by a newer version of twig.`
-      )
-    }
-    const db = options.write ? getWritableConnection(filePath) : getReadableConnection(filePath)
-    const result = fn(db)
-    // Stamp provenance BEFORE the MAS shadow is flushed, so the copy sees the
-    // refreshed `last_written_with_app_version` row.
-    if (options.write) {
-      dbService.stampFileMetadata(db, app.getVersion())
-    }
-    if (options.syncShadowBack) {
-      syncMasShadowCopy(filePath)
-    }
-    return result
-  }
-
-  try {
-    return runOperation()
-  } catch (error) {
-    if ((error as { code?: string }).code === 'SQLITE_READONLY_DBMOVED') {
-      // Stale connection (file was moved/renamed while the connection was open).
-      // Evict it and retry once with a fresh connection.
-      closeDbConnection(filePath, 'none')
-      safeLog(
-        `Retrying after stale DB connection for ${filePath} (SQLITE_READONLY_DBMOVED)`,
-        'warn'
-      )
-      return runOperation()
-    }
-    throw error
-  }
-}
 
 // ============================================================================
 // Font Detection Utility
@@ -1392,8 +641,7 @@ app.whenReady().then(() => {
   // both RW and RO caches (closeDbConnection tolerates either).
   powerMonitor.on('suspend', () => {
     safeLog('System suspending — closing all database connections')
-    const openPaths = new Set<string>([...rwConnectionCache.keys(), ...roConnectionCache.keys()])
-    for (const filePath of openPaths) {
+    for (const filePath of getOpenConnectionPaths()) {
       closeDbConnection(filePath, 'passive')
     }
   })
@@ -1853,13 +1101,13 @@ app.whenReady().then(() => {
   ipcMain.handle('db:create-temp', (): string => {
     try {
       ensureTempDir()
-      const tempPath = join(TEMP_DIR, `temp-${crypto.randomUUID()}.tb`)
+      const tempPath = createTempDbPath()
 
       // Create and initialize the database (stamps format metadata).
       getWritableConnection(tempPath)
 
-      // Track this as a temp file for cleanup
-      tempFilePaths.add(tempPath)
+      // Track this as a temp file for cleanup — only after successful init.
+      registerTempFile(tempPath)
 
       safeLog(`Created temp database: ${tempPath}`)
       return tempPath
@@ -1881,7 +1129,7 @@ app.whenReady().then(() => {
 
       // Resolve symlinks and normalize paths
       const realPath = fs.realpathSync(filePath)
-      const realTempDir = fs.realpathSync(TEMP_DIR)
+      const realTempDir = fs.realpathSync(getTempDir())
 
       // Ensure the path is inside TEMP_DIR (not just a prefix match)
       // Check if path starts with tempDir followed by a separator, or is exactly tempDir
@@ -1911,7 +1159,7 @@ app.whenReady().then(() => {
   ipcMain.handle('db:delete-temp', (_event, filePath: string): void => {
     try {
       // Validate that this is actually a tracked temp file to prevent arbitrary deletion
-      if (!tempFilePaths.has(filePath)) {
+      if (!isTempFile(filePath)) {
         throw new Error('Cannot delete: path is not a tracked temporary file')
       }
 
@@ -1931,7 +1179,7 @@ app.whenReady().then(() => {
       }
 
       // Remove from temp files tracking
-      tempFilePaths.delete(filePath)
+      unregisterTempFile(filePath)
     } catch (error) {
       console.error('Error deleting temp file:', error)
       throw error
@@ -1959,7 +1207,7 @@ app.whenReady().then(() => {
         // Reject Save if the source was opened read-only (newer-than-supported
         // file): the user explicitly declined to migrate it, so we must not
         // write its bytes to a new location under a writable connection.
-        if (readOnlyOpenPaths.has(sourcePath)) {
+        if (isOpenedReadOnly(sourcePath)) {
           throw new Error(
             'Cannot save a file that was opened read-only. Close and reopen it after upgrading twig, or save a copy through your file manager.'
           )
@@ -2074,13 +1322,11 @@ app.whenReady().then(() => {
         }
 
         // Remove from temp files set
-        tempFilePaths.delete(sourcePath)
+        unregisterTempFile(sourcePath)
 
         // Evict source path from both connection caches to prevent memory leak
         // (the connection was already closed before the move operation).
-        rwConnectionCache.delete(sourcePath)
-        roConnectionCache.delete(sourcePath)
-        readOnlyOpenPaths.delete(sourcePath)
+        evictConnectionCaches(sourcePath)
 
         // Open a writable connection at the destination. `getWritableConnection`
         // runs `initializeDatabase`, which stamps format metadata, so the
@@ -2128,7 +1374,7 @@ app.whenReady().then(() => {
         // A read-only source means the user opened it without agreeing to
         // migrate. Copying it as a new writable twig file would stamp metadata
         // from this build onto bytes written by a future format — refuse.
-        if (readOnlyOpenPaths.has(sourcePath)) {
+        if (isOpenedReadOnly(sourcePath)) {
           throw new Error(
             'Cannot copy a file that was opened read-only. Close and reopen it after upgrading twig, or copy it through your file manager.'
           )
@@ -2539,38 +1785,18 @@ async function cleanupResources(): Promise<void> {
   cleanupPromise = (async () => {
     // Close all database connections with full WAL checkpoint. Iterate both
     // RW and RO caches (RO close skips the checkpoint internally).
-    const filePaths = Array.from(
-      new Set<string>([...rwConnectionCache.keys(), ...roConnectionCache.keys()])
-    )
-    for (const filePath of filePaths) {
+    for (const filePath of getOpenConnectionPaths()) {
       closeDbConnection(filePath, 'truncate')
     }
 
     // Clean up temp files
-    for (const tempPath of tempFilePaths) {
-      try {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath)
-          safeLog(`Deleted temp file: ${tempPath}`)
-        }
-      } catch (error) {
-        safeLog(`Failed to delete temp file ${tempPath}: ${error}`, 'warn')
-      }
-    }
-    tempFilePaths.clear()
+    cleanupAllTempFiles()
 
     // Release all security-scoped resource access (MAS builds only)
     bookmarksService.stopAccessingAllBookmarks()
 
     // Clean up temp directory
-    try {
-      if (fs.existsSync(TEMP_DIR)) {
-        fs.rmSync(TEMP_DIR, { recursive: true, force: true })
-        safeLog('Cleaned up temp directory')
-      }
-    } catch (error) {
-      safeLog(`Failed to clean up temp directory: ${error}`, 'warn')
-    }
+    removeTempDir()
   })()
 
   try {
