@@ -18,7 +18,7 @@
 >
   <div
     class={`twig-loader-mark flex items-center justify-center overflow-hidden border border-white/70 bg-[#20242d] shadow-[0_18px_48px_-26px_rgba(15,23,42,0.8)] ${
-      compact ? 'h-16 w-16 rounded-[22px]' : 'h-[88px] w-[88px] rounded-[28px]'
+      compact ? 'h-16 w-16 rounded-[22px]' : 'h-22 w-22 rounded-[28px]'
     }`}
   >
     <img src={twigLogo} alt="twig logo" class="h-full w-full object-contain" draggable="false" />

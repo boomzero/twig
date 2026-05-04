@@ -9,11 +9,11 @@ export function normalizeLocale(value?: string | null): SupportedLocale {
   return normalized?.startsWith('zh') ? 'zh' : 'en'
 }
 
-export function setupI18n(savedLocale?: string | null): Promise<void> {
+export async function setupI18n(savedLocale?: string | null): Promise<void> {
   addMessages('en', en)
   addMessages('zh', zh)
   const resolved = normalizeLocale(savedLocale)
-  return init({ fallbackLocale: 'en', initialLocale: resolved })
+  await init({ fallbackLocale: 'en', initialLocale: resolved })
 }
 
 export async function changeLocale(l: SupportedLocale): Promise<void> {

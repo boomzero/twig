@@ -44,6 +44,7 @@
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { resolveControlLayout } from './lib/controlLayout'
   import { fontDataToBase64 } from './lib/fontUtils'
+  import { isShapeElement, shapeStyle } from './lib/shapeStyle'
   import { getTextboxWrappingOptions, syncTextboxWrapping } from './lib/textboxUtils'
   import {
     Canvas,
@@ -61,7 +62,9 @@
     Point,
     util,
     cache,
-    Gradient
+    Gradient,
+    type TextboxProps,
+    type TPointerEventInfo
   } from 'fabric'
   import { DEFAULT_ARROW_SHAPE, type ArrowShape } from './lib/types'
   import PropertiesPanel from './components/PropertiesPanel.svelte'
@@ -83,6 +86,28 @@
     type TempPresentationPromptChoice
   } from './lib/tempPresentationGuard'
   import { installAlignmentGuides } from './lib/alignment-guides/index'
+
+  type TwigFabricObject = FabricObject & { id?: string }
+  type TwigTextbox = Textbox & { id?: string }
+  type FabricFontStyle = TextboxProps['fontStyle']
+
+  function setTwigId<T extends FabricObject>(obj: T, id: string): T & { id: string } {
+    const typed = obj as T & { id: string }
+    typed.id = id
+    return typed
+  }
+
+  function toFabricFontStyle(value: string | undefined): FabricFontStyle | undefined {
+    if (value === '' || value === 'normal' || value === 'italic' || value === 'oblique') {
+      return value
+    }
+    return undefined
+  }
+
+  function setArrowPolygonBox(poly: Polygon, width: number, height: number): void {
+    poly.set({ width, height, scaleX: 1, scaleY: 1, dirty: true })
+    poly.pathOffset = new Point(width / 2, height / 2)
+  }
 
   // ============================================================================
   // Shape Geometry Helpers
@@ -167,13 +192,9 @@
     const h = Math.abs(el.height)
     obj.set({
       points: makeArrowPoints(w, h, shape),
-      width: w,
-      height: h,
-      pathOffset: new Point(w / 2, h / 2),
-      scaleX: 1,
-      scaleY: 1,
       dirty: true
     })
+    setArrowPolygonBox(obj, w, h)
     obj.setCoords()
   }
 
@@ -377,8 +398,10 @@
   // Component State
   // ============================================================================
 
-  // Canvas element reference (bound to the <canvas> element in the template)
-  let canvasEl: HTMLCanvasElement
+  // Canvas element reference (bound to the <canvas> element in the template).
+  // `$state` so the main rendering effect re-runs when the binding rebinds
+  // (e.g. when the DOM is rebuilt on presentation-mode exit).
+  let canvasEl: HTMLCanvasElement | undefined = $state()
 
   // fabric.js Canvas instance (initialized in $effect)
   let fabCanvas: Canvas | undefined
@@ -389,7 +412,7 @@
   const ROTATION_SNAP = { snapAngle: 15, snapThreshold: 7 } as const
 
   // Currently active text object (for rich text editing)
-  let activeTextObject: Textbox | null = null
+  let activeTextObject: TwigTextbox | null = null
   let lastTextSelectionRange: { start: number; end: number } | null = null
   let suppressSelectionTracking = false
   // Editor-only overlay objects for the Keynote-style move-path affordance.
@@ -419,7 +442,7 @@
   // Too-new file modal (shown when opening a presentation whose format is
   // newer than this build's CURRENT_FORMAT_VERSION). The modal lets the user
   // choose to open read-only or cancel.
-  const CURRENT_FORMAT_VERSION = 1
+  const CURRENT_FORMAT_VERSION = 2
   let tooNewModalOpen = $state(false)
   let tooNewModalFileVersion = $state(0)
   let tooNewModalCompatNotesRaw = $state('')
@@ -478,7 +501,7 @@
   let shapePickerRef: HTMLDivElement | null = $state(null)
   let shapePickerButtonRef: HTMLButtonElement | null = $state(null)
   $effect(() => {
-    if (!showShapePicker) return
+    if (!showShapePicker) return undefined
     function onMousedown(e: MouseEvent): void {
       const target = e.target as Node
       if (shapePickerRef?.contains(target)) return
@@ -621,7 +644,9 @@
   // Starts as null (no save has occurred yet). The toolbar is only rendered when
   // appState.currentSlide is set, which happens after handleNewPresentation/handleOpen
   // complete — both call setSaveStatus('saved'), so lastSavedAt is set before the
-  // idle indicator ever appears.
+  // idle indicator ever appears. Re-renders are driven by the reactive `now` tick
+  // and `saveStatus`, so this intentionally doesn't need to be `$state`.
+  // svelte-ignore non_reactive_update
   let lastSavedAt: number | null = null
 
   // Reactive clock for updating the relative timestamp in idle state.
@@ -1010,8 +1035,10 @@
     // Always clear backgroundImage first; re-set if needed
     c.backgroundImage = undefined
 
-    if (!bg || bg.type === 'solid') {
-      c.backgroundColor = bg?.color ?? '#ffffff'
+    if (!bg) {
+      c.backgroundColor = '#ffffff'
+    } else if (bg.type === 'solid') {
+      c.backgroundColor = bg.color ?? '#ffffff'
     } else if (bg.type === 'gradient') {
       const rad = (bg.angle * Math.PI) / 180
       const grad = new Gradient({
@@ -1188,7 +1215,7 @@
           ...pos,
           width: element.width,
           height: element.height,
-          fill: element.fill,
+          ...shapeStyle(element),
           ...GHOST_OVERLAY_OPTIONS
         }),
         action.id
@@ -1201,7 +1228,7 @@
           ...pos,
           rx: element.width / 2,
           ry: element.height / 2,
-          fill: element.fill,
+          ...shapeStyle(element),
           ...GHOST_OVERLAY_OPTIONS
         }),
         action.id
@@ -1214,7 +1241,7 @@
           ...pos,
           width: element.width,
           height: element.height,
-          fill: element.fill,
+          ...shapeStyle(element),
           ...GHOST_OVERLAY_OPTIONS
         }),
         action.id
@@ -1225,7 +1252,7 @@
       return stampGhostOverlay(
         new Polygon(makeStarPoints(), {
           ...pos,
-          fill: element.fill,
+          ...shapeStyle(element),
           scaleX: element.width / STAR_CANONICAL_W,
           scaleY: element.height / STAR_CANONICAL_H,
           ...GHOST_OVERLAY_OPTIONS
@@ -1236,19 +1263,13 @@
 
     if (element.type === 'arrow') {
       const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
-      return stampGhostOverlay(
-        new Polygon(makeArrowPoints(element.width, element.height, shape), {
-          ...pos,
-          fill: element.fill,
-          width: element.width,
-          height: element.height,
-          pathOffset: new Point(element.width / 2, element.height / 2),
-          scaleX: 1,
-          scaleY: 1,
-          ...GHOST_OVERLAY_OPTIONS
-        }),
-        action.id
-      )
+      const arrowGhost = new Polygon(makeArrowPoints(element.width, element.height, shape), {
+        ...pos,
+        ...shapeStyle(element),
+        ...GHOST_OVERLAY_OPTIONS
+      })
+      setArrowPolygonBox(arrowGhost, element.width, element.height)
+      return stampGhostOverlay(arrowGhost, action.id)
     }
 
     if (element.type === 'text') {
@@ -1260,7 +1281,7 @@
           fontFamily: element.fontFamily,
           fontSize: element.fontSize,
           fontWeight: element.fontWeight,
-          fontStyle: element.fontStyle,
+          fontStyle: toFabricFontStyle(element.fontStyle),
           underline: element.underline,
           styles: element.styles ? cleanStylesObject(element.styles) : {},
           ...getTextboxWrappingOptions(element.text),
@@ -1441,7 +1462,7 @@
     window.removeEventListener('mouseup', handleMovePathWindowMouseUp)
   }
 
-  function handleCanvasMouseDownBefore(event: { target?: FabricObject; e: MouseEvent }): void {
+  function handleCanvasMouseDownBefore(event: TPointerEventInfo): void {
     if (appState.readOnly) return
     const target = event.target as MovePathOverlayFabricObject | undefined
     if (!target?.overlayRole || !target.actionId || !appState.selectedObjectId) return
@@ -1581,7 +1602,7 @@
                 width: el.width,
                 height: el.height,
                 angle: el.angle,
-                fill: el.fill
+                ...shapeStyle(el)
               })
             )
           } else if (el.type === 'ellipse') {
@@ -1592,7 +1613,7 @@
                 rx: el.width / 2,
                 ry: el.height / 2,
                 angle: el.angle,
-                fill: el.fill
+                ...shapeStyle(el)
               })
             )
           } else if (el.type === 'triangle') {
@@ -1603,7 +1624,7 @@
                 width: el.width,
                 height: el.height,
                 angle: el.angle,
-                fill: el.fill
+                ...shapeStyle(el)
               })
             )
           } else if (el.type === 'star') {
@@ -1612,26 +1633,21 @@
                 left: el.x,
                 top: el.y,
                 angle: el.angle,
-                fill: el.fill,
+                ...shapeStyle(el),
                 scaleX: el.width / STAR_CANONICAL_W,
                 scaleY: el.height / STAR_CANONICAL_H
               })
             )
           } else if (el.type === 'arrow') {
             const shape = el.arrowShape ?? DEFAULT_ARROW_SHAPE
-            tempCanvas.add(
-              new Polygon(makeArrowPoints(el.width, el.height, shape), {
-                left: el.x,
-                top: el.y,
-                angle: el.angle,
-                fill: el.fill,
-                width: el.width,
-                height: el.height,
-                pathOffset: new Point(el.width / 2, el.height / 2),
-                scaleX: 1,
-                scaleY: 1
-              })
-            )
+            const arrow = new Polygon(makeArrowPoints(el.width, el.height, shape), {
+              left: el.x,
+              top: el.y,
+              angle: el.angle,
+              ...shapeStyle(el)
+            })
+            setArrowPolygonBox(arrow, el.width, el.height)
+            tempCanvas.add(arrow)
           } else if (el.type === 'text') {
             tempCanvas.add(
               new Textbox(el.text || '', {
@@ -1643,7 +1659,7 @@
                 fontFamily: el.fontFamily,
                 fontSize: el.fontSize,
                 fontWeight: el.fontWeight,
-                fontStyle: el.fontStyle,
+                fontStyle: toFabricFontStyle(el.fontStyle),
                 underline: el.underline,
                 ...getTextboxWrappingOptions(el.text)
               })
@@ -1693,12 +1709,6 @@
 
     await performSave(true) // Re-throw errors for caller to handle
   }
-
-  /**
-   * Extended fabric.js object type that includes our custom 'id' property.
-   * The id links canvas objects back to their corresponding state elements.
-   */
-  type TwigFabricObject = FabricObject & { id?: string }
 
   // ============================================================================
   // Lifecycle and Reactive Effects
@@ -2004,23 +2014,9 @@
       return
     }
 
-    // canvasEl binding might not be ready yet after exiting presentation mode
-    // Use requestAnimationFrame to defer to the next frame when DOM is ready
-    if (!canvasEl) {
-      requestAnimationFrame(() => {
-        if (canvasEl && appState.currentSlide) {
-          if (!fabCanvas) {
-            fabCanvas = new Canvas(canvasEl)
-            alignmentGuides?.dispose()
-            alignmentGuides = installAlignmentGuides(fabCanvas, {
-              isEnabled: () => appState.snapEnabled
-            })
-          }
-          renderCanvasFromState().catch((err) => console.error('Canvas render failed:', err))
-        }
-      })
-      return
-    }
+    // canvasEl is $state, so the effect re-runs once bind:this populates it
+    // (e.g. after presentation-mode exit rebuilds the DOM).
+    if (!canvasEl) return
 
     // Step 1: Capture current selection state before re-rendering
     let selectionStateToRestore: SelectionState | null = null
@@ -2309,45 +2305,53 @@
 
       let fabObj: FabricObject | undefined
       if (element.type === 'rect') {
-        fabObj = new Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id
-        })
+        fabObj = setTwigId(
+          new Rect({
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            angle: element.angle,
+            ...shapeStyle(element)
+          }),
+          element.id
+        )
       } else if (element.type === 'ellipse') {
-        fabObj = new Ellipse({
-          left: element.x,
-          top: element.y,
-          rx: element.width / 2,
-          ry: element.height / 2,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id
-        })
+        fabObj = setTwigId(
+          new Ellipse({
+            left: element.x,
+            top: element.y,
+            rx: element.width / 2,
+            ry: element.height / 2,
+            angle: element.angle,
+            ...shapeStyle(element)
+          }),
+          element.id
+        )
       } else if (element.type === 'triangle') {
-        fabObj = new Triangle({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id
-        })
+        fabObj = setTwigId(
+          new Triangle({
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            angle: element.angle,
+            ...shapeStyle(element)
+          }),
+          element.id
+        )
       } else if (element.type === 'star') {
-        fabObj = new Polygon(makeStarPoints(), {
-          left: element.x,
-          top: element.y,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          scaleX: element.width / STAR_CANONICAL_W,
-          scaleY: element.height / STAR_CANONICAL_H
-        })
+        fabObj = setTwigId(
+          new Polygon(makeStarPoints(), {
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            ...shapeStyle(element),
+            scaleX: element.width / STAR_CANONICAL_W,
+            scaleY: element.height / STAR_CANONICAL_H
+          }),
+          element.id
+        )
       } else if (element.type === 'arrow') {
         ensureArrowShape(element)
         const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
@@ -2356,38 +2360,38 @@
         // fabric polygon and everything downstream see positive magnitudes.
         element.width = Math.abs(element.width)
         element.height = Math.abs(element.height)
-        const arrowPoly = new Polygon(makeArrowPoints(element.width, element.height, shape), {
-          left: element.x,
-          top: element.y,
-          angle: element.angle,
-          fill: element.fill,
-          id: element.id,
-          width: element.width,
-          height: element.height,
-          pathOffset: new Point(element.width / 2, element.height / 2),
-          scaleX: 1,
-          scaleY: 1
-        })
+        const arrowPoly = setTwigId(
+          new Polygon(makeArrowPoints(element.width, element.height, shape), {
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            ...shapeStyle(element)
+          }),
+          element.id
+        )
+        setArrowPolygonBox(arrowPoly, element.width, element.height)
         installArrowAdjustmentHandles(arrowPoly, element)
         fabObj = arrowPoly
       } else if (element.type === 'text') {
         const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
-        fabObj = new Textbox(element.text || 'Hello', {
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          angle: element.angle,
-          id: element.id,
-          fill: element.fill,
-          fontFamily: element.fontFamily,
-          fontSize: element.fontSize,
-          fontWeight: element.fontWeight,
-          fontStyle: element.fontStyle,
-          underline: element.underline,
-          styles: cleanedStyles,
-          ...getTextboxWrappingOptions(element.text),
-          lockScalingY: true
-        })
+        fabObj = setTwigId(
+          new Textbox(element.text || 'Hello', {
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            angle: element.angle,
+            fill: element.fill,
+            fontFamily: element.fontFamily,
+            fontSize: element.fontSize,
+            fontWeight: element.fontWeight,
+            fontStyle: toFabricFontStyle(element.fontStyle),
+            underline: element.underline,
+            styles: cleanedStyles,
+            ...getTextboxWrappingOptions(element.text),
+            lockScalingY: true
+          }),
+          element.id
+        )
       }
       if (fabObj) {
         fabObj.set(ROTATION_SNAP)
@@ -2661,6 +2665,14 @@
       applyArrowGeometry(obj, elementInState)
     }
 
+    if (isShapeElement(elementInState)) {
+      const fabricStroke = typeof obj.stroke === 'string' ? obj.stroke : undefined
+      elementInState.fill = typeof obj.fill === 'string' ? obj.fill : undefined
+      elementInState.stroke = fabricStroke
+      elementInState.strokeWidth =
+        fabricStroke && typeof obj.strokeWidth === 'number' ? obj.strokeWidth : undefined
+    }
+
     // For text objects, also update text content and styling
     if (elementInState.type === 'text' && obj instanceof Textbox) {
       elementInState.text = obj.text
@@ -2675,7 +2687,7 @@
     }
   }
 
-  function syncTextEditState(obj: Textbox | null | undefined): void {
+  function syncTextEditState(obj: TwigTextbox | null | undefined): void {
     if (appState.readOnly) return
     if (!obj?.id || !appState.currentSlide) return
 
@@ -2693,8 +2705,8 @@
   }
 
   /**
-   * Syncs property panel changes (x, y, width, height, angle, fill) from state
-   * back to the live Fabric object, then schedules a save.
+   * Syncs property panel changes (x, y, width, height, angle, fill, stroke)
+   * from state back to the live Fabric object, then schedules a save.
    *
    * The $effect that drives renderCanvasFromState() only tracks the elements
    * array reference, not deep property mutations — so we must push changes
@@ -2714,7 +2726,7 @@
           left: el.x,
           top: el.y,
           angle: el.angle,
-          fill: el.fill,
+          ...shapeStyle(el),
           rx: el.width / 2,
           ry: el.height / 2,
           scaleX: 1,
@@ -2725,7 +2737,7 @@
           left: el.x,
           top: el.y,
           angle: el.angle,
-          fill: el.fill,
+          ...shapeStyle(el),
           scaleX: el.width / STAR_CANONICAL_W,
           scaleY: el.height / STAR_CANONICAL_H
         })
@@ -2735,11 +2747,22 @@
           left: el.x,
           top: el.y,
           angle: el.angle,
-          fill: el.fill
+          ...shapeStyle(el)
         })
         applyArrowGeometry(obj, el)
-      } else {
+      } else if (isShapeElement(el)) {
         // rect, triangle: state stores effective dimensions; reset scale to 1.
+        obj.set({
+          left: el.x,
+          top: el.y,
+          angle: el.angle,
+          ...shapeStyle(el),
+          scaleX: 1,
+          scaleY: 1,
+          width: el.width,
+          height: el.height
+        })
+      } else {
         obj.set({
           left: el.x,
           top: el.y,
@@ -4882,6 +4905,8 @@
         if (typeof e.x !== 'number' || typeof e.y !== 'number') return false
         if (typeof e.width !== 'number' || typeof e.height !== 'number') return false
         if (typeof e.angle !== 'number' || typeof e.zIndex !== 'number') return false
+        if (e.stroke !== undefined && typeof e.stroke !== 'string') return false
+        if (e.strokeWidth !== undefined && typeof e.strokeWidth !== 'number') return false
         if (type === 'image' && typeof e.src !== 'string') return false
         return true
       })
@@ -5001,6 +5026,14 @@
   function handleKeyDown(event: KeyboardEvent): void {
     const nativeTextTarget = isNativeTextTarget(event.target)
 
+    if (event.key === 'F5') {
+      event.preventDefault()
+      if (!appState.isPresentingMode) {
+        enterPresentationMode()
+      }
+      return
+    }
+
     // Cmd/Ctrl+,: Settings
     if ((event.metaKey || event.ctrlKey) && event.key === ',') {
       event.preventDefault()
@@ -5079,9 +5112,10 @@
    * Handles right-click events on the canvas.
    * Shows a context menu if an object is clicked, hides it otherwise.
    */
-  function handleContextMenu(opt: { e: MouseEvent; target?: FabricObject }): void {
+  function handleContextMenu(opt: { e: Event; target?: FabricObject }): void {
     opt.e.preventDefault()
     if (!fabCanvas) return
+    const pointer = opt.e as MouseEvent
 
     if (opt.target) {
       // Object was clicked - select it and show context menu
@@ -5090,7 +5124,7 @@
         fabCanvas.setActiveObject(opt.target)
         fabCanvas.requestRenderAll()
       }
-      contextMenuPosition = { x: opt.e.clientX, y: opt.e.clientY }
+      contextMenuPosition = { x: pointer.clientX, y: pointer.clientY }
       contextMenuVisible = true
     } else {
       // Empty space was clicked - clear selection and hide menu
@@ -5150,16 +5184,6 @@
     window.api?.presentation?.closeWindow()
     appState.isPresentingMode = false
   }
-
-  /**
-   * Keyboard shortcut handler for F5 (Start Presentation)
-   */
-  keys.onKeys(['F5'], (event) => {
-    event.preventDefault()
-    if (!appState.isPresentingMode) {
-      enterPresentationMode()
-    }
-  })
 
   /**
    * Keyboard shortcut handler for Cmd/Ctrl+Shift+D (Open Debug Window)
@@ -5267,7 +5291,7 @@
       <!-- Group 1: File -->
       <button
         onclick={handleNewPresentation}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.new')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5279,7 +5303,7 @@
       </button>
       <button
         onclick={handleOpen}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.open')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5291,7 +5315,7 @@
       </button>
       <button
         onclick={handleSave}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.save')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5303,7 +5327,7 @@
       </button>
       <button
         onclick={handleSaveAs}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.save_as')}
       >
         <svg
@@ -5345,7 +5369,7 @@
         onclick={performUndo}
         disabled={!canUndo}
         title={$_('toolbar.undo')}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
@@ -5358,7 +5382,7 @@
         onclick={performRedo}
         disabled={!canRedo}
         title={$_('toolbar.redo')}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
@@ -5445,7 +5469,7 @@
       <!-- Group 3: Present -->
       <button
         onclick={appState.isPresentingMode ? exitPresentationMode : enterPresentationMode}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={appState.isPresentingMode ? $_('toolbar.stop') : $_('toolbar.play')}
       >
         {#if appState.isPresentingMode}
@@ -5470,7 +5494,7 @@
       </button>
       <button
         onclick={openDebugWindow}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.debug')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5487,7 +5511,7 @@
       <!-- Group 4: Insert -->
       <button
         onclick={addText}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.text')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5501,7 +5525,7 @@
         <button
           bind:this={shapePickerButtonRef}
           onclick={() => (showShapePicker = !showShapePicker)}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
           class:bg-gray-200={showShapePicker}
           title={$_('toolbar.shape')}
         >
@@ -5517,7 +5541,7 @@
         {#if showShapePicker}
           <div
             bind:this={shapePickerRef}
-            class="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-1 flex flex-col gap-0.5 min-w-[120px]"
+            class="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-1 flex flex-col gap-0.5 min-w-30"
           >
             <button
               onclick={() => {
@@ -5526,7 +5550,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><rect x="2" y="6" width="20" height="12" rx="1" /></svg
               >
               {$_('shape.rect')}
@@ -5538,7 +5562,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><ellipse cx="12" cy="12" rx="10" ry="7" /></svg
               >
               {$_('shape.ellipse')}
@@ -5550,7 +5574,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><polygon points="12,3 22,21 2,21" /></svg
               >
               {$_('shape.triangle')}
@@ -5562,7 +5586,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><polygon
                   points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
                 /></svg
@@ -5576,7 +5600,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><polygon points="2,9 14,9 14,5 22,12 14,19 14,15 2,15" /></svg
               >
               {$_('shape.arrow')}
@@ -5586,7 +5610,7 @@
       </div>
       <button
         onclick={addImage}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.media')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5603,7 +5627,7 @@
         <div class="h-8 w-px bg-gray-300 mx-2"></div>
         <button
           onclick={() => (activeSidePanel = 'properties')}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'properties'}
           class:text-gray-700={activeSidePanel === 'properties'}
           class:text-gray-600={activeSidePanel !== 'properties'}
@@ -5621,7 +5645,7 @@
         </button>
         <button
           onclick={() => (activeSidePanel = 'layers')}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'layers'}
           class:text-gray-700={activeSidePanel === 'layers'}
           class:text-gray-600={activeSidePanel !== 'layers'}
@@ -5639,7 +5663,7 @@
         </button>
         <button
           onclick={() => (activeSidePanel = 'animate')}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'animate'}
           class:text-gray-700={activeSidePanel === 'animate'}
           class:text-gray-600={activeSidePanel !== 'animate'}
@@ -5662,7 +5686,7 @@
         </button>
         <button
           onclick={() => (settingsOpen = true)}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
           title={$_('toolbar.settings')}
         >
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5871,10 +5895,11 @@
       </div>
       <!-- Unified side panel with tab bar -->
       <div
-        class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
+        class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative shrink-0"
         style="width: {stackPanelWidth}px;"
       >
         <!-- Resize handle on the left edge -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
           class="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400 active:bg-indigo-500 z-10"
           onmousedown={startStackPanelResize}

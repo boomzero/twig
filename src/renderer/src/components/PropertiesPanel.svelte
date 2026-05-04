@@ -17,7 +17,8 @@
     ArrowShape,
     SlideBackground,
     ElementAnimations,
-    SlideTransition
+    SlideTransition,
+    TwigElement
   } from '../lib/types'
   import { DEFAULT_ARROW_SHAPE } from '../lib/types'
   import { _ } from 'svelte-i18n'
@@ -70,7 +71,7 @@
   // Font dropdown click-outside handling (ref lives here since dropdown renders here)
   let fontDropdownRef: HTMLDivElement | null = $state(null)
   $effect(() => {
-    if (!richText?.fontDropdownOpen) return
+    if (!richText?.fontDropdownOpen) return undefined
     function onMousedown(e: MouseEvent): void {
       if (fontDropdownRef && !fontDropdownRef.contains(e.target as Node)) {
         richText?.closeFontDropdown()
@@ -109,9 +110,88 @@
     onPropertyChange?.()
   }
 
-  function updateFill(event: Event): void {
+  const DEFAULT_FILL_COLOR = '#FF6F61'
+  const DEFAULT_STROKE_COLOR = '#111827'
+  const DEFAULT_STROKE_WIDTH = 2
+  const MAX_STROKE_WIDTH = 64
+
+  function isShapeType(type: TwigElement['type']): boolean {
+    return (
+      type === 'rect' ||
+      type === 'ellipse' ||
+      type === 'triangle' ||
+      type === 'star' ||
+      type === 'arrow'
+    )
+  }
+
+  function realColor(value: string | undefined, fallback: string): string {
+    return value && value !== 'transparent' ? value : fallback
+  }
+
+  function isBorderTransparent(el: TwigElement): boolean {
+    return !el.stroke || el.stroke === 'transparent'
+  }
+
+  let lastFillColor = $state(DEFAULT_FILL_COLOR)
+  let lastStrokeColor = $state(DEFAULT_STROKE_COLOR)
+  let lastStyleSelectionId = $state<string | null>(null)
+
+  function updateFillColor(event: Event): void {
     if (!selectedObject || !beginPropertyMutation()) return
-    selectedObject.fill = (event.target as HTMLInputElement).value
+    const color = (event.target as HTMLInputElement).value
+    lastFillColor = color
+    selectedObject.fill = color
+    onPropertyChange?.()
+  }
+
+  function toggleFillTransparent(event: Event): void {
+    if (!selectedObject || !beginPropertyMutation()) return
+    const transparent = (event.target as HTMLInputElement).checked
+    if (transparent) {
+      if (selectedObject.fill && selectedObject.fill !== 'transparent') {
+        lastFillColor = selectedObject.fill
+      }
+      selectedObject.fill = 'transparent'
+    } else {
+      selectedObject.fill = lastFillColor || DEFAULT_FILL_COLOR
+    }
+    onPropertyChange?.()
+  }
+
+  function updateStrokeColor(event: Event): void {
+    if (!selectedObject || !beginPropertyMutation()) return
+    const color = (event.target as HTMLInputElement).value
+    lastStrokeColor = color
+    selectedObject.stroke = color
+    if (selectedObject.strokeWidth === undefined || selectedObject.strokeWidth === null) {
+      selectedObject.strokeWidth = DEFAULT_STROKE_WIDTH
+    }
+    onPropertyChange?.()
+  }
+
+  function toggleStrokeTransparent(event: Event): void {
+    if (!selectedObject || !beginPropertyMutation()) return
+    const transparent = (event.target as HTMLInputElement).checked
+    if (transparent) {
+      if (selectedObject.stroke && selectedObject.stroke !== 'transparent') {
+        lastStrokeColor = selectedObject.stroke
+      }
+      selectedObject.stroke = 'transparent'
+    } else {
+      selectedObject.stroke = lastStrokeColor || DEFAULT_STROKE_COLOR
+      if (selectedObject.strokeWidth === undefined || selectedObject.strokeWidth === null) {
+        selectedObject.strokeWidth = DEFAULT_STROKE_WIDTH
+      }
+    }
+    onPropertyChange?.()
+  }
+
+  function updateStrokeWidth(event: Event): void {
+    const value = (event.target as HTMLInputElement).valueAsNumber
+    if (!Number.isFinite(value)) return
+    if (!selectedObject || !beginPropertyMutation()) return
+    selectedObject.strokeWidth = Math.max(0, Math.min(MAX_STROKE_WIDTH, value))
     onPropertyChange?.()
   }
 
@@ -157,6 +237,25 @@
   const selectedObject = $derived(
     appState.currentSlide?.elements.find((el) => el.id === appState.selectedObjectId)
   )
+
+  $effect(() => {
+    if (!selectedObject) {
+      lastStyleSelectionId = null
+      return
+    }
+    if (selectedObject.id === lastStyleSelectionId) return
+    lastStyleSelectionId = selectedObject.id
+    if (selectedObject.fill && selectedObject.fill !== 'transparent') {
+      lastFillColor = selectedObject.fill
+    } else {
+      lastFillColor = DEFAULT_FILL_COLOR
+    }
+    if (selectedObject.stroke && selectedObject.stroke !== 'transparent') {
+      lastStrokeColor = selectedObject.stroke
+    } else {
+      lastStrokeColor = DEFAULT_STROKE_COLOR
+    }
+  })
 
   // Current background derived from slide state
   const currentBg = $derived(appState.currentSlide?.background)
@@ -292,6 +391,7 @@
               </svg>
             </button>
             {#if richText.fontDropdownOpen}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div
                 class="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg"
                 onkeydown={(e) => e.stopPropagation()}
@@ -395,20 +495,87 @@
           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
-      {#if selectedObject.type === 'rect' || selectedObject.type === 'ellipse' || selectedObject.type === 'triangle' || selectedObject.type === 'star' || selectedObject.type === 'arrow'}
-        <div>
-          <label for="fill" class="block text-sm font-medium text-gray-600"
-            >{$_('props.fill')}</label
-          >
-          <input
-            type="color"
-            id="fill"
-            value={selectedObject.fill}
-            disabled={appState.readOnly}
-            oninput={updateFill}
-            onblur={handleBlur}
-            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-          />
+      {#if isShapeType(selectedObject.type)}
+        <div class="pt-3 border-t border-gray-200 space-y-3">
+          <div>
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              {$_('props.fill')}
+            </p>
+            <div class="flex items-center gap-2">
+              <input
+                type="color"
+                id="fill"
+                value={realColor(selectedObject.fill, lastFillColor)}
+                disabled={appState.readOnly || selectedObject.fill === 'transparent'}
+                oninput={updateFillColor}
+                onblur={handleBlur}
+                class="h-8 w-10 rounded border border-gray-300 bg-white p-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={$_('props.fill')}
+              />
+              <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={selectedObject.fill === 'transparent'}
+                  disabled={appState.readOnly}
+                  onchange={toggleFillTransparent}
+                  onblur={handleBlur}
+                />
+                {$_('props.transparent')}
+              </label>
+              {#if selectedObject.fill === 'transparent'}
+                <span
+                  class="h-6 w-6 rounded border border-gray-300"
+                  style="background-color: #fff; background-image: linear-gradient(45deg, #d1d5db 25%, transparent 25%), linear-gradient(-45deg, #d1d5db 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d1d5db 75%), linear-gradient(-45deg, transparent 75%, #d1d5db 75%); background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0;"
+                  aria-hidden="true"
+                ></span>
+              {/if}
+            </div>
+          </div>
+
+          <div>
+            <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              {$_('props.border')}
+            </p>
+            <div class="space-y-2">
+              <div class="flex items-center gap-2">
+                <input
+                  type="color"
+                  id="stroke"
+                  value={realColor(selectedObject.stroke, lastStrokeColor)}
+                  disabled={appState.readOnly || isBorderTransparent(selectedObject)}
+                  oninput={updateStrokeColor}
+                  onblur={handleBlur}
+                  class="h-8 w-10 rounded border border-gray-300 bg-white p-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={$_('props.borderColor')}
+                />
+                <label class="flex items-center gap-1.5 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={isBorderTransparent(selectedObject)}
+                    disabled={appState.readOnly}
+                    onchange={toggleStrokeTransparent}
+                    onblur={handleBlur}
+                  />
+                  {$_('props.transparent')}
+                </label>
+              </div>
+              <label for="strokeWidth" class="block text-xs font-medium text-gray-500">
+                {$_('props.borderWidth')}
+              </label>
+              <input
+                type="number"
+                id="strokeWidth"
+                min="0"
+                max={MAX_STROKE_WIDTH}
+                step="1"
+                value={selectedObject.strokeWidth ?? 0}
+                disabled={appState.readOnly || isBorderTransparent(selectedObject)}
+                oninput={updateStrokeWidth}
+                onblur={handleBlur}
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100 disabled:text-gray-400"
+              />
+            </div>
+          </div>
         </div>
       {/if}
 
@@ -478,8 +645,11 @@
 
         <!-- Build In -->
         <div class="mb-2">
-          <label class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_in')}</label>
+          <label for="pp-anim-build-in" class="block text-xs font-medium text-gray-500 mb-1"
+            >{$_('anim.build_in')}</label
+          >
           <select
+            id="pp-anim-build-in"
             class="block w-full rounded border-gray-300 text-xs py-1"
             value={selectedObject.animations?.buildIn?.type ?? 'none'}
             onchange={(e) => {
@@ -547,7 +717,7 @@
         <!-- Actions (multiple) -->
         <div class="mb-2">
           <div class="flex items-center justify-between mb-1">
-            <label class="block text-xs font-medium text-gray-500">{$_('anim.actions')}</label>
+            <span class="block text-xs font-medium text-gray-500">{$_('anim.actions')}</span>
             <button
               class="text-xs text-indigo-600 hover:text-indigo-700"
               onclick={() => {
@@ -582,8 +752,11 @@
               </div>
               <div class="space-y-1">
                 <div class="flex gap-1 items-center">
-                  <label class="text-xs text-gray-400 w-8">{$_('anim.to_x')}</label>
+                  <label for="pp-action-{action.id}-x" class="text-xs text-gray-400 w-8"
+                    >{$_('anim.to_x')}</label
+                  >
                   <input
+                    id="pp-action-{action.id}-x"
                     type="number"
                     value={action.toX}
                     oninput={(e) => {
@@ -606,8 +779,11 @@
                   />
                 </div>
                 <div class="flex gap-1 items-center">
-                  <label class="text-xs text-gray-400 w-8">{$_('anim.to_y')}</label>
+                  <label for="pp-action-{action.id}-y" class="text-xs text-gray-400 w-8"
+                    >{$_('anim.to_y')}</label
+                  >
                   <input
+                    id="pp-action-{action.id}-y"
                     type="number"
                     value={action.toY}
                     oninput={(e) => {
@@ -678,8 +854,11 @@
 
         <!-- Build Out -->
         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_out')}</label>
+          <label for="pp-anim-build-out" class="block text-xs font-medium text-gray-500 mb-1"
+            >{$_('anim.build_out')}</label
+          >
           <select
+            id="pp-anim-build-out"
             class="block w-full rounded border-gray-300 text-xs py-1"
             value={selectedObject.animations?.buildOut?.type ?? 'none'}
             onchange={(e) => {
@@ -773,8 +952,11 @@
 
       {#if activeTab === 'solid'}
         <div>
-          <label class="block text-sm font-medium text-gray-600">{$_('bg.color')}</label>
+          <label for="pp-bg-color" class="block text-sm font-medium text-gray-600"
+            >{$_('bg.color')}</label
+          >
           <input
+            id="pp-bg-color"
             type="color"
             value={currentBg?.type === 'solid' ? currentBg.color : '#ffffff'}
             oninput={(e) => emitSolid((e.target as HTMLInputElement).value)}
@@ -784,8 +966,11 @@
       {:else if activeTab === 'gradient'}
         <div class="space-y-2">
           <div>
-            <label class="block text-sm font-medium text-gray-600">{$_('bg.start_color')}</label>
+            <label for="pp-bg-start-color" class="block text-sm font-medium text-gray-600"
+              >{$_('bg.start_color')}</label
+            >
             <input
+              id="pp-bg-start-color"
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5'}
               oninput={(e) =>
@@ -798,8 +983,11 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600">{$_('bg.end_color')}</label>
+            <label for="pp-bg-end-color" class="block text-sm font-medium text-gray-600"
+              >{$_('bg.end_color')}</label
+            >
             <input
+              id="pp-bg-end-color"
               type="color"
               value={currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'}
               oninput={(e) =>
@@ -812,7 +1000,7 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-600">{$_('bg.angle')}</label>
+            <span class="block text-sm font-medium text-gray-600">{$_('bg.angle')}</span>
             <div class="flex gap-1 mt-1 flex-wrap">
               {#each [[0, '→'], [90, '↓'], [45, '↘'], [135, '↙'], [180, '←'], [270, '↑']] as [deg, label] (deg)}
                 <button
@@ -839,7 +1027,7 @@
             </div>
             <p class="text-xs text-gray-400 truncate">{currentBg.filename ?? 'image'}</p>
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">{$_('bg.fit')}</label>
+              <span class="block text-xs font-medium text-gray-500 mb-1">{$_('bg.fit')}</span>
               <div class="flex rounded-md border border-gray-300 overflow-hidden text-xs">
                 {#each [['stretch', $_('bg.stretch')], ['contain', $_('bg.contain')], ['cover', $_('bg.cover')]] as [val, label] (val)}
                   <button
@@ -907,12 +1095,16 @@
         </div>
         {#if slideTransition && slideTransition.type !== 'none'}
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">
+            <label
+              for="pp-transition-duration"
+              class="block text-xs font-medium text-gray-500 mb-1"
+            >
               {$_('transition.duration', {
                 values: { duration: slideTransition.duration.toFixed(2) }
               })}
             </label>
             <input
+              id="pp-transition-duration"
               type="range"
               min="0.1"
               max="2.0"

@@ -1,6 +1,6 @@
 # .tb File Format
 
-> This document describes the `.tb` format as implemented in **twig 1.1.0** (format version **v1**).
+> This document describes the `.tb` format as implemented in **twig 1.2.0** (format version **v2**).
 
 A `.tb` file is a standard SQLite database that stores a twig presentation. You can create, read, or modify one with any SQLite tooling — no proprietary library required.
 
@@ -58,7 +58,9 @@ CREATE TABLE elements (
   width       REAL NOT NULL,
   height      REAL NOT NULL,
   angle       REAL NOT NULL,         -- rotation in degrees, 0 = upright
-  fill        TEXT,                  -- hex '#rrggbb' or 'rgba(r,g,b,a)'
+  fill        TEXT,                  -- hex '#rrggbb', 'rgba(r,g,b,a)', or 'transparent' for shapes
+  stroke      TEXT,                  -- shape border color; NULL or 'transparent' = no border
+  stroke_width REAL,                 -- shape border width in canvas px; NULL or 0 = no border
   text        TEXT,                  -- content (text elements only)
   fontSize    REAL,                  -- px (text elements only)
   fontFamily  TEXT,                  -- family name (text elements only)
@@ -136,13 +138,17 @@ All element types share the **common fields**: `id`, `slide_id`, `type`, `x`, `y
 
 | `type`     | Required additional fields       | Optional fields                                                                     |
 | ---------- | -------------------------------- | ----------------------------------------------------------------------------------- |
-| `rect`     | —                                | `fill`, `animations`                                                                |
-| `ellipse`  | —                                | `fill`, `animations`                                                                |
-| `triangle` | —                                | `fill`, `animations`                                                                |
-| `star`     | —                                | `fill`, `animations`                                                                |
-| `arrow`    | —                                | `fill`, `animations`, `shape_params` (see §4.6)                                     |
+| `rect`     | —                                | `fill`, `stroke`, `strokeWidth`, `animations`                                       |
+| `ellipse`  | —                                | `fill`, `stroke`, `strokeWidth`, `animations`                                       |
+| `triangle` | —                                | `fill`, `stroke`, `strokeWidth`, `animations`                                       |
+| `star`     | —                                | `fill`, `stroke`, `strokeWidth`, `animations`                                       |
+| `arrow`    | —                                | `fill`, `stroke`, `strokeWidth`, `animations`, `shape_params` (see §4.6)            |
 | `text`     | `text`, `fontSize`, `fontFamily` | `fill` (text color), `fontWeight`, `fontStyle`, `underline`, `styles`, `animations` |
 | `image`    | `src`                            | `filename`, `animations`                                                            |
+
+For shape elements, `fill` and `stroke` may be the literal CSS keyword `"transparent"`.
+In JavaScript/clipboard payloads the border width field is `strokeWidth`; in SQL it is
+stored as `stroke_width`.
 
 **Default values used by the editor when adding elements:**
 
@@ -408,6 +414,8 @@ Each element in `elements` is a plain JavaScript object with these fields:
   "height": 100,
   "angle": 0,
   "fill": "#FF6F61",
+  "stroke": "#111827",
+  "strokeWidth": 2,
   "zIndex": 2,
 
   // text elements only
@@ -437,6 +445,8 @@ When twig reads from the clipboard:
    - `type` is not one of the seven valid values
    - `id` is not a string
    - `x`, `y`, `width`, `height`, `angle`, or `zIndex` is not a number
+   - optional `stroke` is present but is not a string
+   - optional `strokeWidth` is present but is not a number
    - `type === "image"` but `src` is not a string
 4. Each accepted element gets a **fresh ID** (`<original-type-prefix>_<new-uuid>`) and its position is offset by `pasteCount × 20 px` to avoid stacking.
 5. `animations` is stripped to `undefined` — pasted copies start with no animation config.
@@ -573,7 +583,7 @@ from datetime import datetime, timezone
 
 # Format identity (see §11). 0x74776967 is ASCII for "twig".
 TWIG_APPLICATION_ID = 0x74776967
-CURRENT_FORMAT_VERSION = 1
+CURRENT_FORMAT_VERSION = 2
 APP_VERSION = "external-script-1.0"  # whatever your tool calls itself
 
 def new_id():
@@ -607,6 +617,8 @@ def create_presentation(path: str) -> None:
             width REAL NOT NULL, height REAL NOT NULL,
             angle REAL NOT NULL,
             fill TEXT,
+            stroke TEXT,
+            stroke_width REAL,
             text TEXT, fontSize REAL, fontFamily TEXT,
             fontWeight TEXT, fontStyle TEXT, underline INTEGER,
             styles TEXT,
@@ -756,7 +768,7 @@ if __name__ == "__main__":
 
 Use this list to validate a `.tb` file before opening it in twig.
 
-- [ ] **Format identity pragmas set**: `PRAGMA application_id = 0x74776967` and `PRAGMA user_version = 1` (see §11)
+- [ ] **Format identity pragmas set**: `PRAGMA application_id = 0x74776967` and `PRAGMA user_version = 2` (see §11)
 - [ ] **Reserved `settings` rows present**: `format_version`, `compat_notes`, `created_with_app_version`, `created_at`, `last_written_with_app_version` (see §11)
 - [ ] **All four tables exist**: `slides`, `elements`, `fonts`, `settings`
 - [ ] **`slide_order`** is 0-based, sequential, no gaps, no duplicates
@@ -805,7 +817,7 @@ The same metadata is also mirrored as rows in the `settings` table so tools with
 
 **Reserved means reserved.** Writers must not store user content under these keys. Readers detecting "is this an untouched blank presentation?" must ignore these five keys and count only other rows.
 
-**Legacy files (written by twig 1.0.x, before format versioning existed):** on first open by a 1.1.0+ twig, the file is upgraded in place, pragmas are stamped, and the five rows are written. For such files `created_with_app_version` records **the twig version that first stamped the file** (not the original creator) and `created_at` records **the upgrade time**. Pre-versioning files carry no provenance to recover — this is the only faithful behaviour.
+**Legacy files (written by twig 1.0.x, before format versioning existed):** on first open by a versioned twig build, the file is upgraded in place, pragmas are stamped, and the five rows are written. For such files `created_with_app_version` records **the twig version that first stamped the file** (not the original creator) and `created_at` records **the upgrade time**. Pre-versioning files carry no provenance to recover — this is the only faithful behaviour.
 
 Opening a file read-write may also refresh missing or outdated metadata rows during initialization, even before the user edits slide content. Readers that only probe or open a too-new file read-only must not perform this refresh.
 
@@ -884,6 +896,13 @@ The stamp operation itself is idempotent: running it twice in a row produces the
 ---
 
 ## 12. Format changelog
+
+### v2 — 2026-04-30 (targeted for twig 1.2.0)
+
+- Added shape-only `stroke` and `stroke_width` columns to `elements`.
+- Shape `fill` and `stroke` may use the literal CSS keyword `"transparent"`.
+- Clipboard element payloads may include `stroke` and `strokeWidth`.
+- Older v1 readers should treat v2 files as too new rather than silently rendering bordered shapes without borders.
 
 ### v1 — 2026-04-24 (shipped in twig 1.1.0)
 

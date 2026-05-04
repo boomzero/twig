@@ -4,7 +4,6 @@
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.svelte",
-    "src/preload/*.d.ts",
     "src/shared/**/*"
   ],
   "compilerOptions": {
@@ -13,6 +12,10 @@
     "strict": false,
     "allowJs": true,
     "checkJs": true,
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": ["src/renderer/src/*"]
+    }
   }
 }

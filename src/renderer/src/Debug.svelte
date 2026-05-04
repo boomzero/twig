@@ -25,7 +25,7 @@
     } | null
   }
 
-  let state = $state<AppState>({
+  let debugState: AppState = $state({
     currentFilePath: null,
     slideIds: [],
     currentSlideIndex: -1,
@@ -38,7 +38,7 @@
     currentSlide: null
   })
 
-  let lastUpdate = $state<string>('')
+  let lastUpdate: string = $state('')
   let updateCount = $state(0)
   let isLoading = $state(true)
 
@@ -54,7 +54,7 @@
   // Calculate approximate memory size of state
   function getStateSize(): string {
     try {
-      const stateString = JSON.stringify(state)
+      const stateString = JSON.stringify(debugState)
       return formatBytes(new Blob([stateString]).size)
     } catch {
       return 'Unknown'
@@ -64,7 +64,7 @@
   // Copy state to clipboard
   async function copyStateToClipboard(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(state, null, 2))
+      await navigator.clipboard.writeText(JSON.stringify(debugState, null, 2))
       alert('State copied to clipboard!')
     } catch (error) {
       console.error('Failed to copy state:', error)
@@ -75,17 +75,17 @@
   // Log full state to console
   function logFullState(): void {
     console.group('🔍 twig Application State')
-    console.log('State:', state)
+    console.log('State:', debugState)
     console.log('Last Update:', lastUpdate)
     console.log('Update Count:', updateCount)
-    console.log('Full State JSON:', JSON.stringify(state, null, 2))
+    console.log('Full State JSON:', JSON.stringify(debugState, null, 2))
     console.groupEnd()
     alert('State logged to debug window console! Open DevTools (right-click → Inspect) to view.')
   }
 
   // Show state as JSON in a new window
   function showStateJson(): void {
-    const json = JSON.stringify(state, null, 2)
+    const json = JSON.stringify(debugState, null, 2)
     const win = window.open('', 'State JSON', 'width=800,height=600')
     if (win) {
       win.document.write(`
@@ -147,7 +147,7 @@
     // Listen for state updates from the main window
     if (window.api?.debug?.onStateUpdate) {
       window.api.debug.onStateUpdate((newState: AppState) => {
-        state = newState
+        debugState = newState
         lastUpdate = new Date().toLocaleTimeString()
         updateCount++
       })
@@ -213,15 +213,15 @@
               <span class="text-gray-600">{$_('debug.current_file')}</span>
               <span
                 class="text-gray-900 truncate ml-4 max-w-md"
-                title={state.currentFilePath || $_('debug.unsaved')}
+                title={debugState.currentFilePath || $_('debug.unsaved')}
               >
-                {state.currentFilePath || $_('debug.unsaved')}
+                {debugState.currentFilePath || $_('debug.unsaved')}
               </span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.persistence_mode')}</span>
               <span class="text-gray-900">
-                {state.isTempFile ? $_('debug.temp_db') : $_('debug.saved_to_disk')}
+                {debugState.isTempFile ? $_('debug.temp_db') : $_('debug.saved_to_disk')}
               </span>
             </div>
           </div>
@@ -235,26 +235,26 @@
           <div class="bg-gray-50 rounded-lg p-4 space-y-2 text-sm font-mono">
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.total_slides')}</span>
-              <span class="text-gray-900 font-bold">{state.slideIds.length}</span>
+              <span class="text-gray-900 font-bold">{debugState.slideIds.length}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.current_index')}</span>
               <span class="text-gray-900"
-                >{state.currentSlideIndex + 1} of {state.slideIds.length}</span
+                >{debugState.currentSlideIndex + 1} of {debugState.slideIds.length}</span
               >
             </div>
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.current_id')}</span>
               <span
                 class="text-gray-900 truncate ml-4 max-w-md"
-                title={state.currentSlideId || $_('debug.none')}
+                title={debugState.currentSlideId || $_('debug.none')}
               >
-                {state.currentSlideId || $_('debug.none')}
+                {debugState.currentSlideId || $_('debug.none')}
               </span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.elements_on_slide')}</span>
-              <span class="text-gray-900 font-bold">{state.currentSlideElementCount}</span>
+              <span class="text-gray-900 font-bold">{debugState.currentSlideElementCount}</span>
             </div>
           </div>
         </section>
@@ -268,7 +268,7 @@
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.selected_id')}</span>
               <span class="text-gray-900">
-                {state.selectedObjectId || $_('debug.none')}
+                {debugState.selectedObjectId || $_('debug.none')}
               </span>
             </div>
           </div>
@@ -283,11 +283,11 @@
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.is_loading')}</span>
               <span
-                class:text-yellow-600={state.isLoadingSlide}
-                class:text-gray-900={!state.isLoadingSlide}
+                class:text-yellow-600={debugState.isLoadingSlide}
+                class:text-gray-900={!debugState.isLoadingSlide}
                 class="font-bold"
               >
-                {state.isLoadingSlide ? $_('debug.yes') : $_('debug.no')}
+                {debugState.isLoadingSlide ? $_('debug.yes') : $_('debug.no')}
               </span>
             </div>
           </div>
@@ -302,11 +302,11 @@
             <div class="flex justify-between">
               <span class="text-gray-600">{$_('debug.is_presenting')}</span>
               <span
-                class:text-green-600={state.isPresentingMode}
-                class:text-gray-900={!state.isPresentingMode}
+                class:text-green-600={debugState.isPresentingMode}
+                class:text-gray-900={!debugState.isPresentingMode}
                 class="font-bold"
               >
-                {state.isPresentingMode ? $_('debug.yes') : $_('debug.no')}
+                {debugState.isPresentingMode ? $_('debug.yes') : $_('debug.no')}
               </span>
             </div>
           </div>
@@ -326,17 +326,17 @@
         </section>
 
         <!-- Slide IDs List -->
-        {#if state.slideIds.length > 0}
+        {#if debugState.slideIds.length > 0}
           <section>
             <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
               {$_('debug.all_slide_ids')}
             </h2>
             <div class="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto">
               <div class="text-xs font-mono space-y-1">
-                {#each state.slideIds as slideId, index (slideId)}
+                {#each debugState.slideIds as slideId, index (slideId)}
                   <div
-                    class:text-indigo-600={slideId === state.currentSlideId}
-                    class:font-bold={slideId === state.currentSlideId}
+                    class:text-indigo-600={slideId === debugState.currentSlideId}
+                    class:font-bold={slideId === debugState.currentSlideId}
                   >
                     {index + 1}. {slideId}
                   </div>
@@ -347,7 +347,7 @@
         {/if}
 
         <!-- Current Slide Details -->
-        {#if state.currentSlide}
+        {#if debugState.currentSlide}
           <section>
             <h2 class="text-lg font-semibold text-gray-800 mb-3 border-b pb-2">
               {$_('debug.current_slide_details')}
@@ -356,25 +356,27 @@
               <div class="text-sm font-mono space-y-1 mb-3">
                 <div class="flex justify-between">
                   <span class="text-gray-600">{$_('debug.slide_id')}</span>
-                  <span class="text-gray-900 font-bold">{state.currentSlide.id}</span>
+                  <span class="text-gray-900 font-bold">{debugState.currentSlide.id}</span>
                 </div>
                 <div class="flex justify-between">
                   <span class="text-gray-600">{$_('debug.elements')}</span>
-                  <span class="text-gray-900 font-bold">{state.currentSlide.elements.length}</span>
+                  <span class="text-gray-900 font-bold"
+                    >{debugState.currentSlide.elements.length}</span
+                  >
                 </div>
               </div>
 
-              {#if state.currentSlide.elements.length > 0}
+              {#if debugState.currentSlide.elements.length > 0}
                 <div class="border-t border-gray-300 pt-3 mt-3">
                   <h3 class="text-xs font-semibold text-gray-700 mb-2 uppercase">
                     {$_('debug.elements_section')}
                   </h3>
                   <div class="space-y-4 max-h-96 overflow-y-auto">
-                    {#each state.currentSlide.elements as element, index (element.id)}
+                    {#each debugState.currentSlide.elements as element, index (element.id)}
                       <div
                         class="bg-white rounded-md p-3 border-l-4"
-                        class:border-indigo-500={element.id === state.selectedObjectId}
-                        class:border-gray-300={element.id !== state.selectedObjectId}
+                        class:border-indigo-500={element.id === debugState.selectedObjectId}
+                        class:border-gray-300={element.id !== debugState.selectedObjectId}
                       >
                         <div class="flex items-center justify-between mb-2">
                           <div class="flex items-center gap-2">
@@ -390,7 +392,7 @@
                             >
                               {element.type.toUpperCase()}
                             </span>
-                            {#if element.id === state.selectedObjectId}
+                            {#if element.id === debugState.selectedObjectId}
                               <span
                                 class="px-2 py-0.5 text-xs font-semibold rounded bg-indigo-100 text-indigo-800"
                               >
@@ -437,6 +439,22 @@
                                 ></span>
                               </div>
                             {/if}
+                            {#if element.stroke}
+                              <div class="flex items-center gap-1">
+                                <span class="text-gray-600">Stroke:</span>
+                                <span class="text-gray-900">{element.stroke}</span>
+                                <span
+                                  class="inline-block w-3 h-3 border border-gray-300 rounded"
+                                  style="background-color: {element.stroke}"
+                                ></span>
+                              </div>
+                            {/if}
+                            {#if element.strokeWidth !== undefined}
+                              <div>
+                                <span class="text-gray-600">Stroke Width:</span>
+                                <span class="text-gray-900">{element.strokeWidth}</span>
+                              </div>
+                            {/if}
                           </div>
 
                           <!-- Type-specific properties -->
@@ -459,7 +477,7 @@
                                   <div class="col-span-2 mt-1">
                                     <span class="text-gray-600 block mb-1">Text:</span>
                                     <div
-                                      class="bg-gray-50 p-2 rounded text-xs break-words max-h-20 overflow-y-auto"
+                                      class="bg-gray-50 p-2 rounded text-xs wrap-break-word max-h-20 overflow-y-auto"
                                     >
                                       {element.text}
                                     </div>

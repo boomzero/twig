@@ -15,7 +15,7 @@
   let { open, fileVersion, currentVersion, compatNotesRaw, onOpenReadOnly, onCancel }: Props =
     $props()
 
-  let dialogEl: HTMLDivElement | null = null
+  let dialogEl: HTMLDivElement | null = $state(null)
   let previousFocusedElement: HTMLElement | null = null
 
   const resolvedCompatNotes = $derived(resolveCompatNotes(compatNotesRaw, $locale ?? 'en'))
@@ -59,7 +59,7 @@
   }
 
   $effect(() => {
-    if (!open) return
+    if (!open) return undefined
     previousFocusedElement =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     void tick().then(() => {
@@ -83,12 +83,13 @@
     }}
     onkeydown={onKeydown}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-label={$_('open.too_new_title')}
   >
     <div
       bind:this={dialogEl}
-      class="w-[520px] max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
+      class="w-130 max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
       tabindex="-1"
     >
       <div class="border-b border-amber-100 px-6 py-5">
@@ -118,7 +119,7 @@
             <div class="mb-1 text-xs font-medium uppercase tracking-wide text-amber-700">
               {$_('readonly.compat_notes_label')}
             </div>
-            <div class="whitespace-pre-wrap break-words">{resolvedCompatNotes}</div>
+            <div class="whitespace-pre-wrap wrap-break-word">{resolvedCompatNotes}</div>
           </div>
         {/if}
       </div>

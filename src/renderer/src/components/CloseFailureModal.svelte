@@ -10,7 +10,7 @@
   }
 
   let { open, errorMessage, onCloseAnyway, onCancel }: Props = $props()
-  let dialogEl: HTMLDivElement | null = null
+  let dialogEl: HTMLDivElement | null = $state(null)
   let previousFocusedElement: HTMLElement | null = null
 
   function getFocusableElements(): HTMLElement[] {
@@ -67,7 +67,7 @@
   }
 
   $effect(() => {
-    if (!open) return
+    if (!open) return undefined
 
     previousFocusedElement =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -97,12 +97,13 @@
     }}
     onkeydown={onKeydown}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-label={$_('close_failure.title')}
   >
     <div
       bind:this={dialogEl}
-      class="w-[520px] max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
+      class="w-130 max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
       tabindex="-1"
     >
       <div class="border-b border-red-100 px-6 py-5">

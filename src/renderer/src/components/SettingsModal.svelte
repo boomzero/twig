@@ -130,10 +130,11 @@
     }}
     onkeydown={onKeydown}
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     aria-label={$_('settings.title')}
   >
-    <div class="bg-white rounded-xl shadow-2xl w-[420px] max-w-[calc(100vw-2rem)] flex flex-col">
+    <div class="bg-white rounded-xl shadow-2xl w-105 max-w-[calc(100vw-2rem)] flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
         <h2 class="text-base font-semibold text-gray-900">{$_('settings.title')}</h2>

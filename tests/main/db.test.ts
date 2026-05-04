@@ -114,6 +114,11 @@ function expectStoredSlide(actual: Slide | null, expected: Slide): void {
   expect(actual?.elements).toHaveLength(expected.elements.length)
 }
 
+function getElementColumnNames(instance: Database.Database): Set<string> {
+  const cols = instance.prepare("PRAGMA table_info('elements')").all() as { name: string }[]
+  return new Set(cols.map((c) => c.name))
+}
+
 describe('src/main/db.ts', () => {
   beforeEach(() => {
     db = createDb()
@@ -136,8 +141,53 @@ describe('src/main/db.ts', () => {
     expectStoredSlide(getSlide(db, slide.id), slide)
   })
 
+  it('creates fresh databases with v2 stroke columns', () => {
+    const colNames = getElementColumnNames(db)
+
+    expect(colNames.has('stroke')).toBe(true)
+    expect(colNames.has('stroke_width')).toBe(true)
+  })
+
   it('round-trips persisted slide fields through saveSlide and getSlide', () => {
     const slide = makeSlide()
+
+    saveSlide(db, slide)
+
+    expectStoredSlide(getSlide(db, slide.id), slide)
+  })
+
+  it('round-trips transparent shape fill and border fields', () => {
+    const slide = makeSlide({
+      elements: [
+        {
+          id: 'shape-transparent',
+          type: 'rect',
+          x: 80,
+          y: 90,
+          width: 120,
+          height: 70,
+          angle: 0,
+          fill: 'transparent',
+          stroke: 'transparent',
+          strokeWidth: 4,
+          zIndex: 0
+        },
+        {
+          id: 'shape-stroked',
+          type: 'ellipse',
+          x: 240,
+          y: 180,
+          width: 160,
+          height: 100,
+          angle: 10,
+          fill: '#abcdef',
+          stroke: '#123456',
+          strokeWidth: 6,
+          zIndex: 1
+        }
+      ],
+      animationOrder: []
+    })
 
     saveSlide(db, slide)
 
@@ -226,6 +276,8 @@ describe('src/main/db.ts', () => {
           height: 80,
           angle: 12,
           fill: '#778899',
+          stroke: '#223344',
+          strokeWidth: 5,
           zIndex: 1,
           arrowShape: {
             headWidthRatio: 0.9,
@@ -546,7 +598,7 @@ describe('format versioning', () => {
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
 
     expect(map.format_version).toBe(String(CURRENT_FORMAT_VERSION))
-    expect(map.compat_notes).toBe('')
+    expect(map.compat_notes).toContain('format v2')
     expect(map.created_with_app_version).toBe(TEST_APP_VERSION)
     expect(map.last_written_with_app_version).toBe(TEST_APP_VERSION)
     expect(map.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
@@ -578,7 +630,7 @@ describe('format versioning', () => {
     expect(map.created_with_app_version).toBe(firstCreatedWith)
     expect(map.created_at).toBe(firstCreatedAt)
     expect(map.last_written_with_app_version).toBe('1.3.0')
-    expect(map.compat_notes).toBe('')
+    expect(map.compat_notes).toContain('format v2')
   })
 
   it('skips same-value pragma writes on repeated stamps', () => {
@@ -629,12 +681,13 @@ describe('format versioning', () => {
     initializeDatabase(instance, TEST_APP_VERSION)
 
     // Missing columns added by migrations.
-    const cols = instance.prepare("PRAGMA table_info('elements')").all() as { name: string }[]
-    const colNames = new Set(cols.map((c) => c.name))
+    const colNames = getElementColumnNames(instance)
     expect(colNames.has('shape_params')).toBe(true)
     expect(colNames.has('fontWeight')).toBe(true)
     expect(colNames.has('fontStyle')).toBe(true)
     expect(colNames.has('underline')).toBe(true)
+    expect(colNames.has('stroke')).toBe(true)
+    expect(colNames.has('stroke_width')).toBe(true)
 
     // Pragmas stamped to current.
     expect(instance.pragma('application_id', { simple: true })).toBe(TWIG_APP_ID)
@@ -647,6 +700,74 @@ describe('format versioning', () => {
       }
     ).value
     expect(Date.parse(createdAt)).toBeGreaterThanOrEqual(before - 1)
+  })
+
+  it('upgrades stamped v1 databases with missing v2 stroke columns', () => {
+    instance.exec(`
+      CREATE TABLE slides (
+        id TEXT PRIMARY KEY,
+        slide_order INTEGER,
+        thumbnail TEXT,
+        background TEXT,
+        animation_order TEXT,
+        transition TEXT
+      );
+      CREATE TABLE elements (
+        id TEXT PRIMARY KEY,
+        slide_id TEXT,
+        type TEXT,
+        x REAL, y REAL, width REAL, height REAL, angle REAL,
+        fill TEXT, text TEXT, fontSize REAL, fontFamily TEXT,
+        fontWeight TEXT, fontStyle TEXT, underline INTEGER,
+        styles TEXT, src TEXT, filename TEXT, z_index INTEGER DEFAULT 0, animations TEXT,
+        shape_params TEXT,
+        FOREIGN KEY (slide_id) REFERENCES slides(id) ON DELETE CASCADE
+      );
+      CREATE TABLE fonts (id TEXT PRIMARY KEY, fontFamily TEXT, fontData BLOB, format TEXT, variant TEXT);
+      CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      INSERT INTO slides (id, slide_order, animation_order) VALUES ('slide-v1', 0, '[]');
+      INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, z_index)
+      VALUES ('rect-v1', 'slide-v1', 'rect', 10, 20, 30, 40, 0, '#112233', 0);
+    `)
+    instance.pragma(`application_id = ${TWIG_APP_ID}`)
+    instance.pragma('user_version = 1')
+
+    expect(detectFormat(instance)).toEqual({ status: 'older', fileVersion: 1 })
+
+    initializeDatabase(instance, TEST_APP_VERSION)
+
+    const colNames = getElementColumnNames(instance)
+    expect(colNames.has('stroke')).toBe(true)
+    expect(colNames.has('stroke_width')).toBe(true)
+
+    const legacySlide = getSlide(instance, 'slide-v1')
+    expect(legacySlide?.elements[0].stroke).toBeUndefined()
+    expect(legacySlide?.elements[0].strokeWidth).toBeUndefined()
+
+    const updatedSlide: Slide = {
+      id: 'slide-v1',
+      elements: [
+        ...(legacySlide?.elements ?? []),
+        {
+          id: 'ellipse-v2',
+          type: 'ellipse',
+          x: 100,
+          y: 120,
+          width: 80,
+          height: 60,
+          angle: 5,
+          fill: 'transparent',
+          stroke: '#abcdef',
+          strokeWidth: 3,
+          zIndex: 1
+        }
+      ],
+      animationOrder: []
+    }
+
+    saveSlide(instance, updatedSlide)
+
+    expectStoredSlide(getSlide(instance, 'slide-v1'), updatedSlide)
   })
 
   it('detects fresh / legacy / current / tooNew / notTwig correctly', () => {

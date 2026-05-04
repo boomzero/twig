@@ -209,7 +209,7 @@
             ></div>
           {/if}
           <!-- Type icon -->
-          <span class="text-xs w-5 text-center text-gray-400 flex-shrink-0 font-mono">
+          <span class="text-xs w-5 text-center text-gray-400 shrink-0 font-mono">
             {getIcon(el)}
           </span>
 
@@ -224,7 +224,7 @@
           </span>
 
           <!-- Reorder buttons -->
-          <div class="flex gap-0.5 flex-shrink-0">
+          <div class="flex gap-0.5 shrink-0">
             <!-- Bring to Front -->
             <button
               onclick={(e) => {

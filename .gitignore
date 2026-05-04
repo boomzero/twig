@@ -16,3 +16,16 @@ logs/
 build/twig.provisionprofile
 build/twig_dev.provisionprofile
 *.exe
+*.tsbuildinfo
+
+# tsc --build composite output for the node project (preload/index.d.ts is hand-written and tracked)
+electron.vite.config.js
+electron.vite.config.d.ts
+src/main/*.js
+src/main/*.d.ts
+src/preload/*.js
+src/preload/*.d.ts
+src/shared/*.js
+src/shared/*.d.ts
+src/renderer/src/lib/types.js
+src/renderer/src/lib/types.d.ts

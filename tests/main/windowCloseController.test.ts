@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest'
 import {
   CLOSE_READY_CHANNEL,
   CLOSE_REQUEST_CHANNEL,
@@ -36,7 +36,7 @@ type WindowCloseHarness = {
   setIsQuitting: ReturnType<typeof vi.fn>
   quitApp: ReturnType<typeof vi.fn>
   controller: ReturnType<typeof createWindowCloseController>
-  event: { preventDefault: ReturnType<typeof vi.fn> }
+  event: { preventDefault: Mock<() => void> }
   signalRendererReady: () => void
   getIsQuitting: () => boolean
 }
@@ -59,7 +59,7 @@ function createHarness(initiallyQuitting = false): WindowCloseHarness {
     quitApp,
     logger
   })
-  const event = { preventDefault: vi.fn() }
+  const event = { preventDefault: vi.fn<() => void>() }
 
   return {
     window,

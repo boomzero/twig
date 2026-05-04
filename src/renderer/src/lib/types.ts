@@ -31,8 +31,14 @@ export interface TwigElement {
   /** Rotation angle in degrees */
   angle: number
 
-  /** Fill color (hex or rgba string) */
+  /** Fill color (hex, rgba string, or 'transparent' for shapes) */
   fill?: string
+
+  /** Border color. Shape elements only. 'transparent' or undefined = no border. */
+  stroke?: string
+
+  /** Border width in canvas pixels. Shape elements only. 0 or undefined = no border. */
+  strokeWidth?: number
 
   /** Text content (only for text elements) */
   text?: string

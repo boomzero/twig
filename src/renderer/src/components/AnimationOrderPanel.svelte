@@ -170,17 +170,13 @@
             ></div>
           {/if}
           <!-- Drag handle -->
-          <span class="text-gray-300 cursor-grab active:cursor-grabbing flex-shrink-0 text-xs"
-            >⠿</span
-          >
+          <span class="text-gray-300 cursor-grab active:cursor-grabbing shrink-0 text-xs">⠿</span>
 
           <!-- Step number -->
-          <span class="text-xs text-gray-400 w-4 flex-shrink-0 font-mono">{i + 1}</span>
+          <span class="text-xs text-gray-400 w-4 shrink-0 font-mono">{i + 1}</span>
 
           <!-- Category badge -->
-          <span
-            class="text-xs px-1.5 py-0.5 rounded border font-medium flex-shrink-0 {badge.classes}"
-          >
+          <span class="text-xs px-1.5 py-0.5 rounded border font-medium shrink-0 {badge.classes}">
             {badge.label}
           </span>
 
@@ -193,7 +189,7 @@
           </span>
 
           <!-- Animation type -->
-          <span class="text-xs text-gray-400 flex-shrink-0">
+          <span class="text-xs text-gray-400 shrink-0">
             {getAnimationTypeLabel(step)}
           </span>
 
@@ -201,7 +197,7 @@
           <button
             onclick={() => onRemoveStep?.(step)}
             disabled={appState.readOnly}
-            class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-300"
+            class="shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-25 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-300"
             aria-label={$_('anim_panel.remove_step.title')}
             title={$_('anim_panel.remove_step.title')}
           >

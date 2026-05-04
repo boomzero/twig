@@ -19,13 +19,12 @@ export const TWIG_APP_ID = 0x74776967
  * to how slides/elements/animations/etc. are represented. See TWIG_SPEC.md §12
  * for the changelog.
  */
-export const CURRENT_FORMAT_VERSION = 1
+export const CURRENT_FORMAT_VERSION = 2
 
 /**
  * String written to `settings.compat_notes` on every save. Read verbatim by
  * older twig versions when they encounter a file whose `user_version` exceeds
- * their supported format. v1 is the earliest versioned format, so there is
- * nothing an older version needs to be warned about — the string is empty.
+ * their supported format.
  *
  * Writers may store either:
  *   - a plain string (displayed as-is), or
@@ -34,7 +33,8 @@ export const CURRENT_FORMAT_VERSION = 1
  * Readers use `resolveCompatNotes(raw, locale)` to pick the best match with
  * `_default` -> `en` -> any-key fallback.
  */
-export const CURRENT_COMPAT_NOTES = ''
+export const CURRENT_COMPAT_NOTES =
+  'This file uses twig format v2, which adds transparent shape fills and shape borders. Older versions may not render those shapes accurately.'
 
 /**
  * Settings keys reserved by the format metadata contract. The renderer cannot
@@ -170,23 +170,12 @@ export function stampFileMetadata(db: Database, appVersion: string): void {
 }
 
 /**
- * Applies schema drift-fixes and per-version migrations. Currently handles the
- * legacy→v1 drift (columns added post-launch). Called by `initializeDatabase`
- * after tables are created.
- *
- * `fromVersion == 0` covers both legacy files (pre-versioning) and brand-new
- * files (no tables existed before initializeDatabase created them). Both paths
- * benefit from the idempotent `ALTER TABLE` guards.
+ * Ensures all additive element columns exist. SQLite lacks
+ * `ADD COLUMN IF NOT EXISTS`, so each column is gated through PRAGMA table_info.
+ * This is safe for fresh DBs whose CREATE TABLE already has all columns,
+ * legacy DBs, v1→v2 migrations, and partially repaired files.
  */
-export function runMigrations(db: Database, fromVersion: number, toVersion: number): void {
-  if (fromVersion >= toVersion) {
-    return
-  }
-
-  // legacy/fresh → v1: ensure all columns present on `elements`.
-  // SQLite lacks `ADD COLUMN IF NOT EXISTS`, so gate each ALTER on
-  // PRAGMA table_info. Safe to run on fresh DBs (CREATE TABLE already has
-  // the columns) and on legacy DBs missing any subset of them.
+function ensureElementColumns(db: Database): void {
   const elementCols = db.prepare('PRAGMA table_info(elements)').all() as Array<{
     name: string
   }>
@@ -203,6 +192,28 @@ export function runMigrations(db: Database, fromVersion: number, toVersion: numb
   if (!existing.has('underline')) {
     db.exec('ALTER TABLE elements ADD COLUMN underline INTEGER')
   }
+  if (!existing.has('stroke')) {
+    db.exec('ALTER TABLE elements ADD COLUMN stroke TEXT')
+  }
+  if (!existing.has('stroke_width')) {
+    db.exec('ALTER TABLE elements ADD COLUMN stroke_width REAL')
+  }
+}
+
+/**
+ * Applies schema drift-fixes and per-version migrations. Called by
+ * `initializeDatabase` after tables are created.
+ *
+ * `fromVersion == 0` covers both legacy files (pre-versioning) and brand-new
+ * files (no tables existed before initializeDatabase created them). Both paths
+ * benefit from the idempotent `ALTER TABLE` guards.
+ */
+export function runMigrations(db: Database, fromVersion: number, toVersion: number): void {
+  if (fromVersion > toVersion) {
+    return
+  }
+
+  ensureElementColumns(db)
 }
 
 import type {
@@ -246,8 +257,14 @@ export interface TwigElement {
   /** Rotation angle in degrees */
   angle: number
 
-  /** Fill color (hex or rgba string) */
+  /** Fill color (hex, rgba string, or 'transparent' for shapes) */
   fill?: string
+
+  /** Border color. Shape elements only. 'transparent' or undefined = no border. */
+  stroke?: string
+
+  /** Border width in canvas pixels. Shape elements only. 0 or undefined = no border. */
+  strokeWidth?: number
 
   /** Text content (only for text elements) */
   text?: string
@@ -441,6 +458,8 @@ export function initializeDatabase(db: Database, appVersion: string): void {
       height REAL,
       angle REAL,
       fill TEXT,
+      stroke TEXT,
+      stroke_width REAL,
       text TEXT,
       fontSize REAL,
       fontFamily TEXT,
@@ -515,6 +534,8 @@ interface ElementRow {
   height: number
   angle: number
   fill?: string
+  stroke?: string | null
+  stroke_width?: number | null
   text?: string
   fontSize?: number
   fontFamily?: string
@@ -551,7 +572,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
 
   const elementRows = db
     .prepare(
-      'SELECT id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, stroke, stroke_width, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
     )
     .all(slideId) as ElementRow[]
 
@@ -602,8 +623,8 @@ export function getSlide(db: Database, slideId: string): Slide | null {
         : Boolean(el.underline)
       : undefined
 
-    return {
-      type: el.type as 'rect' | 'text' | 'image',
+    const element: TwigElement = {
+      type: el.type as TwigElement['type'],
       id: el.id,
       x: el.x,
       y: el.y,
@@ -635,6 +656,21 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       animations: parsedAnimations,
       arrowShape
     }
+
+    if (
+      el.type === 'rect' ||
+      el.type === 'ellipse' ||
+      el.type === 'triangle' ||
+      el.type === 'star' ||
+      el.type === 'arrow'
+    ) {
+      if (el.stroke !== null && el.stroke !== undefined) element.stroke = el.stroke
+      if (el.stroke_width !== null && el.stroke_width !== undefined) {
+        element.strokeWidth = el.stroke_width
+      }
+    }
+
+    return element
   })
 
   let background: SlideBackground | undefined
@@ -733,8 +769,8 @@ function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string
  */
 function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
   const stmt = db.prepare(`
-    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, stroke, stroke_width, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       slide_id = excluded.slide_id,
       type = excluded.type,
@@ -744,6 +780,8 @@ function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
       height = excluded.height,
       angle = excluded.angle,
       fill = excluded.fill,
+      stroke = excluded.stroke,
+      stroke_width = excluded.stroke_width,
       text = excluded.text,
       fontSize = excluded.fontSize,
       fontFamily = excluded.fontFamily,
@@ -893,6 +931,8 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.height,
         el.angle,
         el.fill ?? null,
+        el.stroke ?? null,
+        el.strokeWidth ?? null,
         el.text ?? null,
         el.fontSize ?? null,
         el.fontFamily ?? null,
@@ -1034,6 +1074,8 @@ export function duplicateSlide(db: Database, sourceSlideId: string): Slide {
         el.height,
         el.angle,
         el.fill ?? null,
+        el.stroke ?? null,
+        el.strokeWidth ?? null,
         el.text ?? null,
         el.fontSize ?? null,
         el.fontFamily ?? null,
@@ -1140,6 +1182,8 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           el.height,
           el.angle,
           el.fill ?? null,
+          el.stroke ?? null,
+          el.strokeWidth ?? null,
           el.text ?? null,
           el.fontSize ?? null,
           el.fontFamily ?? null,
