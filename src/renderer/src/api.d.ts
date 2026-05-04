@@ -1,5 +1,12 @@
+/**
+ * Ambient declarations for the renderer-facing IPC API exposed by the
+ * preload script (`src/preload/index.ts`) via `contextBridge`.
+ *
+ * Lives in the renderer source tree (rather than `src/preload/`) because
+ * `src/preload/index.d.ts` would be clobbered by `tsc --build` emit.
+ */
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { ArrowShape, Slide, SlideBackground } from '../renderer/src/lib/types'
+import type { ArrowShape, Slide, SlideBackground } from './lib/types'
 
 /**
  * Represents a system font with its family name and file path

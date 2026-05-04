@@ -23,6 +23,8 @@ electron.vite.config.js
 electron.vite.config.d.ts
 src/main/*.js
 src/main/*.d.ts
+src/preload/*.js
+src/preload/*.d.ts
 src/shared/*.js
 src/shared/*.d.ts
 src/renderer/src/lib/types.js
