@@ -5291,7 +5291,7 @@
       <!-- Group 1: File -->
       <button
         onclick={handleNewPresentation}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.new')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5303,7 +5303,7 @@
       </button>
       <button
         onclick={handleOpen}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.open')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5315,7 +5315,7 @@
       </button>
       <button
         onclick={handleSave}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.save')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5327,7 +5327,7 @@
       </button>
       <button
         onclick={handleSaveAs}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.save_as')}
       >
         <svg
@@ -5369,7 +5369,7 @@
         onclick={performUndo}
         disabled={!canUndo}
         title={$_('toolbar.undo')}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
@@ -5382,7 +5382,7 @@
         onclick={performRedo}
         disabled={!canRedo}
         title={$_('toolbar.redo')}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
           ><path
@@ -5469,7 +5469,7 @@
       <!-- Group 3: Present -->
       <button
         onclick={appState.isPresentingMode ? exitPresentationMode : enterPresentationMode}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={appState.isPresentingMode ? $_('toolbar.stop') : $_('toolbar.play')}
       >
         {#if appState.isPresentingMode}
@@ -5494,7 +5494,7 @@
       </button>
       <button
         onclick={openDebugWindow}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.debug')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5511,7 +5511,7 @@
       <!-- Group 4: Insert -->
       <button
         onclick={addText}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.text')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5525,7 +5525,7 @@
         <button
           bind:this={shapePickerButtonRef}
           onclick={() => (showShapePicker = !showShapePicker)}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
           class:bg-gray-200={showShapePicker}
           title={$_('toolbar.shape')}
         >
@@ -5541,7 +5541,7 @@
         {#if showShapePicker}
           <div
             bind:this={shapePickerRef}
-            class="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-1 flex flex-col gap-0.5 min-w-[120px]"
+            class="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-1 flex flex-col gap-0.5 min-w-30"
           >
             <button
               onclick={() => {
@@ -5550,7 +5550,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><rect x="2" y="6" width="20" height="12" rx="1" /></svg
               >
               {$_('shape.rect')}
@@ -5562,7 +5562,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><ellipse cx="12" cy="12" rx="10" ry="7" /></svg
               >
               {$_('shape.ellipse')}
@@ -5574,7 +5574,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><polygon points="12,3 22,21 2,21" /></svg
               >
               {$_('shape.triangle')}
@@ -5586,7 +5586,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><polygon
                   points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
                 /></svg
@@ -5600,7 +5600,7 @@
               }}
               class="flex items-center gap-2 px-3 py-1.5 rounded text-sm text-gray-700 hover:bg-gray-100 text-left w-full"
             >
-              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"
+              <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"
                 ><polygon points="2,9 14,9 14,5 22,12 14,19 14,15 2,15" /></svg
               >
               {$_('shape.arrow')}
@@ -5610,7 +5610,7 @@
       </div>
       <button
         onclick={addImage}
-        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.media')}
       >
         <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5627,7 +5627,7 @@
         <div class="h-8 w-px bg-gray-300 mx-2"></div>
         <button
           onclick={() => (activeSidePanel = 'properties')}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'properties'}
           class:text-gray-700={activeSidePanel === 'properties'}
           class:text-gray-600={activeSidePanel !== 'properties'}
@@ -5645,7 +5645,7 @@
         </button>
         <button
           onclick={() => (activeSidePanel = 'layers')}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'layers'}
           class:text-gray-700={activeSidePanel === 'layers'}
           class:text-gray-600={activeSidePanel !== 'layers'}
@@ -5663,7 +5663,7 @@
         </button>
         <button
           onclick={() => (activeSidePanel = 'animate')}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none"
           class:bg-gray-200={activeSidePanel === 'animate'}
           class:text-gray-700={activeSidePanel === 'animate'}
           class:text-gray-600={activeSidePanel !== 'animate'}
@@ -5686,7 +5686,7 @@
         </button>
         <button
           onclick={() => (settingsOpen = true)}
-          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-[44px] focus:outline-none text-gray-600 hover:bg-gray-200"
+          class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
           title={$_('toolbar.settings')}
         >
           <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
@@ -5895,7 +5895,7 @@
       </div>
       <!-- Unified side panel with tab bar -->
       <div
-        class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative flex-shrink-0"
+        class="bg-gray-50 border-l border-gray-300 overflow-hidden flex flex-col relative shrink-0"
         style="width: {stackPanelWidth}px;"
       >
         <!-- Resize handle on the left edge -->

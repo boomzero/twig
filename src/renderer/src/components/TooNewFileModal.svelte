@@ -89,7 +89,7 @@
   >
     <div
       bind:this={dialogEl}
-      class="w-[520px] max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
+      class="w-130 max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
       tabindex="-1"
     >
       <div class="border-b border-amber-100 px-6 py-5">
@@ -119,7 +119,7 @@
             <div class="mb-1 text-xs font-medium uppercase tracking-wide text-amber-700">
               {$_('readonly.compat_notes_label')}
             </div>
-            <div class="whitespace-pre-wrap break-words">{resolvedCompatNotes}</div>
+            <div class="whitespace-pre-wrap wrap-break-word">{resolvedCompatNotes}</div>
           </div>
         {/if}
       </div>

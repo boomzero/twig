@@ -477,7 +477,7 @@
                                   <div class="col-span-2 mt-1">
                                     <span class="text-gray-600 block mb-1">Text:</span>
                                     <div
-                                      class="bg-gray-50 p-2 rounded text-xs break-words max-h-20 overflow-y-auto"
+                                      class="bg-gray-50 p-2 rounded text-xs wrap-break-word max-h-20 overflow-y-auto"
                                     >
                                       {element.text}
                                     </div>

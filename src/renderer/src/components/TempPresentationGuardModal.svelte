@@ -107,7 +107,7 @@
   >
     <div
       bind:this={dialogEl}
-      class="w-[480px] max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
+      class="w-120 max-w-[calc(100vw-2rem)] rounded-2xl bg-white shadow-2xl"
       tabindex="-1"
     >
       <div class="border-b border-amber-100 px-6 py-5">
