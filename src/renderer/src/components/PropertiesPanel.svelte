@@ -164,7 +164,7 @@
     const color = (event.target as HTMLInputElement).value
     lastStrokeColor = color
     selectedObject.stroke = color
-    if (!selectedObject.strokeWidth) {
+    if (selectedObject.strokeWidth === undefined || selectedObject.strokeWidth === null) {
       selectedObject.strokeWidth = DEFAULT_STROKE_WIDTH
     }
     onPropertyChange?.()
@@ -180,7 +180,7 @@
       selectedObject.stroke = 'transparent'
     } else {
       selectedObject.stroke = lastStrokeColor || DEFAULT_STROKE_COLOR
-      if (!selectedObject.strokeWidth) {
+      if (selectedObject.strokeWidth === undefined || selectedObject.strokeWidth === null) {
         selectedObject.strokeWidth = DEFAULT_STROKE_WIDTH
       }
     }
