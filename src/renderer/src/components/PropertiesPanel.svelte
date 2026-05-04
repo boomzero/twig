@@ -645,7 +645,9 @@
 
         <!-- Build In -->
         <div class="mb-2">
-          <label for="pp-anim-build-in" class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_in')}</label>
+          <label for="pp-anim-build-in" class="block text-xs font-medium text-gray-500 mb-1"
+            >{$_('anim.build_in')}</label
+          >
           <select
             id="pp-anim-build-in"
             class="block w-full rounded border-gray-300 text-xs py-1"
@@ -750,7 +752,9 @@
               </div>
               <div class="space-y-1">
                 <div class="flex gap-1 items-center">
-                  <label for="pp-action-{action.id}-x" class="text-xs text-gray-400 w-8">{$_('anim.to_x')}</label>
+                  <label for="pp-action-{action.id}-x" class="text-xs text-gray-400 w-8"
+                    >{$_('anim.to_x')}</label
+                  >
                   <input
                     id="pp-action-{action.id}-x"
                     type="number"
@@ -775,7 +779,9 @@
                   />
                 </div>
                 <div class="flex gap-1 items-center">
-                  <label for="pp-action-{action.id}-y" class="text-xs text-gray-400 w-8">{$_('anim.to_y')}</label>
+                  <label for="pp-action-{action.id}-y" class="text-xs text-gray-400 w-8"
+                    >{$_('anim.to_y')}</label
+                  >
                   <input
                     id="pp-action-{action.id}-y"
                     type="number"
@@ -848,7 +854,9 @@
 
         <!-- Build Out -->
         <div>
-          <label for="pp-anim-build-out" class="block text-xs font-medium text-gray-500 mb-1">{$_('anim.build_out')}</label>
+          <label for="pp-anim-build-out" class="block text-xs font-medium text-gray-500 mb-1"
+            >{$_('anim.build_out')}</label
+          >
           <select
             id="pp-anim-build-out"
             class="block w-full rounded border-gray-300 text-xs py-1"
@@ -944,7 +952,9 @@
 
       {#if activeTab === 'solid'}
         <div>
-          <label for="pp-bg-color" class="block text-sm font-medium text-gray-600">{$_('bg.color')}</label>
+          <label for="pp-bg-color" class="block text-sm font-medium text-gray-600"
+            >{$_('bg.color')}</label
+          >
           <input
             id="pp-bg-color"
             type="color"
@@ -956,7 +966,9 @@
       {:else if activeTab === 'gradient'}
         <div class="space-y-2">
           <div>
-            <label for="pp-bg-start-color" class="block text-sm font-medium text-gray-600">{$_('bg.start_color')}</label>
+            <label for="pp-bg-start-color" class="block text-sm font-medium text-gray-600"
+              >{$_('bg.start_color')}</label
+            >
             <input
               id="pp-bg-start-color"
               type="color"
@@ -971,7 +983,9 @@
             />
           </div>
           <div>
-            <label for="pp-bg-end-color" class="block text-sm font-medium text-gray-600">{$_('bg.end_color')}</label>
+            <label for="pp-bg-end-color" class="block text-sm font-medium text-gray-600"
+              >{$_('bg.end_color')}</label
+            >
             <input
               id="pp-bg-end-color"
               type="color"
@@ -1081,7 +1095,10 @@
         </div>
         {#if slideTransition && slideTransition.type !== 'none'}
           <div>
-            <label for="pp-transition-duration" class="block text-xs font-medium text-gray-500 mb-1">
+            <label
+              for="pp-transition-duration"
+              class="block text-xs font-medium text-gray-500 mb-1"
+            >
               {$_('transition.duration', {
                 values: { duration: slideTransition.duration.toFixed(2) }
               })}
