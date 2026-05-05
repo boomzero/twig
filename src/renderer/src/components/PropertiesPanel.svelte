@@ -22,6 +22,7 @@
   } from '../lib/types'
   import { DEFAULT_ARROW_SHAPE } from '../lib/types'
   import { _ } from 'svelte-i18n'
+  import { isSvgDataUrl, normalizeSvgDataUrl } from '../lib/svg'
 
   type RichText = {
     isBold: boolean
@@ -286,8 +287,19 @@
     if (appState.readOnly) return
     const result = await window.api.dialog.showImageDialog()
     if (result?.src) {
+      let src = result.src
+      if (isSvgDataUrl(result.src)) {
+        const normalized = normalizeSvgDataUrl(result.src)
+        if (!normalized) {
+          console.warn('Could not parse SVG background')
+          alert('Could not parse SVG')
+          return
+        }
+        src = normalized.src
+      }
+
       const fit = currentBg?.type === 'image' ? (currentBg.fit ?? 'cover') : 'cover'
-      onSlideBackgroundChange?.({ type: 'image', src: result.src, filename: result.filename, fit })
+      onSlideBackgroundChange?.({ type: 'image', src, filename: result.filename, fit })
     }
   }
 

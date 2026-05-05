@@ -46,6 +46,7 @@
   import { fontDataToBase64 } from './lib/fontUtils'
   import { isShapeElement, shapeStyle } from './lib/shapeStyle'
   import { getTextboxWrappingOptions, syncTextboxWrapping } from './lib/textboxUtils'
+  import { isSvgDataUrl, isSvgMime, normalizeSvgDataUrl } from './lib/svg'
   import {
     Canvas,
     StaticCanvas,
@@ -119,6 +120,9 @@
   type TwigFabricObject = FabricObject & { id?: string }
   type TwigTextbox = Textbox & { id?: string }
   type FabricFontStyle = TextboxProps['fontStyle']
+  const SLIDE_CANVAS_WIDTH = 960
+  const SLIDE_CANVAS_HEIGHT = 540
+  const SVG_BASE64_CHUNK_SIZE = 0x8000 - (0x8000 % 3)
 
   function setTwigId<T extends FabricObject>(obj: T, id: string): T & { id: string } {
     const typed = obj as T & { id: string }
@@ -131,6 +135,55 @@
       return value
     }
     return undefined
+  }
+
+  function encodeSvgTextDataUrl(svgText: string): string {
+    const bytes = new TextEncoder().encode(svgText)
+    let encoded = ''
+
+    for (let i = 0; i < bytes.length; i += SVG_BASE64_CHUNK_SIZE) {
+      const chunk = bytes.subarray(i, i + SVG_BASE64_CHUNK_SIZE)
+      encoded += btoa(String.fromCharCode(...chunk))
+    }
+
+    return `data:image/svg+xml;base64,${encoded}`
+  }
+
+  function readClipboardString(item: DataTransferItem): Promise<string> {
+    return new Promise((resolve) => item.getAsString(resolve))
+  }
+
+  function readBlobAsDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read image data'))
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  function readBlobAsText(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read SVG data'))
+      reader.readAsText(blob)
+    })
+  }
+
+  function loadImageElement(src: string): Promise<HTMLImageElement> {
+    const img = new Image()
+    img.src = src
+
+    return new Promise((resolve, reject) => {
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Failed to load image'))
+    })
+  }
+
+  function fitDimensionsToCanvas(width: number, height: number): { width: number; height: number } {
+    const scale = Math.min(1, SLIDE_CANVAS_WIDTH / width, SLIDE_CANVAS_HEIGHT / height)
+    return { width: width * scale, height: height * scale }
   }
 
   // ============================================================================
@@ -4084,53 +4137,33 @@
         return // User cancelled
       }
 
-      // Create a temporary image element to get the natural dimensions
-      const tempImg = new Image()
-      tempImg.src = imageData.src
+      let src = imageData.src
+      let width: number
+      let height: number
 
-      await new Promise<void>((resolve, reject) => {
-        tempImg.onload = () => resolve()
-        tempImg.onerror = () => reject(new Error('Failed to load image'))
-      })
+      if (isSvgDataUrl(imageData.src)) {
+        const normalized = normalizeSvgDataUrl(imageData.src)
+        if (!normalized) {
+          console.warn('Could not parse SVG image')
+          throw new Error('Could not parse SVG')
+        }
+
+        src = normalized.src
+        width = normalized.width
+        height = normalized.height
+      } else {
+        const tempImg = await loadImageElement(imageData.src)
+        width = tempImg.naturalWidth
+        height = tempImg.naturalHeight
+      }
+
+      if (width === 0 || height === 0) {
+        width = 400
+        height = 300
+      }
 
       // Calculate default size (max 400px while maintaining aspect ratio)
       const maxSize = 400
-      let width = tempImg.naturalWidth
-      let height = tempImg.naturalHeight
-
-      // SVGs often report naturalWidth/naturalHeight as 0 when they only have a viewBox.
-      // Fall back to parsing the SVG XML for dimensions.
-      if ((width === 0 || height === 0) && imageData.src.includes('image/svg')) {
-        try {
-          const svgContent = atob(imageData.src.split(',')[1])
-          const parser = new DOMParser()
-          const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml')
-          const svgEl = svgDoc.documentElement
-          const svgW = parseFloat(svgEl.getAttribute('width') ?? '0')
-          const svgH = parseFloat(svgEl.getAttribute('height') ?? '0')
-          if (svgW > 0 && svgH > 0) {
-            width = svgW
-            height = svgH
-          } else {
-            const viewBox = svgEl.getAttribute('viewBox')
-            if (viewBox) {
-              const parts = viewBox.trim().split(/[\s,]+/)
-              if (parts.length === 4) {
-                width = parseFloat(parts[2])
-                height = parseFloat(parts[3])
-              }
-            }
-          }
-        } catch {
-          // ignore parsing errors
-        }
-        // Final fallback
-        if (width === 0 || height === 0) {
-          width = 400
-          height = 300
-        }
-      }
-
       if (width > maxSize || height > maxSize) {
         const aspectRatio = width / height
         if (width > height) {
@@ -4140,18 +4173,6 @@
           height = maxSize
           width = maxSize * aspectRatio
         }
-      }
-
-      // Rasterize SVGs to PNG so fabric.js always gets a bitmap with concrete
-      // naturalWidth/naturalHeight. SVGs with %-based or missing dimensions have
-      // naturalWidth=0, which causes fabric's 9-arg drawImage to draw nothing.
-      let src = imageData.src
-      if (imageData.src.includes('image/svg')) {
-        const rasterCanvas = document.createElement('canvas')
-        rasterCanvas.width = width
-        rasterCanvas.height = height
-        rasterCanvas.getContext('2d')?.drawImage(tempImg, 0, 0, width, height)
-        src = rasterCanvas.toDataURL('image/png')
       }
 
       // Create the image element
@@ -4625,14 +4646,12 @@
       const offset = pasteCount * 20
       const baseZ = nextZIndex()
 
-      const CANVAS_W = 960,
-        CANVAS_H = 540
       const newElements = cloneElementsForPaste({
         elements: validElements,
         baseZ,
         offset,
-        canvasW: CANVAS_W,
-        canvasH: CANVAS_H,
+        canvasW: SLIDE_CANVAS_WIDTH,
+        canvasH: SLIDE_CANVAS_HEIGHT,
         idFactory: uuid_v4,
         registerImageSrc: (newId, src) => imageAssets.set(newId, src),
         ensureArrowShape
@@ -4646,39 +4665,67 @@
     }
 
     // --- Raw image from clipboard (screenshot, copied image, etc.) ---
-    const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) =>
-      item.type.startsWith('image/')
-    )
-    if (!imageItem || !appState.currentSlide) return
-    event.preventDefault()
+    if (!appState.currentSlide) return
 
-    const blob = imageItem.getAsFile()
-    if (!blob) return
+    const clipboardItems = Array.from(event.clipboardData?.items ?? [])
+    const svgStringItem = clipboardItems.find(
+      (item) => item.kind === 'string' && isSvgMime(item.type)
+    )
+    const fileItems = clipboardItems.filter((item) => item.kind === 'file')
+    const svgFileItem = fileItems.find((item) => isSvgMime(item.type))
+    const rasterImageItem = fileItems.find((item) => /^image\//i.test(item.type))
+
+    let src: string
+    let width: number
+    let height: number
 
     try {
-      const src = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.onerror = reject
-        reader.readAsDataURL(blob)
-      })
+      if (svgStringItem) {
+        event.preventDefault()
+        const normalized = normalizeSvgDataUrl(
+          encodeSvgTextDataUrl(await readClipboardString(svgStringItem))
+        )
+        if (!normalized) {
+          console.warn('Could not parse SVG from clipboard')
+          return
+        }
 
-      const tempImg = new Image()
-      tempImg.src = src
-      await new Promise<void>((resolve, reject) => {
-        tempImg.onload = () => resolve()
-        tempImg.onerror = reject
-      })
+        src = normalized.src
+        const fitted = fitDimensionsToCanvas(normalized.width, normalized.height)
+        width = fitted.width
+        height = fitted.height
+      } else {
+        const imageItem = svgFileItem ?? rasterImageItem
+        if (!imageItem) return
 
-      // Convert physical pixels → logical pixels, then cap to canvas size
-      const dpr = window.devicePixelRatio || 1
-      const CANVAS_W = 960,
-        CANVAS_H = 540
-      let width = Math.round((tempImg.naturalWidth || 200) / dpr)
-      let height = Math.round((tempImg.naturalHeight || 200) / dpr)
-      const scale = Math.min(1, CANVAS_W / width, CANVAS_H / height)
-      width = Math.round(width * scale)
-      height = Math.round(height * scale)
+        event.preventDefault()
+        const blob = imageItem.getAsFile()
+        if (!blob) return
+
+        if (isSvgMime(imageItem.type)) {
+          const normalized = normalizeSvgDataUrl(encodeSvgTextDataUrl(await readBlobAsText(blob)))
+          if (!normalized) {
+            console.warn('Could not parse SVG from clipboard file')
+            return
+          }
+
+          src = normalized.src
+          const fitted = fitDimensionsToCanvas(normalized.width, normalized.height)
+          width = fitted.width
+          height = fitted.height
+        } else {
+          src = await readBlobAsDataUrl(blob)
+          const tempImg = await loadImageElement(src)
+
+          // Convert physical pixels → logical pixels, then cap to canvas size
+          const dpr = window.devicePixelRatio || 1
+          width = Math.round((tempImg.naturalWidth || 200) / dpr)
+          height = Math.round((tempImg.naturalHeight || 200) / dpr)
+          const scale = Math.min(1, SLIDE_CANVAS_WIDTH / width, SLIDE_CANVAS_HEIGHT / height)
+          width = Math.round(width * scale)
+          height = Math.round(height * scale)
+        }
+      }
 
       const newImage: TwigElement = {
         type: 'image',
