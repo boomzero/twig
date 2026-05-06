@@ -106,6 +106,14 @@ function resolveSvgDimensions(svgEl: Element): SvgDimensions {
     return { width: viewBox.width, height: viewBox.height }
   }
 
+  if (width !== null) {
+    return { width, height: 150 }
+  }
+
+  if (height !== null) {
+    return { width: 300, height }
+  }
+
   return { width: 300, height: 150 }
 }
 

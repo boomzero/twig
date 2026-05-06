@@ -87,6 +87,17 @@ describe('src/renderer/src/lib/svg.ts', () => {
     expect(result).toMatchObject({ width: 100, height: 50 })
   })
 
+  it('preserves one explicit dimension without a viewBox', () => {
+    expect(normalizeSvgDataUrl(base64SvgDataUrl('<svg width="100"><path/></svg>'))).toMatchObject({
+      width: 100,
+      height: 150
+    })
+    expect(normalizeSvgDataUrl(base64SvgDataUrl('<svg height="80"><path/></svg>'))).toMatchObject({
+      width: 300,
+      height: 80
+    })
+  })
+
   it('falls back to replaced-element dimensions when no dimensions are present', () => {
     const result = normalizeSvgDataUrl(
       base64SvgDataUrl('<svg><rect width="10" height="10"/></svg>')

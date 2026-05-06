@@ -4675,9 +4675,7 @@
     const svgFileItem = fileItems.find((item) => isSvgMime(item.type))
     const rasterImageItem = fileItems.find((item) => /^image\//i.test(item.type))
 
-    let src: string
-    let width: number
-    let height: number
+    let pastedImage: { src: string; width: number; height: number } | null = null
 
     try {
       if (svgStringItem) {
@@ -4685,16 +4683,15 @@
         const normalized = normalizeSvgDataUrl(
           encodeSvgTextDataUrl(await readClipboardString(svgStringItem))
         )
-        if (!normalized) {
-          console.warn('Could not parse SVG from clipboard')
-          return
+        if (normalized) {
+          const fitted = fitDimensionsToCanvas(normalized.width, normalized.height)
+          pastedImage = { src: normalized.src, width: fitted.width, height: fitted.height }
+        } else {
+          console.warn('Could not parse SVG from clipboard; falling back to file image if present')
         }
+      }
 
-        src = normalized.src
-        const fitted = fitDimensionsToCanvas(normalized.width, normalized.height)
-        width = fitted.width
-        height = fitted.height
-      } else {
+      if (!pastedImage) {
         const imageItem = svgFileItem ?? rasterImageItem
         if (!imageItem) return
 
@@ -4709,38 +4706,39 @@
             return
           }
 
-          src = normalized.src
           const fitted = fitDimensionsToCanvas(normalized.width, normalized.height)
-          width = fitted.width
-          height = fitted.height
+          pastedImage = { src: normalized.src, width: fitted.width, height: fitted.height }
         } else {
-          src = await readBlobAsDataUrl(blob)
-          const tempImg = await loadImageElement(src)
+          const rasterSrc = await readBlobAsDataUrl(blob)
+          const tempImg = await loadImageElement(rasterSrc)
 
           // Convert physical pixels → logical pixels, then cap to canvas size
           const dpr = window.devicePixelRatio || 1
-          width = Math.round((tempImg.naturalWidth || 200) / dpr)
-          height = Math.round((tempImg.naturalHeight || 200) / dpr)
+          let width = Math.round((tempImg.naturalWidth || 200) / dpr)
+          let height = Math.round((tempImg.naturalHeight || 200) / dpr)
           const scale = Math.min(1, SLIDE_CANVAS_WIDTH / width, SLIDE_CANVAS_HEIGHT / height)
           width = Math.round(width * scale)
           height = Math.round(height * scale)
+          pastedImage = { src: rasterSrc, width, height }
         }
       }
+
+      if (!pastedImage) return
 
       const newImage: TwigElement = {
         type: 'image',
         id: `image_${uuid_v4()}`,
         x: 480, // Center of 960px canvas
         y: 270, // Center of 540px canvas
-        width,
-        height,
+        width: pastedImage.width,
+        height: pastedImage.height,
         angle: 0,
-        src,
+        src: pastedImage.src,
         zIndex: nextZIndex()
       }
 
       pushCheckpoint()
-      imageAssets.set(newImage.id, src)
+      imageAssets.set(newImage.id, pastedImage.src)
       appState.currentSlide.elements.push(newImage)
       pendingSelectionIds = [newImage.id]
       scheduleSave()
