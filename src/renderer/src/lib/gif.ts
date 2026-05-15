@@ -33,6 +33,74 @@ export function isGifDataUrl(value: string | undefined | null): boolean {
   return GIF_DATA_URL_PATTERN.test(value)
 }
 
+/**
+ * Decodes the first frame of a GIF data URL into a PNG data URL so the result
+ * can be used as a static `<img src>` in editor UI (e.g. background preview).
+ *
+ * The plan keeps GIFs static in the editor; native `<img>` tags animate them
+ * automatically, so anywhere we want a still preview we need to render frame
+ * zero explicitly. Falls back to returning the original URL on any failure
+ * (better an animated preview than a broken one).
+ */
+const firstFrameCache = new Map<string, string>()
+
+export async function getGifFirstFrameDataUrl(gifDataUrl: string): Promise<string> {
+  const cached = firstFrameCache.get(gifDataUrl)
+  if (cached) return cached
+  try {
+    const commaIdx = gifDataUrl.indexOf(',')
+    if (commaIdx < 0) return gifDataUrl
+    const base64 = gifDataUrl.slice(commaIdx + 1)
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    const parsed = defaultParseGIF(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    )
+    const frames = defaultDecompressFrames(parsed, true)
+    if (frames.length === 0) return gifDataUrl
+    const frame = frames[0]
+    const W = parsed.lsd.width
+    const H = parsed.lsd.height
+    if (!Number.isFinite(W) || !Number.isFinite(H) || W <= 0 || H <= 0) return gifDataUrl
+    const composite = document.createElement('canvas')
+    composite.width = W
+    composite.height = H
+    const ctx = composite.getContext('2d')
+    if (!ctx) return gifDataUrl
+    const scratch = document.createElement('canvas')
+    scratch.width = frame.dims.width
+    scratch.height = frame.dims.height
+    const sctx = scratch.getContext('2d')
+    if (!sctx) return gifDataUrl
+    sctx.putImageData(
+      new ImageData(
+        frame.patch as unknown as Uint8ClampedArray<ArrayBuffer>,
+        frame.dims.width,
+        frame.dims.height
+      ),
+      0,
+      0
+    )
+    ctx.drawImage(
+      scratch,
+      0,
+      0,
+      frame.dims.width,
+      frame.dims.height,
+      frame.dims.left,
+      frame.dims.top,
+      frame.dims.width,
+      frame.dims.height
+    )
+    const pngUrl = composite.toDataURL('image/png')
+    firstFrameCache.set(gifDataUrl, pngUrl)
+    return pngUrl
+  } catch {
+    return gifDataUrl
+  }
+}
+
 type AfterPaintCancel = () => void
 type TimeoutHandle = unknown
 

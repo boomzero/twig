@@ -23,6 +23,7 @@
   import { DEFAULT_ARROW_SHAPE } from '../lib/types'
   import { _ } from 'svelte-i18n'
   import { isSvgDataUrl, normalizeSvgDataUrl } from '../lib/svg'
+  import { isGifDataUrl, getGifFirstFrameDataUrl } from '../lib/gif'
 
   type RichText = {
     isBold: boolean
@@ -261,6 +262,37 @@
   // Current background derived from slide state
   const currentBg = $derived(appState.currentSlide?.background)
   const bgType = $derived(currentBg?.type ?? 'solid')
+
+  // Native <img> tags animate GIFs. Decode just the first frame so the
+  // properties-panel preview matches the editor canvas (which stays static).
+  let bgPreviewSrc = $state<string | null>(null)
+  let bgPreviewKey = ''
+  $effect(() => {
+    const bg = currentBg
+    const src = bg?.type === 'image' ? bg.src : null
+    if (src === bgPreviewKey) return undefined
+    bgPreviewKey = src ?? ''
+    if (!src) {
+      bgPreviewSrc = null
+      return undefined
+    }
+    if (!isGifDataUrl(src)) {
+      bgPreviewSrc = src
+      return undefined
+    }
+    // Show the animated GIF first so the preview is never blank, then swap
+    // in the decoded first-frame PNG once available.
+    bgPreviewSrc = src
+    let cancelled = false
+    getGifFirstFrameDataUrl(src)
+      .then((staticUrl) => {
+        if (!cancelled && bgPreviewKey === src) bgPreviewSrc = staticUrl
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  })
 
   let activeTab = $derived.by<'solid' | 'gradient' | 'image'>(
     () => bgType as 'solid' | 'gradient' | 'image'
@@ -1035,7 +1067,11 @@
         <div class="space-y-2">
           {#if currentBg?.type === 'image'}
             <div class="rounded overflow-hidden border border-gray-200">
-              <img src={currentBg.src} alt="slide background" class="w-full object-cover h-16" />
+              <img
+                src={bgPreviewSrc ?? currentBg.src}
+                alt="slide background"
+                class="w-full object-cover h-16"
+              />
             </div>
             <p class="text-xs text-gray-400 truncate">{currentBg.filename ?? 'image'}</p>
             <div>
