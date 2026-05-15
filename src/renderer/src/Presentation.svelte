@@ -36,6 +36,7 @@
   import { normalizeFontBytes, type FontBytes } from './lib/fontUtils'
   import { shapeStyle } from './lib/shapeStyle'
   import { getTextboxWrappingOptions } from './lib/textboxUtils'
+  import { GifAnimationManager, isGifDataUrl } from './lib/gif'
 
   interface PresentationState {
     /** ID of the slide to display — presentation window fetches the full slide from DB */
@@ -127,6 +128,10 @@
 
   let canvasEl: HTMLCanvasElement
   let presentationCanvas: Canvas | undefined
+  // Animates GIF images during presentation. Owned 1:1 with the canvas.
+  // Future video support should follow the same shape — one per-canvas manager,
+  // reset() per slide, dispose() on teardown — but as a separate manager.
+  let gifManager: GifAnimationManager | undefined
   let currentState = $state<PresentationState>({
     slideId: null,
     slideIndex: 0,
@@ -177,6 +182,7 @@
       interactive: false,
       backgroundColor: '#ffffff'
     })
+    gifManager = new GifAnimationManager(presentationCanvas)
 
     scaleCanvas()
 
@@ -189,10 +195,37 @@
         const { slideId, filePath } = newState
 
         if (!slideId || !filePath) {
+          // Full teardown — invalidate every async pipeline (DB fetch, render,
+          // transition) and clear any visible canvas state so stale visuals,
+          // timers, and in-flight image/GIF work do not survive the wipe.
+          ++fetchGeneration
+          ++renderGeneration
+          ++transitionGeneration
+
           loadedSlide = null
+          lastRenderedSlideId = null
           transitionOverlaySrc = null
           transitionOverlayStyle = ''
+          slideWrapperStyle = 'position: relative;'
           transitioning = false
+          animating = false
+          pendingAdvanceAfterImageLoad = false
+          animProgress = 0
+          hasRenderedOnce = false
+          lastSlideTransition = undefined
+
+          fabObjById.clear()
+          elementById.clear()
+          failedElementIds.clear()
+
+          gifManager?.reset()
+
+          if (presentationCanvas) {
+            presentationCanvas.remove(...presentationCanvas.getObjects())
+            presentationCanvas.backgroundImage = undefined
+            presentationCanvas.backgroundColor = '#ffffff'
+            presentationCanvas.renderAll()
+          }
           return
         }
 
@@ -222,6 +255,10 @@
   })
 
   onDestroy(() => {
+    // Dispose GIF manager BEFORE the canvas: dispose() cancels timers and
+    // schedulers that would otherwise touch a torn-down canvas.
+    gifManager?.dispose()
+    gifManager = undefined
     if (presentationCanvas) {
       presentationCanvas.dispose()
       presentationCanvas = undefined
@@ -370,6 +407,9 @@
     // Stamp the current generation so async image callbacks from a previous
     // render can detect that the slide has since changed and bail out.
     const generation = ++renderGeneration
+    // Reset GIF playback for the previous slide. Decode for the new slide's
+    // GIFs is scheduled below, after their Fabric images have been added.
+    gifManager?.reset()
 
     presentationCanvas.remove(...presentationCanvas.getObjects())
     fabObjById.clear()
@@ -521,6 +561,9 @@
           fabObjById.set(element.id, img)
           applyAnimationStateToObject(slide, element, img)
           presentationCanvas.renderAll()
+          // Schedule GIF decode/playback. Fire-and-forget: never await — the
+          // static frame stays visible until decode completes.
+          if (isGifDataUrl(element.src)) gifManager?.register(element, img)
           continuePendingAdvance(slide, generation)
         })
         .catch((err) => {
@@ -537,14 +580,19 @@
 
     await Promise.allSettled([backgroundLoad, ...imageLoads])
 
-    if (!presentationCanvas || renderGeneration !== generation || imageLoads.length <= 1) return
+    if (!presentationCanvas || renderGeneration !== generation) return
 
-    const orderedObjects = (presentationCanvas.getObjects() as PresentationFabricObject[])
-      .slice()
-      .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
+    if (imageLoads.length > 1) {
+      const orderedObjects = (presentationCanvas.getObjects() as PresentationFabricObject[])
+        .slice()
+        .sort((a, b) => (zIndexById.get(a.id ?? '') ?? 0) - (zIndexById.get(b.id ?? '') ?? 0))
 
-    orderedObjects.forEach((obj, targetIndex) => presentationCanvas!.moveObjectTo(obj, targetIndex))
+      orderedObjects.forEach((obj, targetIndex) =>
+        presentationCanvas!.moveObjectTo(obj, targetIndex)
+      )
+    }
     presentationCanvas.renderAll()
+    gifManager?.start()
   }
 
   function applyAnimationStateToObject(slide: Slide, el: TwigElement, fabObj: FabricObject): void {

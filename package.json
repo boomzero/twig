@@ -38,6 +38,7 @@
     "electron-updater": "^6.8.3",
     "fabric": "^7.2.0",
     "fontkit": "^2.0.4",
+    "gifuct-js": "^2.1.2",
     "svelte-i18n": "^4.0.1",
     "uuid": "^11.1.0"
   },
@@ -51,6 +52,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.13",
     "@types/uuid": "^10.0.0",
+    "@vitest/coverage-v8": "^4.1.4",
     "dotenv-cli": "^11.0.0",
     "electron": "^40.6.1",
     "electron-builder": "^26.8.1",
@@ -68,7 +70,6 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
-    "vitest": "^4.1.4",
-    "@vitest/coverage-v8": "^4.1.4"
+    "vitest": "^4.1.4"
   }
 }
