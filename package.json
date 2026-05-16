@@ -40,7 +40,7 @@
     "fontkit": "^2.0.4",
     "gifuct-js": "^2.1.2",
     "svelte-i18n": "^4.0.1",
-    "uuid": "^11.1.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
@@ -65,7 +65,7 @@
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^3.5.0",
     "runed": "^0.37.1",
-    "svelte": "^5.53.6",
+    "svelte": "^5.55.7",
     "svelte-check": "^4.4.4",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
