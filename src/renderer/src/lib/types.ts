@@ -10,8 +10,8 @@
  * Represents a single element (shape, text, or image) on a slide.
  */
 export interface TwigElement {
-  /** Type of element - rectangle shape, text, or image */
-  type: 'rect' | 'ellipse' | 'triangle' | 'star' | 'arrow' | 'text' | 'image'
+  /** Type of element - rectangle shape, text, image, or math */
+  type: 'rect' | 'ellipse' | 'triangle' | 'star' | 'arrow' | 'text' | 'image' | 'math'
 
   /** Unique identifier for this element */
   id: string
@@ -62,11 +62,14 @@ export interface TwigElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>
 
-  /** Image data as base64 data URI (only for image elements) */
+  /** Image data as base64 data URI (only for image and math elements; math stores rendered SVG) */
   src?: string
 
   /** Original image filename (only for image elements) */
   filename?: string
+
+  /** LaTeX source (only for math elements). The rendered SVG lives in `src`. */
+  latex?: string
 
   /** Z-index for layer ordering (higher = in front) */
   zIndex: number

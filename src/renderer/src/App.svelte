@@ -102,6 +102,8 @@
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
+  import MathEditorModal from './components/MathEditorModal.svelte'
+  import type { RenderedMath } from './lib/math'
   import CloseFailureModal from './components/CloseFailureModal.svelte'
   import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
   import TooNewFileModal from './components/TooNewFileModal.svelte'
@@ -244,6 +246,13 @@
 
   // Settings modal
   let settingsOpen = $state(false)
+
+  // Math editor modal state. When `mathModalOpen` is true the modal is shown,
+  // seeded with `mathModalLatex`. `mathModalElementId` is null on insert and
+  // the id of an existing element on edit.
+  let mathModalOpen = $state(false)
+  let mathModalLatex = $state('')
+  let mathModalElementId = $state<string | null>(null)
   let tempPresentationGuardOpen = $state(false)
   let closeFailureGuardOpen = $state(false)
   let closeFailureGuardMessage = $state('')
@@ -586,7 +595,7 @@
   function registerImageAssetsFromSlide(slide: typeof appState.currentSlide): void {
     if (!slide) return
     for (const el of slide.elements) {
-      if (el.type === 'image' && el.src && el.id) {
+      if ((el.type === 'image' || el.type === 'math') && el.src && el.id) {
         imageAssets.set(el.id, el.src)
       }
     }
@@ -606,7 +615,11 @@
       if (!slide) return
       const loads: Promise<void>[] = []
       for (const el of slide.elements) {
-        if (el.type === 'image' && el.src && !imageElementCache.has(el.src)) {
+        if (
+          (el.type === 'image' || el.type === 'math') &&
+          el.src &&
+          !imageElementCache.has(el.src)
+        ) {
           const src = el.src
           loads.push(
             new Promise<void>((resolve) => {
@@ -740,7 +753,7 @@
     fabCanvas?.discardActiveObject()
 
     const restoredElements = snapshot.elements.map((el) => {
-      if (el.type === 'image') {
+      if (el.type === 'image' || el.type === 'math') {
         return { ...el, src: imageAssets.get(el.id) } as TwigElement
       }
       return { ...el } as TwigElement
@@ -1105,7 +1118,10 @@
       )
     }
 
-    if (element.type === 'image' && sourceObject instanceof FabricImage) {
+    if (
+      (element.type === 'image' || element.type === 'math') &&
+      sourceObject instanceof FabricImage
+    ) {
       const ghost = new FabricImage(sourceObject.getElement())
       ghost.set({
         ...pos,
@@ -1476,7 +1492,7 @@
                 ...getTextboxWrappingOptions(el.text)
               })
             )
-          } else if (el.type === 'image' && el.src) {
+          } else if ((el.type === 'image' || el.type === 'math') && el.src) {
             try {
               const img = await FabricImage.fromURL(el.src, { crossOrigin: 'anonymous' })
               const scaleX = el.width / (img.width || 1)
@@ -2093,6 +2109,7 @@
     fabCanvas.off('selection:cleared', handleSelectionCleared)
     fabCanvas.off('contextmenu', handleContextMenu)
     fabCanvas.off('mouse:down:before', handleCanvasMouseDownBefore)
+    fabCanvas.off('mouse:dblclick', handleCanvasDblClick)
 
     // Read elements synchronously (before any await) so Svelte 5 tracks the
     // array within the $effect's reactive context. Accessing elements after an
@@ -2111,9 +2128,11 @@
       return
     }
 
-    // Add non-image elements synchronously in z-order
+    // Add non-image elements synchronously in z-order. Math elements render
+    // as FabricImages of their prerendered SVG, so they use the same async
+    // load path as images and are skipped here.
     sortedElements.forEach((element) => {
-      if (element.type === 'image') return
+      if (element.type === 'image' || element.type === 'math') return
 
       let fabObj: FabricObject | undefined
       if (element.type === 'rect') {
@@ -2249,6 +2268,11 @@
         id: element.id,
         ...ROTATION_SNAP
       })
+      // Math elements lock to uniform scaling so resizing can't distort the
+      // equation's aspect ratio (the rendered SVG has intrinsic proportions).
+      if (element.type === 'math') {
+        img.set({ lockUniScaling: true })
+      }
       applyControlLayout(img as ControlLayoutTarget, {
         widthPx: element.width,
         heightPx: element.height
@@ -2261,7 +2285,7 @@
     }
 
     sortedElements.forEach((element) => {
-      if (element.type !== 'image' || !element.src) return
+      if ((element.type !== 'image' && element.type !== 'math') || !element.src) return
       const imageZIndex = element.zIndex
       const cached = imageElementCache.get(element.src)
 
@@ -2289,6 +2313,9 @@
               id: element.id,
               ...ROTATION_SNAP
             })
+            if (element.type === 'math') {
+              img.set({ lockUniScaling: true })
+            }
             applyControlLayout(img as ControlLayoutTarget, {
               widthPx: element.width,
               heightPx: element.height
@@ -2327,6 +2354,7 @@
     fabCanvas.on('selection:cleared', handleSelectionCleared)
     fabCanvas.on('contextmenu', handleContextMenu)
     fabCanvas.on('mouse:down:before', handleCanvasMouseDownBefore)
+    fabCanvas.on('mouse:dblclick', handleCanvasDblClick)
 
     if (imageLoads.length === 0) {
       slideTransitionOverlaySrc = null
@@ -2378,6 +2406,19 @@
    * Handles the 'object:modified' event from fabric.js.
    * Syncs changes from the canvas back to the application state.
    */
+  /**
+   * Reopens the math editor when the user double-clicks an existing math
+   * element. Other element types ignore this event — text already enters
+   * inline edit mode through fabric's built-in handler.
+   */
+  function handleCanvasDblClick(event: { target?: TwigFabricObject }): void {
+    const id = event.target?.id
+    if (!id || appState.readOnly || !appState.currentSlide) return
+    const el = appState.currentSlide.elements.find((e) => e.id === id)
+    if (el?.type !== 'math') return
+    openMathEditor(id)
+  }
+
   function handleObjectModified(event: { target?: TwigFabricObject | ActiveSelection }): void {
     if (!appState.currentSlide) return
     if (appState.readOnly) {
@@ -4127,6 +4168,73 @@
    * Opens an image file dialog and adds the selected image to the current slide.
    * The image is loaded as a base64 data URI and stored in the slide data.
    */
+  /**
+   * Opens the math editor modal. With no element id the modal is in "insert"
+   * mode and seeds with a sample equation; with an id the modal seeds from
+   * that element's stored LaTeX (used by mouse:dblclick on math elements).
+   */
+  function openMathEditor(elementId: string | null): void {
+    if (appState.readOnly || !appState.currentSlide) return
+    if (elementId) {
+      const el = appState.currentSlide.elements.find((e) => e.id === elementId)
+      if (!el || el.type !== 'math') return
+      mathModalElementId = elementId
+      mathModalLatex = el.latex ?? ''
+    } else {
+      mathModalElementId = null
+      mathModalLatex = 'x^2'
+    }
+    mathModalOpen = true
+  }
+
+  function addMath(): void {
+    openMathEditor(null)
+  }
+
+  /**
+   * Modal commit handler. Creates a new math element or updates an existing
+   * one, depending on whether `mathModalElementId` was set when the modal
+   * opened. Reuses the image-asset registry so undo/redo snapshots (which
+   * strip `src` for size) can re-attach the rendered SVG.
+   */
+  function handleMathCommit({ latex, rendered }: { latex: string; rendered: RenderedMath }): void {
+    if (!appState.currentSlide || appState.readOnly) return
+    pushCheckpoint()
+    if (mathModalElementId) {
+      const el = appState.currentSlide.elements.find((e) => e.id === mathModalElementId)
+      if (el && el.type === 'math') {
+        el.latex = latex
+        el.src = rendered.src
+        el.width = rendered.width
+        el.height = rendered.height
+        imageAssets.set(el.id, rendered.src)
+      }
+    } else {
+      const id = `math_${uuid_v4()}`
+      const newMath: TwigElement = {
+        type: 'math',
+        id,
+        x: 480,
+        y: 270,
+        width: rendered.width,
+        height: rendered.height,
+        angle: 0,
+        src: rendered.src,
+        latex,
+        zIndex: nextZIndex()
+      }
+      imageAssets.set(id, rendered.src)
+      appState.currentSlide.elements.push(newMath)
+    }
+    scheduleSave()
+  }
+
+  function handleMathClose(): void {
+    mathModalOpen = false
+    mathModalElementId = null
+    mathModalLatex = ''
+  }
+
   async function addImage(): Promise<void> {
     if (!appState.currentSlide || appState.readOnly) return
 
@@ -4935,6 +5043,14 @@
 />
 
 <SettingsModal bind:open={settingsOpen} />
+
+<MathEditorModal
+  open={mathModalOpen}
+  initialLatex={mathModalLatex}
+  mode={mathModalElementId ? 'edit' : 'insert'}
+  onCommit={handleMathCommit}
+  onClose={handleMathClose}
+/>
 <TempPresentationGuardModal
   open={tempPresentationGuardOpen}
   onSave={() => resolveTempPresentationGuard('save')}
@@ -5342,6 +5458,22 @@
         {/if}
       </div>
       <button
+        onclick={addMath}
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
+        title={$_('toolbar.math.title')}
+      >
+        <svg
+          class="w-5 h-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"><path d="M5 4h12l-7 16M9 12h7" /></svg
+        >
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.math')}</span>
+      </button>
+      <button
         onclick={addImage}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.media')}
@@ -5692,6 +5824,7 @@
             onPropertyChange={handlePropertyChange}
             onBeforePropertyChange={pushCheckpoint}
             onAnimationChange={handleAnimationChange}
+            onEditMath={openMathEditor}
             slideTransition={appState.currentSlide?.transition}
             onSlideTransitionChange={(t) => {
               if (appState.readOnly) return

@@ -56,6 +56,7 @@
     onApplyToAll,
     onAnimationChange,
     onSlideTransitionChange,
+    onEditMath,
     slideTransition,
     richText
   }: {
@@ -66,6 +67,7 @@
     onApplyToAll?: (bg: SlideBackground | null) => void
     onAnimationChange?: (elementId: string, animations: ElementAnimations) => void
     onSlideTransitionChange?: (t: SlideTransition | undefined) => void
+    onEditMath?: (elementId: string) => void
     slideTransition?: SlideTransition
     richText?: RichText
   } = $props()
@@ -349,6 +351,17 @@
   {#if selectedObject}
     <!-- Property controls for the selected object -->
     <div class="space-y-3">
+      {#if selectedObject.type === 'math'}
+        <div class="pb-3 border-b border-gray-200">
+          <button
+            onclick={() => onEditMath?.(selectedObject.id)}
+            disabled={appState.readOnly}
+            class="w-full px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:bg-indigo-300 disabled:cursor-not-allowed"
+          >
+            {$_('math.edit_button')}
+          </button>
+        </div>
+      {/if}
       {#if selectedObject.type === 'text' && richText}
         <!-- Text formatting controls -->
         <div class="pb-3 border-b border-gray-200">

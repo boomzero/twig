@@ -34,7 +34,7 @@ export const CURRENT_FORMAT_VERSION = 2
  * `_default` -> `en` -> any-key fallback.
  */
 export const CURRENT_COMPAT_NOTES =
-  'This file uses twig format v2, which adds transparent shape fills and shape borders. Older versions may not render those shapes accurately.'
+  'This file uses twig format v2, which adds transparent shape fills, shape borders, and math (LaTeX) elements. Older versions may not render those shapes or equations accurately.'
 
 /**
  * Settings keys reserved by the format metadata contract. The renderer cannot
@@ -198,6 +198,9 @@ function ensureElementColumns(db: Database): void {
   if (!existing.has('stroke_width')) {
     db.exec('ALTER TABLE elements ADD COLUMN stroke_width REAL')
   }
+  if (!existing.has('latex')) {
+    db.exec('ALTER TABLE elements ADD COLUMN latex TEXT')
+  }
 }
 
 /**
@@ -236,8 +239,8 @@ export type { SlideBackground }
  * Elements can be rectangles, text objects, or images with various styling properties.
  */
 export interface TwigElement {
-  /** Type of element - rectangle shape, text, or image */
-  type: 'rect' | 'ellipse' | 'triangle' | 'star' | 'arrow' | 'text' | 'image'
+  /** Type of element - rectangle shape, text, image, or math */
+  type: 'rect' | 'ellipse' | 'triangle' | 'star' | 'arrow' | 'text' | 'image' | 'math'
 
   /** Unique identifier for this element */
   id: string
@@ -288,11 +291,14 @@ export interface TwigElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles?: Record<string, any>
 
-  /** Image data as base64 data URI (only for image elements) */
+  /** Image data as base64 data URI (image and math elements; math stores rendered SVG) */
   src?: string
 
   /** Original image filename (only for image elements) */
   filename?: string
+
+  /** LaTeX source (only for math elements). The rendered SVG lives in `src`. */
+  latex?: string
 
   /** Z-index for layer ordering (higher = in front) */
   zIndex: number
@@ -469,6 +475,7 @@ export function initializeDatabase(db: Database, appVersion: string): void {
       styles TEXT,
       src TEXT,
       filename TEXT,
+      latex TEXT,
       z_index INTEGER DEFAULT 0,
       animations TEXT,
       shape_params TEXT,
@@ -543,8 +550,9 @@ interface ElementRow {
   fontStyle?: string
   underline?: number | null
   styles?: string | null // Stored as JSON string in database
-  src?: string | null // Image data as base64 data URI
+  src?: string | null // Image data as base64 data URI (image or math elements)
   filename?: string | null // Original image filename
+  latex?: string | null // LaTeX source for math elements
   z_index: number
   animations?: string | null // Stored as JSON string in database
   shape_params?: string | null // Shape-specific geometry ratios (JSON); currently only used by 'arrow'
@@ -572,7 +580,7 @@ export function getSlide(db: Database, slideId: string): Slide | null {
 
   const elementRows = db
     .prepare(
-      'SELECT id, slide_id, type, x, y, width, height, angle, fill, stroke, stroke_width, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
+      'SELECT id, slide_id, type, x, y, width, height, angle, fill, stroke, stroke_width, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, latex, z_index, animations, shape_params FROM elements WHERE slide_id = ? ORDER BY z_index ASC'
     )
     .all(slideId) as ElementRow[]
 
@@ -649,9 +657,10 @@ export function getSlide(db: Database, slideId: string): Slide | null {
             }
           })()
         : undefined,
-      // Image-specific fields
+      // Image / math fields
       src: el.src || undefined,
       filename: el.filename || undefined,
+      latex: el.latex || undefined,
       zIndex: el.z_index ?? 0,
       animations: parsedAnimations,
       arrowShape
@@ -761,17 +770,27 @@ function deleteOrphanElements(db: Database, slideId: string, keepIds: Set<string
 }
 
 /**
- * Prepares the element UPSERT statement shared by saveSlide and saveAllSlides.
+ * Prepares the element UPSERT statements shared by saveSlide and saveAllSlides.
  *
- * On conflict all mutable fields are updated EXCEPT src. Image src is a base64
- * data URI (potentially megabytes) that never changes after first import —
- * skipping it on updates avoids re-writing large blobs on every autosave.
+ * Two paths share the column list:
+ *
+ * - The default UPDATE clause omits `src` and `latex`. An image's base64 data
+ *   URI (potentially megabytes) never changes after first import, so skipping
+ *   it on updates avoids re-writing large blobs on every autosave.
+ *
+ * - For `type === 'math'` we DO include `src = excluded.src` and
+ *   `latex = excluded.latex` in the UPDATE — the rendered SVG and its LaTeX
+ *   source both change every time the user edits the equation, and without
+ *   this branch the first-rendered SVG would stick forever.
+ *
+ * The returned function picks the statement based on the element's type. All
+ * call sites pass an `isMath` flag (cheaper than re-reading the type per row).
  */
-function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
-  const stmt = db.prepare(`
-    INSERT INTO elements (id, slide_id, type, x, y, width, height, angle, fill, stroke, stroke_width, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, z_index, animations, shape_params)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
+function prepareElementUpsert(db: Database): (isMath: boolean, ...args: unknown[]) => void {
+  const columns =
+    'id, slide_id, type, x, y, width, height, angle, fill, stroke, stroke_width, text, fontSize, fontFamily, fontWeight, fontStyle, underline, styles, src, filename, latex, z_index, animations, shape_params'
+  const placeholders = '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?'
+  const baseUpdate = `
       slide_id = excluded.slide_id,
       type = excluded.type,
       x = excluded.x,
@@ -792,9 +811,20 @@ function prepareElementUpsert(db: Database): (...args: unknown[]) => void {
       filename = excluded.filename,
       z_index = excluded.z_index,
       animations = excluded.animations,
-      shape_params = excluded.shape_params
+      shape_params = excluded.shape_params`
+  const baseStmt = db.prepare(`
+    INSERT INTO elements (${columns})
+    VALUES (${placeholders})
+    ON CONFLICT(id) DO UPDATE SET${baseUpdate}
   `)
-  return (...args) => stmt.run(...args)
+  const mathStmt = db.prepare(`
+    INSERT INTO elements (${columns})
+    VALUES (${placeholders})
+    ON CONFLICT(id) DO UPDATE SET${baseUpdate},
+      src = excluded.src,
+      latex = excluded.latex
+  `)
+  return (isMath, ...args) => (isMath ? mathStmt : baseStmt).run(...args)
 }
 
 /** Serialize an element's shape-specific params to a JSON string, or null. */
@@ -922,6 +952,7 @@ export function saveSlide(db: Database, slide: Slide): void {
       }
 
       elementUpsert(
+        el.type === 'math',
         el.id,
         s.id,
         el.type,
@@ -940,8 +971,9 @@ export function saveSlide(db: Database, slide: Slide): void {
         el.fontStyle ?? null,
         el.underline === undefined ? null : Number(el.underline),
         stylesJson,
-        el.src ?? null, // Only written on initial INSERT; preserved on UPDATE
+        el.src ?? null, // Image elements: written only on INSERT. Math: also on UPDATE.
         el.filename ?? null,
+        el.latex ?? null,
         el.zIndex,
         animationsJson,
         serializeShapeParams(el)
@@ -1065,6 +1097,7 @@ export function duplicateSlide(db: Database, sourceSlideId: string): Slide {
       }
 
       elementUpsert(
+        el.type === 'math',
         el.id,
         duplicatedSlide.id,
         el.type,
@@ -1085,6 +1118,7 @@ export function duplicateSlide(db: Database, sourceSlideId: string): Slide {
         stylesJson,
         el.src ?? null,
         el.filename ?? null,
+        el.latex ?? null,
         el.zIndex,
         animationsJson,
         serializeShapeParams(el)
@@ -1173,6 +1207,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
         }
 
         elementUpsert(
+          el.type === 'math',
           el.id,
           slide.id,
           el.type,
@@ -1193,6 +1228,7 @@ export function saveAllSlides(db: Database, slides: Slide[]): void {
           stylesJson,
           el.src ?? null,
           el.filename ?? null,
+          el.latex ?? null,
           el.zIndex,
           animationsJson,
           serializeShapeParams(el)

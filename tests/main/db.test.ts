@@ -141,11 +141,12 @@ describe('src/main/db.ts', () => {
     expectStoredSlide(getSlide(db, slide.id), slide)
   })
 
-  it('creates fresh databases with v2 stroke columns', () => {
+  it('creates fresh databases with v2 stroke and latex columns', () => {
     const colNames = getElementColumnNames(db)
 
     expect(colNames.has('stroke')).toBe(true)
     expect(colNames.has('stroke_width')).toBe(true)
+    expect(colNames.has('latex')).toBe(true)
   })
 
   it('round-trips persisted slide fields through saveSlide and getSlide', () => {
@@ -192,6 +193,80 @@ describe('src/main/db.ts', () => {
     saveSlide(db, slide)
 
     expectStoredSlide(getSlide(db, slide.id), slide)
+  })
+
+  it('round-trips math element latex source and rendered SVG src', () => {
+    const slide = makeSlide({
+      elements: [
+        {
+          id: 'el-math',
+          type: 'math',
+          x: 480,
+          y: 270,
+          width: 120,
+          height: 60,
+          angle: 0,
+          src: 'data:image/svg+xml;base64,Zmlyc3Q=',
+          latex: 'x^2',
+          zIndex: 0
+        }
+      ],
+      animationOrder: []
+    })
+
+    saveSlide(db, slide)
+    expectStoredSlide(getSlide(db, slide.id), slide)
+
+    // The image-row optimization in prepareElementUpsert skips src on UPDATE.
+    // Math must override that — without it, edited LaTeX would still render
+    // the original equation on the next file open. Verify both src and latex
+    // are refreshed when the same element is saved again.
+    const edited = JSON.parse(JSON.stringify(slide)) as Slide
+    edited.elements[0].latex = '\\int_0^1 x^2 \\, dx'
+    edited.elements[0].src = 'data:image/svg+xml;base64,c2Vjb25k'
+    edited.elements[0].width = 200
+    edited.elements[0].height = 80
+    saveSlide(db, edited)
+
+    const reloaded = getSlide(db, slide.id)
+    expect(reloaded?.elements[0].latex).toBe('\\int_0^1 x^2 \\, dx')
+    expect(reloaded?.elements[0].src).toBe('data:image/svg+xml;base64,c2Vjb25k')
+    expect(reloaded?.elements[0].width).toBe(200)
+    expect(reloaded?.elements[0].height).toBe(80)
+  })
+
+  it('preserves image src on UPDATE (regression: math-element fix must not leak to images)', () => {
+    const slide = makeSlide({
+      elements: [
+        {
+          id: 'el-image-only',
+          type: 'image',
+          x: 100,
+          y: 100,
+          width: 50,
+          height: 50,
+          angle: 0,
+          src: 'data:image/png;base64,b3JpZ2luYWw=',
+          filename: 'orig.png',
+          zIndex: 0
+        }
+      ],
+      animationOrder: []
+    })
+
+    saveSlide(db, slide)
+
+    // Simulate the canonical autosave shape: src is stripped from in-memory
+    // state for image elements (see App.svelte#takeSnapshot). Saving with null
+    // src must NOT overwrite the persisted blob.
+    const updated = JSON.parse(JSON.stringify(slide)) as Slide
+    updated.elements[0].src = undefined
+    updated.elements[0].x = 200
+    saveSlide(db, updated)
+
+    const reloaded = getSlide(db, slide.id)
+    expect(reloaded?.elements[0].src).toBe('data:image/png;base64,b3JpZ2luYWw=')
+    expect(reloaded?.elements[0].x).toBe(200)
   })
 
   it('removes orphaned elements when a slide is updated', () => {
@@ -739,6 +814,7 @@ describe('format versioning', () => {
     const colNames = getElementColumnNames(instance)
     expect(colNames.has('stroke')).toBe(true)
     expect(colNames.has('stroke_width')).toBe(true)
+    expect(colNames.has('latex')).toBe(true)
 
     const legacySlide = getSlide(instance, 'slide-v1')
     expect(legacySlide?.elements[0].stroke).toBeUndefined()
