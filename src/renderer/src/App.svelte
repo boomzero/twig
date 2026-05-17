@@ -103,7 +103,7 @@
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
   import MathEditorModal from './components/MathEditorModal.svelte'
-  import type { RenderedMath } from './lib/math'
+  import { renderLatexToSvgDataUrl, type RenderResult, type RenderedMath } from './lib/math'
   import CloseFailureModal from './components/CloseFailureModal.svelte'
   import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
   import TooNewFileModal from './components/TooNewFileModal.svelte'
@@ -2042,6 +2042,63 @@
     obj.setCoords()
   }
 
+  function renderResultToMath(result: RenderResult, fallbackLatex: string): RenderedMath {
+    if (result.ok === true) return result.rendered
+    return makeMathErrorSvg(result.error, fallbackLatex)
+  }
+
+  // Build a small SVG that visibly tells the user a math element couldn't be
+  // rendered (bad LaTeX from an external generator, etc.). Persisting this as
+  // the element's src keeps load behavior consistent — the slide isn't blank,
+  // and reopening the math editor will surface the same error inline.
+  function makeMathErrorSvg(message: string, latex: string): RenderedMath {
+    const width = 360
+    const height = 56
+    const text = `Math error: ${message} (${latex})`
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .slice(0, 120)
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
+      `viewBox="0 0 ${width} ${height}">` +
+      `<rect width="${width}" height="${height}" fill="#fee2e2" stroke="#b91c1c"/>` +
+      `<text x="10" y="34" font-family="monospace" font-size="13" fill="#b91c1c">${text}</text>` +
+      `</svg>`
+    return {
+      src: `data:image/svg+xml;base64,${btoa(svg)}`,
+      width,
+      height
+    }
+  }
+
+  // Math elements written by external generators (AI scripts, etc.) may carry
+  // only `latex` — `src` and the natural dimensions get filled in here on the
+  // first open. After this runs the element looks exactly like one twig wrote
+  // itself, and later loads skip MathJax entirely.
+  async function hydrateMissingMathSrc(slide: Slide, generation: number): Promise<void> {
+    const pending = slide.elements.filter((el) => el.type === 'math' && el.latex && !el.src)
+    if (pending.length === 0) return
+
+    const renders = await Promise.all(
+      pending.map(async (el) => ({ el, result: await renderLatexToSvgDataUrl(el.latex!) }))
+    )
+
+    if (renderGeneration !== generation) return
+    if (appState.currentSlide?.id !== slide.id) return
+
+    for (const entry of renders) {
+      const live = appState.currentSlide.elements.find((e) => e.id === entry.el.id)
+      if (!live || live.type !== 'math') continue
+      const rendered = renderResultToMath(entry.result, live.latex ?? '')
+      live.src = rendered.src
+      live.width = rendered.width
+      live.height = rendered.height
+      imageAssets.set(live.id, rendered.src)
+    }
+    scheduleSave()
+  }
+
   // Math elements must scale uniformly: stretching a rendered equation
   // squashes its glyphs. `lockUniScaling` in fabric@7 doesn't reliably do
   // this, so instead we hide the side handles (no axis-only scaling possible)
@@ -2132,6 +2189,11 @@
 
     // Stamp this render so async callbacks can detect staleness
     const generation = ++renderGeneration
+
+    // Math elements with `latex` but no `src` (typical of externally-generated
+    // .tb files) get their SVG rendered now. Fire-and-forget — the state
+    // mutation in hydrateMissingMathSrc re-triggers renderCanvasFromState.
+    void hydrateMissingMathSrc(appState.currentSlide, generation)
 
     const currentSlide = appState.currentSlide
 
