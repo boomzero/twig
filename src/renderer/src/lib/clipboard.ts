@@ -15,7 +15,8 @@ const TWIG_ELEMENT_TYPES: ReadonlySet<TwigElementType> = new Set([
   'star',
   'arrow',
   'text',
-  'image'
+  'image',
+  'math'
 ])
 
 function isTwigElement(value: unknown): value is TwigElement {
@@ -30,6 +31,7 @@ function isTwigElement(value: unknown): value is TwigElement {
   if (e.stroke !== undefined && typeof e.stroke !== 'string') return false
   if (e.strokeWidth !== undefined && typeof e.strokeWidth !== 'number') return false
   if (type === 'image' && typeof e.src !== 'string') return false
+  if (type === 'math' && (typeof e.src !== 'string' || typeof e.latex !== 'string')) return false
   return true
 }
 
@@ -40,7 +42,10 @@ export function serializeElementsForClipboard(args: {
 }): string {
   const elements = args.elements.map((el) => ({
     ...el,
-    src: el.type === 'image' ? (args.imageSrcOf(el.id) ?? el.src) : undefined
+    src:
+      el.type === 'image' || el.type === 'math'
+        ? (args.imageSrcOf(el.id) ?? el.src)
+        : undefined
   }))
   const payload: TwigClipboardPayload = {
     __twig_clipboard__: true,
@@ -77,7 +82,9 @@ export function cloneElementsForPaste(args: {
   return sortedElements.map((el, i) => {
     const prefix = el.id.split('_')[0] ?? el.type
     const newId = `${prefix}_${args.idFactory()}`
-    if (el.type === 'image' && el.src) args.registerImageSrc(newId, el.src)
+    if ((el.type === 'image' || el.type === 'math') && el.src) {
+      args.registerImageSrc(newId, el.src)
+    }
     // Clamp so repeated pastes don't walk elements off canvas.
     const x = Math.min(el.x + args.offset, args.canvasW - 1)
     const y = Math.min(el.y + args.offset, args.canvasH - 1)

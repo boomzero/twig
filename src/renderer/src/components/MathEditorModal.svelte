@@ -13,7 +13,10 @@
   let { open, initialLatex, mode, onCommit, onClose }: Props = $props()
 
   let latex = $state('')
-  let lastResult = $state<RenderResult | null>(null)
+  // Tied to a specific latex string so commit() can refuse to save when the
+  // result is from an older keystroke (rendering is debounced ~200ms; without
+  // this tie a fast Cmd+Enter could pair a new latex with a stale src).
+  let lastResult = $state<{ latex: string; result: RenderResult } | null>(null)
   let renderingError = $state<string | null>(null)
   let previewSrc = $state<string | null>(null)
   let editorContainer: HTMLDivElement | null = $state(null)
@@ -76,7 +79,7 @@
     const result = await renderLatexToSvgDataUrl(value)
     // Discard stale results if a newer keystroke is now in the editor.
     if (value !== latex) return
-    lastResult = result
+    lastResult = { latex: value, result }
     if (result.ok === true) {
       previewSrc = result.rendered.src
       renderingError = null
@@ -144,9 +147,18 @@
     onClose()
   }
 
-  function commit(): void {
-    if (!lastResult?.ok) return
-    onCommit({ latex, rendered: lastResult.rendered })
+  async function commit(): Promise<void> {
+    // If a debounced render is still pending, flush it now so we don't save a
+    // src that's older than the current latex.
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+    if (lastResult?.latex !== latex) {
+      await runRender(latex)
+    }
+    if (!lastResult || lastResult.latex !== latex || !lastResult.result.ok) return
+    onCommit({ latex, rendered: lastResult.result.rendered })
     close()
   }
 
@@ -238,7 +250,7 @@
         </button>
         <button
           onclick={commit}
-          disabled={!lastResult?.ok}
+          disabled={!lastResult?.result.ok || lastResult.latex !== latex}
           class="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md disabled:bg-indigo-300 disabled:cursor-not-allowed"
         >
           {mode === 'edit' ? $_('math.editor.save') : $_('math.editor.insert')}
