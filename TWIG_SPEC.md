@@ -917,7 +917,10 @@ The stamp operation itself is idempotent: running it twice in a row produces the
 - Added shape-only `stroke` and `stroke_width` columns to `elements`.
 - Shape `fill` and `stroke` may use the literal CSS keyword `"transparent"`.
 - Clipboard element payloads may include `stroke` and `strokeWidth`.
-- Older v1 readers should treat v2 files as too new rather than silently rendering bordered shapes without borders.
+- Added `math` element type (TeX/LaTeX → SVG via MathJax) and the `latex TEXT` column on `elements`. Math rows reuse `src` for the rendered SVG data URI; external generators may write `latex` alone and let twig render `src`/`width`/`height` on first open.
+- Clipboard element payloads may include `latex` (math elements). Pasting a math element with `latex` but no `src` re-renders via MathJax before placement.
+- `compat_notes` for v2 writers names the new capabilities (transparent fills, shape borders, math elements) so older v1 readers display a meaningful warning instead of silently dropping them.
+- Older v1 readers should treat v2 files as too new rather than silently rendering bordered shapes without borders or dropping math elements.
 
 ### v1 — 2026-04-24 (shipped in twig 1.1.0)
 
