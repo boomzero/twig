@@ -31,7 +31,12 @@ function isTwigElement(value: unknown): value is TwigElement {
   if (e.stroke !== undefined && typeof e.stroke !== 'string') return false
   if (e.strokeWidth !== undefined && typeof e.strokeWidth !== 'number') return false
   if (type === 'image' && typeof e.src !== 'string') return false
-  if (type === 'math' && (typeof e.src !== 'string' || typeof e.latex !== 'string')) return false
+  if (type === 'math') {
+    // `latex` is the source of truth; `src` is optional on the clipboard
+    // (external producers may omit it — paste re-renders via MathJax).
+    if (typeof e.latex !== 'string') return false
+    if (e.src !== undefined && typeof e.src !== 'string') return false
+  }
   return true
 }
 

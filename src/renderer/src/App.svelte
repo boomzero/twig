@@ -4311,6 +4311,13 @@
         el.src = rendered.src
         el.width = el.height * aspect
         imageAssets.set(el.id, rendered.src)
+        // The $effect that drives renderCanvasFromState() tracks the elements
+        // array reference, not deep property mutations — so editing `src` on
+        // an existing math element leaves the stale FabricImage on canvas
+        // until something forces a full rerender. Trigger one explicitly.
+        renderCanvasFromState().catch((err) =>
+          console.error('Canvas render failed after math edit:', err)
+        )
       }
     } else {
       const id = `math_${uuid_v4()}`
