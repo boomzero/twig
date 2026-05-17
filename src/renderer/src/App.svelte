@@ -4240,10 +4240,14 @@
     if (mathModalElementId) {
       const el = appState.currentSlide.elements.find((e) => e.id === mathModalElementId)
       if (el && el.type === 'math') {
+        // Preserve the user's chosen visual height (the natural proxy for
+        // equation font-size) and rescale width to the new aspect ratio.
+        // Replacing width/height with `rendered.*` directly would erase any
+        // resize the user did before reopening the editor.
+        const aspect = rendered.width / rendered.height
         el.latex = latex
         el.src = rendered.src
-        el.width = rendered.width
-        el.height = rendered.height
+        el.width = el.height * aspect
         imageAssets.set(el.id, rendered.src)
       }
     } else {
