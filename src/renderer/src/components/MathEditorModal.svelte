@@ -27,6 +27,8 @@
     EditorView: typeof import('@codemirror/view').EditorView
     keymap: typeof import('@codemirror/view').keymap
     StreamLanguage: typeof import('@codemirror/language').StreamLanguage
+    syntaxHighlighting: typeof import('@codemirror/language').syntaxHighlighting
+    defaultHighlightStyle: typeof import('@codemirror/language').defaultHighlightStyle
     defaultKeymap: typeof import('@codemirror/commands').defaultKeymap
     history: typeof import('@codemirror/commands').history
     historyKeymap: typeof import('@codemirror/commands').historyKeymap
@@ -48,6 +50,8 @@
           EditorView: viewMod.EditorView,
           keymap: viewMod.keymap,
           StreamLanguage: languageMod.StreamLanguage,
+          syntaxHighlighting: languageMod.syntaxHighlighting,
+          defaultHighlightStyle: languageMod.defaultHighlightStyle,
           defaultKeymap: commandsMod.defaultKeymap,
           history: commandsMod.history,
           historyKeymap: commandsMod.historyKeymap,
@@ -109,6 +113,7 @@
         mods.history(),
         mods.keymap.of([...mods.defaultKeymap, ...mods.historyKeymap]),
         mods.StreamLanguage.define(mods.stex),
+        mods.syntaxHighlighting(mods.defaultHighlightStyle, { fallback: true }),
         mods.EditorView.lineWrapping,
         mods.EditorView.theme({
           '&': { fontSize: '13px' },
