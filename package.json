@@ -30,15 +30,18 @@
     "rebuild": "electron-rebuild"
   },
   "dependencies": {
+    "@codemirror/legacy-modes": "^6.5.3",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
     "@types/adm-zip": "^0.5.7",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
+    "codemirror": "^6.0.2",
     "electron-updater": "^6.8.3",
     "fabric": "^7.2.0",
     "fontkit": "^2.0.4",
     "gifuct-js": "^2.1.2",
+    "mathjax-full": "^3.2.1",
     "svelte-i18n": "^4.0.1",
     "uuid": "^11.1.0"
   },

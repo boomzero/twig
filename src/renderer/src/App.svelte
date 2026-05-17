@@ -102,6 +102,8 @@
   import StackPanel from './components/StackPanel.svelte'
   import AnimationOrderPanel from './components/AnimationOrderPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
+  import MathEditorModal from './components/MathEditorModal.svelte'
+  import { renderLatexToSvgDataUrl, type RenderResult, type RenderedMath } from './lib/math'
   import CloseFailureModal from './components/CloseFailureModal.svelte'
   import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
   import TooNewFileModal from './components/TooNewFileModal.svelte'
@@ -244,6 +246,13 @@
 
   // Settings modal
   let settingsOpen = $state(false)
+
+  // Math editor modal state. When `mathModalOpen` is true the modal is shown,
+  // seeded with `mathModalLatex`. `mathModalElementId` is null on insert and
+  // the id of an existing element on edit.
+  let mathModalOpen = $state(false)
+  let mathModalLatex = $state('')
+  let mathModalElementId = $state<string | null>(null)
   let tempPresentationGuardOpen = $state(false)
   let closeFailureGuardOpen = $state(false)
   let closeFailureGuardMessage = $state('')
@@ -398,7 +407,9 @@
   // Snapshots omit src blobs; this map is used to re-attach them on restore.
   const imageAssets = new SvelteMap<string, string>()
 
-  type ElementSnapshot = Omit<TwigElement, 'src'>
+  // `src` is omitted at snapshot time for image elements (see
+  // stripSrcForSnapshot) but kept for math elements — keep the type loose.
+  type ElementSnapshot = TwigElement
   type SlideSnapshot = {
     elements: ElementSnapshot[]
     background: SlideBackground | undefined
@@ -586,7 +597,7 @@
   function registerImageAssetsFromSlide(slide: typeof appState.currentSlide): void {
     if (!slide) return
     for (const el of slide.elements) {
-      if (el.type === 'image' && el.src && el.id) {
+      if ((el.type === 'image' || el.type === 'math') && el.src && el.id) {
         imageAssets.set(el.id, el.src)
       }
     }
@@ -606,7 +617,11 @@
       if (!slide) return
       const loads: Promise<void>[] = []
       for (const el of slide.elements) {
-        if (el.type === 'image' && el.src && !imageElementCache.has(el.src)) {
+        if (
+          (el.type === 'image' || el.type === 'math') &&
+          el.src &&
+          !imageElementCache.has(el.src)
+        ) {
           const src = el.src
           loads.push(
             new Promise<void>((resolve) => {
@@ -670,11 +685,21 @@
     return historyBySlideId.get(slideId)!
   }
 
+  // Image src is omitted from snapshots and re-attached on restore from the
+  // stable imageAssets cache — saves memory and is safe because an image's
+  // bytes never change after import. Math elements re-render their SVG on
+  // every LaTeX edit, so imageAssets is unstable for them; the snapshot must
+  // carry its own src to stay consistent with its own latex.
+  function stripSrcForSnapshot(el: TwigElement): TwigElement {
+    if (el.type === 'image') return { ...el, src: undefined }
+    return { ...el }
+  }
+
   function takeSnapshot(): SlideSnapshot | null {
     if (!appState.currentSlide) return null
     return {
       elements: appState.currentSlide.elements.map(
-        (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
+        (el) => JSON.parse(JSON.stringify(stripSrcForSnapshot(el))) as ElementSnapshot
       ),
       background: appState.currentSlide.background
         ? (JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground)
@@ -690,7 +715,7 @@
     if (appState.readOnly) return
     const snapshot: SlideSnapshot = {
       elements: slide.elements.map(
-        (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
+        (el) => JSON.parse(JSON.stringify(stripSrcForSnapshot(el))) as ElementSnapshot
       ),
       background: slide.background
         ? (JSON.parse(JSON.stringify(slide.background)) as SlideBackground)
@@ -740,7 +765,14 @@
     fabCanvas?.discardActiveObject()
 
     const restoredElements = snapshot.elements.map((el) => {
-      if (el.type === 'image') {
+      if (el.type === 'math' && el.src) {
+        // Snapshot carries its own SVG src (see stripSrcForSnapshot). Re-seed
+        // imageAssets so later renders / autosave agree with the restored
+        // latex revision instead of whatever the latest edit had pushed in.
+        imageAssets.set(el.id, el.src)
+        return { ...el } as TwigElement
+      }
+      if (el.type === 'image' || el.type === 'math') {
         return { ...el, src: imageAssets.get(el.id) } as TwigElement
       }
       return { ...el } as TwigElement
@@ -1105,7 +1137,10 @@
       )
     }
 
-    if (element.type === 'image' && sourceObject instanceof FabricImage) {
+    if (
+      (element.type === 'image' || element.type === 'math') &&
+      sourceObject instanceof FabricImage
+    ) {
       const ghost = new FabricImage(sourceObject.getElement())
       ghost.set({
         ...pos,
@@ -1476,7 +1511,7 @@
                 ...getTextboxWrappingOptions(el.text)
               })
             )
-          } else if (el.type === 'image' && el.src) {
+          } else if ((el.type === 'image' || el.type === 'math') && el.src) {
             try {
               const img = await FabricImage.fromURL(el.src, { crossOrigin: 'anonymous' })
               const scaleX = el.width / (img.width || 1)
@@ -2007,6 +2042,87 @@
     obj.setCoords()
   }
 
+  function renderResultToMath(result: RenderResult, fallbackLatex: string): RenderedMath {
+    if (result.ok === true) return result.rendered
+    return makeMathErrorSvg(result.error, fallbackLatex)
+  }
+
+  // Build a small SVG that visibly tells the user a math element couldn't be
+  // rendered (bad LaTeX from an external generator, etc.). Persisting this as
+  // the element's src keeps load behavior consistent — the slide isn't blank,
+  // and reopening the math editor will surface the same error inline.
+  function makeMathErrorSvg(message: string, latex: string): RenderedMath {
+    const width = 360
+    const height = 56
+    const text = `Math error: ${message} (${latex})`
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .slice(0, 120)
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
+      `viewBox="0 0 ${width} ${height}">` +
+      `<rect width="${width}" height="${height}" fill="#fee2e2" stroke="#b91c1c"/>` +
+      `<text x="10" y="34" font-family="monospace" font-size="13" fill="#b91c1c">${text}</text>` +
+      `</svg>`
+    return {
+      src: `data:image/svg+xml;base64,${btoa(svg)}`,
+      width,
+      height
+    }
+  }
+
+  // Math elements written by external generators (AI scripts, etc.) may carry
+  // only `latex` — `src` and the natural dimensions get filled in here on the
+  // first open. After this runs the element looks exactly like one twig wrote
+  // itself, and later loads skip MathJax entirely.
+  async function hydrateMissingMathSrc(slide: Slide, generation: number): Promise<void> {
+    const pending = slide.elements.filter((el) => el.type === 'math' && el.latex && !el.src)
+    if (pending.length === 0) return
+
+    const renders = await Promise.all(
+      pending.map(async (el) => ({ el, result: await renderLatexToSvgDataUrl(el.latex!) }))
+    )
+
+    if (renderGeneration !== generation) return
+    if (appState.currentSlide?.id !== slide.id) return
+
+    for (const entry of renders) {
+      const live = appState.currentSlide.elements.find((e) => e.id === entry.el.id)
+      if (!live || live.type !== 'math') continue
+      const rendered = renderResultToMath(entry.result, live.latex ?? '')
+      live.src = rendered.src
+      live.width = rendered.width
+      live.height = rendered.height
+      imageAssets.set(live.id, rendered.src)
+    }
+    scheduleSave()
+  }
+
+  // Math elements must scale uniformly: stretching a rendered equation
+  // squashes its glyphs. `lockUniScaling` in fabric@7 doesn't reliably do
+  // this, so instead we hide the side handles (no axis-only scaling possible)
+  // and clamp scaleX/scaleY to match on every corner scale event.
+  function applyMathAspectLock(obj: FabricObject): void {
+    ;(obj as ControlLayoutTarget).setControlsVisibility({
+      mt: false,
+      mb: false,
+      ml: false,
+      mr: false
+    })
+    obj.set({ lockScalingFlip: true })
+    obj.on('scaling', () => {
+      const sx = obj.scaleX ?? 1
+      const sy = obj.scaleY ?? 1
+      if (sx === sy) return
+      // Use whichever axis the user pulled further — feels more natural than
+      // averaging when dragging mostly horizontally or vertically.
+      const s = Math.abs(sx - 1) > Math.abs(sy - 1) ? sx : sy
+      obj.scaleX = s
+      obj.scaleY = s
+    })
+  }
+
   function createActiveSelectionWithLayout(objects: FabricObject[]): ActiveSelection {
     const selection = new ActiveSelection(objects, { canvas: fabCanvas })
     selection.set(ROTATION_SNAP)
@@ -2074,6 +2190,11 @@
     // Stamp this render so async callbacks can detect staleness
     const generation = ++renderGeneration
 
+    // Math elements with `latex` but no `src` (typical of externally-generated
+    // .tb files) get their SVG rendered now. Fire-and-forget — the state
+    // mutation in hydrateMissingMathSrc re-triggers renderCanvasFromState.
+    void hydrateMissingMathSrc(appState.currentSlide, generation)
+
     const currentSlide = appState.currentSlide
 
     // Null out the stale text object reference before clearing the canvas.
@@ -2093,6 +2214,7 @@
     fabCanvas.off('selection:cleared', handleSelectionCleared)
     fabCanvas.off('contextmenu', handleContextMenu)
     fabCanvas.off('mouse:down:before', handleCanvasMouseDownBefore)
+    fabCanvas.off('mouse:dblclick', handleCanvasDblClick)
 
     // Read elements synchronously (before any await) so Svelte 5 tracks the
     // array within the $effect's reactive context. Accessing elements after an
@@ -2111,9 +2233,11 @@
       return
     }
 
-    // Add non-image elements synchronously in z-order
+    // Add non-image elements synchronously in z-order. Math elements render
+    // as FabricImages of their prerendered SVG, so they use the same async
+    // load path as images and are skipped here.
     sortedElements.forEach((element) => {
-      if (element.type === 'image') return
+      if (element.type === 'image' || element.type === 'math') return
 
       let fabObj: FabricObject | undefined
       if (element.type === 'rect') {
@@ -2253,6 +2377,7 @@
         widthPx: element.width,
         heightPx: element.height
       })
+      if (element.type === 'math') applyMathAspectLock(img)
       applyReadOnlyCanvasGuards(img)
       const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
@@ -2261,7 +2386,7 @@
     }
 
     sortedElements.forEach((element) => {
-      if (element.type !== 'image' || !element.src) return
+      if ((element.type !== 'image' && element.type !== 'math') || !element.src) return
       const imageZIndex = element.zIndex
       const cached = imageElementCache.get(element.src)
 
@@ -2293,6 +2418,7 @@
               widthPx: element.width,
               heightPx: element.height
             })
+            if (element.type === 'math') applyMathAspectLock(img)
             applyReadOnlyCanvasGuards(img)
 
             // Count objects already on the canvas whose zIndex is lower than ours
@@ -2327,6 +2453,7 @@
     fabCanvas.on('selection:cleared', handleSelectionCleared)
     fabCanvas.on('contextmenu', handleContextMenu)
     fabCanvas.on('mouse:down:before', handleCanvasMouseDownBefore)
+    fabCanvas.on('mouse:dblclick', handleCanvasDblClick)
 
     if (imageLoads.length === 0) {
       slideTransitionOverlaySrc = null
@@ -2378,6 +2505,19 @@
    * Handles the 'object:modified' event from fabric.js.
    * Syncs changes from the canvas back to the application state.
    */
+  /**
+   * Reopens the math editor when the user double-clicks an existing math
+   * element. Other element types ignore this event — text already enters
+   * inline edit mode through fabric's built-in handler.
+   */
+  function handleCanvasDblClick(event: { target?: TwigFabricObject }): void {
+    const id = event.target?.id
+    if (!id || appState.readOnly || !appState.currentSlide) return
+    const el = appState.currentSlide.elements.find((e) => e.id === id)
+    if (el?.type !== 'math') return
+    openMathEditor(id)
+  }
+
   function handleObjectModified(event: { target?: TwigFabricObject | ActiveSelection }): void {
     if (!appState.currentSlide) return
     if (appState.readOnly) {
@@ -4127,6 +4267,84 @@
    * Opens an image file dialog and adds the selected image to the current slide.
    * The image is loaded as a base64 data URI and stored in the slide data.
    */
+  /**
+   * Opens the math editor modal. With no element id the modal is in "insert"
+   * mode and seeds with a sample equation; with an id the modal seeds from
+   * that element's stored LaTeX (used by mouse:dblclick on math elements).
+   */
+  function openMathEditor(elementId: string | null): void {
+    if (appState.readOnly || !appState.currentSlide) return
+    if (elementId) {
+      const el = appState.currentSlide.elements.find((e) => e.id === elementId)
+      if (!el || el.type !== 'math') return
+      mathModalElementId = elementId
+      mathModalLatex = el.latex ?? ''
+    } else {
+      mathModalElementId = null
+      mathModalLatex = 'x^2'
+    }
+    mathModalOpen = true
+  }
+
+  function addMath(): void {
+    openMathEditor(null)
+  }
+
+  /**
+   * Modal commit handler. Creates a new math element or updates an existing
+   * one, depending on whether `mathModalElementId` was set when the modal
+   * opened. Reuses the image-asset registry so undo/redo snapshots (which
+   * strip `src` for size) can re-attach the rendered SVG.
+   */
+  function handleMathCommit({ latex, rendered }: { latex: string; rendered: RenderedMath }): void {
+    if (!appState.currentSlide || appState.readOnly) return
+    pushCheckpoint()
+    if (mathModalElementId) {
+      const el = appState.currentSlide.elements.find((e) => e.id === mathModalElementId)
+      if (el && el.type === 'math') {
+        // Preserve the user's chosen visual height (the natural proxy for
+        // equation font-size) and rescale width to the new aspect ratio.
+        // Replacing width/height with `rendered.*` directly would erase any
+        // resize the user did before reopening the editor.
+        const aspect = rendered.width / rendered.height
+        el.latex = latex
+        el.src = rendered.src
+        el.width = el.height * aspect
+        imageAssets.set(el.id, rendered.src)
+        // The $effect that drives renderCanvasFromState() tracks the elements
+        // array reference, not deep property mutations — so editing `src` on
+        // an existing math element leaves the stale FabricImage on canvas
+        // until something forces a full rerender. Trigger one explicitly.
+        renderCanvasFromState().catch((err) =>
+          console.error('Canvas render failed after math edit:', err)
+        )
+      }
+    } else {
+      const id = `math_${uuid_v4()}`
+      const newMath: TwigElement = {
+        type: 'math',
+        id,
+        x: 480,
+        y: 270,
+        width: rendered.width,
+        height: rendered.height,
+        angle: 0,
+        src: rendered.src,
+        latex,
+        zIndex: nextZIndex()
+      }
+      imageAssets.set(id, rendered.src)
+      appState.currentSlide.elements.push(newMath)
+    }
+    scheduleSave()
+  }
+
+  function handleMathClose(): void {
+    mathModalOpen = false
+    mathModalElementId = null
+    mathModalLatex = ''
+  }
+
   async function addImage(): Promise<void> {
     if (!appState.currentSlide || appState.readOnly) return
 
@@ -4935,6 +5153,14 @@
 />
 
 <SettingsModal bind:open={settingsOpen} />
+
+<MathEditorModal
+  open={mathModalOpen}
+  initialLatex={mathModalLatex}
+  mode={mathModalElementId ? 'edit' : 'insert'}
+  onCommit={handleMathCommit}
+  onClose={handleMathClose}
+/>
 <TempPresentationGuardModal
   open={tempPresentationGuardOpen}
   onSave={() => resolveTempPresentationGuard('save')}
@@ -5342,6 +5568,18 @@
         {/if}
       </div>
       <button
+        onclick={addMath}
+        class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
+        title={$_('toolbar.math.title')}
+      >
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M208,40a8,8,0,0,1-8,8H170.71a24,24,0,0,0-23.62,19.71L137.59,120H184a8,8,0,0,1,0,16H134.68l-10,55.16A40,40,0,0,1,85.29,224H56a8,8,0,0,1,0-16H85.29a24,24,0,0,0,23.62-19.71l9.5-52.29H72a8,8,0,0,1,0-16h49.32l10-55.16A40,40,0,0,1,170.71,32H200A8,8,0,0,1,208,40Z"
+          /></svg
+        >
+        <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.math')}</span>
+      </button>
+      <button
         onclick={addImage}
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.media')}
@@ -5692,6 +5930,7 @@
             onPropertyChange={handlePropertyChange}
             onBeforePropertyChange={pushCheckpoint}
             onAnimationChange={handleAnimationChange}
+            onEditMath={openMathEditor}
             slideTransition={appState.currentSlide?.transition}
             onSlideTransitionChange={(t) => {
               if (appState.readOnly) return

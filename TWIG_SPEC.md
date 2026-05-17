@@ -68,8 +68,9 @@ CREATE TABLE elements (
   fontStyle   TEXT,                  -- 'normal' | 'italic' | 'oblique' (text elements only)
   underline   INTEGER,               -- 0 | 1, base underline flag (text elements only)
   styles      TEXT,                  -- JSON rich-text styles (text elements only)
-  src         TEXT,                  -- base64 data URI (image elements only)
+  src         TEXT,                  -- base64 data URI (image and math elements)
   filename    TEXT,                  -- original filename hint (image elements only)
+  latex       TEXT,                  -- LaTeX source string (math elements only)
   z_index     INTEGER NOT NULL       -- render order; higher = in front
                 DEFAULT 0,
   animations  TEXT,                  -- JSON ElementAnimations (optional)
@@ -145,10 +146,13 @@ All element types share the **common fields**: `id`, `slide_id`, `type`, `x`, `y
 | `arrow`    | —                                | `fill`, `stroke`, `strokeWidth`, `animations`, `shape_params` (see §4.6)            |
 | `text`     | `text`, `fontSize`, `fontFamily` | `fill` (text color), `fontWeight`, `fontStyle`, `underline`, `styles`, `animations` |
 | `image`    | `src`                            | `filename`, `animations`                                                            |
+| `math`     | `latex`                          | `src`, `animations`                                                                 |
 
 For shape elements, `fill` and `stroke` may be the literal CSS keyword `"transparent"`.
 In JavaScript/clipboard payloads the border width field is `strokeWidth`; in SQL it is
 stored as `stroke_width`.
+
+**Math elements** carry the LaTeX source in `latex`. When twig itself writes a math element it also stores the MathJax-rendered SVG (as a `data:image/svg+xml;base64,...` URI) in `src` so subsequent opens render without re-running MathJax. External generators (scripts, AI agents) are not expected to produce the SVG — they may set `src` to `NULL` and write any positive placeholder for `width`/`height` (which the schema requires non-null). On first open, twig renders the SVG from `latex`, replaces `src`, `width`, and `height` with the rendered values, and writes them back so later loads pay no MathJax cost. The editor enforces uniform scaling on math elements; out-of-band edits should preserve the SVG's natural aspect ratio or the equation will appear distorted.
 
 **Default values used by the editor when adding elements:**
 
@@ -161,7 +165,7 @@ stored as `stroke_width`.
 | `arrow`    | 200             | 100              | `#FF6F61`      | —                  |
 | `text`     | 200             | 50               | `#333333`      | 40                 |
 
-Text elements use `Arial` as the default `fontFamily`.
+Text elements use `Arial` as the default `fontFamily`. Math elements have no fixed defaults — `width` and `height` come from the rendered SVG's pixel dimensions at the time of insertion, and the editor seeds new math elements with `latex = "x^2"`.
 
 ---
 
@@ -428,12 +432,19 @@ Each element in `elements` is a plain JavaScript object with these fields:
   "src": "data:image/png;base64,iVBOR...",
   "filename": "photo.png",
 
+  // math elements — latex required, src optional (twig will re-render
+  // from latex if src is omitted)
+  "latex": "x^2 + y^2 = r^2",
+  "src": "data:image/svg+xml;base64,PHN2Zy...",
+
   // optional on all types
   "animations": null
 }
 ```
 
 > **Note on image `src`:** In the database, `src` is only written on initial INSERT and never updated. On the clipboard, `src` is always present for image elements because it is populated from an in-memory asset map, ensuring the full image data travels with the element.
+>
+> **Note on math `src`:** Unlike images, math `src` IS rewritten whenever the user edits the LaTeX (the SVG re-renders from `latex`). When twig produces the clipboard payload it includes the freshly rendered `src`, but external producers may omit it — paste will then render from `latex` before placing the element on the canvas.
 
 ### Paste behavior
 
@@ -442,12 +453,13 @@ When twig reads from the clipboard:
 1. It reads `text/plain` from the clipboard event.
 2. If the text is valid JSON with `__twig_clipboard__: true`, it processes the `elements` array.
 3. Every element is **validated** before use. An element is rejected if:
-   - `type` is not one of the seven valid values
+   - `type` is not one of the eight valid values
    - `id` is not a string
    - `x`, `y`, `width`, `height`, `angle`, or `zIndex` is not a number
    - optional `stroke` is present but is not a string
    - optional `strokeWidth` is present but is not a number
    - `type === "image"` but `src` is not a string
+   - `type === "math"` but `latex` is not a string (`src` is optional on the clipboard — if absent, twig re-renders from `latex` on paste)
 4. Each accepted element gets a **fresh ID** (`<original-type-prefix>_<new-uuid>`) and its position is offset by `pasteCount × 20 px` to avoid stacking.
 5. `animations` is stripped to `undefined` — pasted copies start with no animation config.
 6. Element centers are **clamped** to `[0, 959] × [0, 539]`.
@@ -514,6 +526,7 @@ IDs use the pattern `<type>_<uuid-v4>`:
 | `arrow`      | `arrow_`    | `arrow_5e6f7a8b-...`    |
 | `text`       | `text_`     | `text_2b3c4d5e-...`     |
 | `image`      | `image_`    | `image_6f7a8b9c-...`    |
+| `math`       | `math_`     | `math_4e5f6a7b-...`     |
 
 The prefix before `_` is used during paste to preserve element type in the regenerated ID. IDs must be unique across the entire file (all slides).
 
@@ -623,6 +636,7 @@ def create_presentation(path: str) -> None:
             fontWeight TEXT, fontStyle TEXT, underline INTEGER,
             styles TEXT,
             src TEXT, filename TEXT,
+            latex TEXT,
             z_index INTEGER NOT NULL DEFAULT 0,
             animations TEXT,
             shape_params TEXT
@@ -778,6 +792,7 @@ Use this list to validate a `.tb` file before opening it in twig.
 - [ ] **Every `AnimationStep.elementId`** in `animation_order` refers to an element on that slide
 - [ ] **Every `AnimationStep` with `category = "action"`** has an `actionId` that matches an `id` in that element's `animations.actions`
 - [ ] **Image elements have `src`** set to a valid base64 data URI
+- [ ] **Math elements have `latex`** set to a non-empty LaTeX string. `src` may be `NULL` and `width`/`height` may be placeholders — twig renders the SVG from `latex` on first open and overwrites all three with the correct values
 - [ ] **Non-web-safe fonts are embedded** in the `fonts` table — every `fontFamily` not in the web-safe list above must have a matching row in `fonts`
 - [ ] **`font.variant`** matches the weight/style pattern `"<weight>-<style>"` (e.g. `"normal-normal"`)
 - [ ] **`z_index` values are non-negative integers**; at least 0 on every element
@@ -902,7 +917,10 @@ The stamp operation itself is idempotent: running it twice in a row produces the
 - Added shape-only `stroke` and `stroke_width` columns to `elements`.
 - Shape `fill` and `stroke` may use the literal CSS keyword `"transparent"`.
 - Clipboard element payloads may include `stroke` and `strokeWidth`.
-- Older v1 readers should treat v2 files as too new rather than silently rendering bordered shapes without borders.
+- Added `math` element type (TeX/LaTeX → SVG via MathJax) and the `latex TEXT` column on `elements`. Math rows reuse `src` for the rendered SVG data URI; external generators may write `latex` alone and let twig render `src`/`width`/`height` on first open.
+- Clipboard element payloads may include `latex` (math elements). Pasting a math element with `latex` but no `src` re-renders via MathJax before placement.
+- `compat_notes` for v2 writers names the new capabilities (transparent fills, shape borders, math elements) so older v1 readers display a meaningful warning instead of silently dropping them.
+- Older v1 readers should treat v2 files as too new rather than silently rendering bordered shapes without borders or dropping math elements.
 
 ### v1 — 2026-04-24 (shipped in twig 1.1.0)
 

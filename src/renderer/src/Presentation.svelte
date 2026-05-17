@@ -428,7 +428,7 @@
     for (const el of slide.elements) elementById.set(el.id, el)
 
     sorted.forEach((element: TwigElement) => {
-      if (element.type === 'image') return
+      if (element.type === 'image' || element.type === 'math') return
       let fabObj: FabricObject | undefined
 
       if (element.type === 'rect') {
@@ -539,7 +539,7 @@
     // the generation counter captured above with the current value.
     const imageLoads: Promise<void>[] = []
     sorted.forEach((element: TwigElement) => {
-      if (element.type !== 'image' || !element.src) return
+      if ((element.type !== 'image' && element.type !== 'math') || !element.src) return
       const load = FabricImage.fromURL(element.src)
         .then((img) => {
           // Slide changed while this image was loading — discard it.

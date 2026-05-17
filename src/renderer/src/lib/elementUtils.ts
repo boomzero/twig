@@ -7,6 +7,10 @@ export function getElementLabel(el: TwigElement): string {
     return `Text: ${preview}${(el.text?.length ?? 0) > 20 ? '…' : ''}`
   }
   if (el.type === 'image') return `Image: ${el.filename ?? 'image'}`
+  if (el.type === 'math') {
+    const preview = el.latex?.slice(0, 20) ?? ''
+    return `Math: ${preview}${(el.latex?.length ?? 0) > 20 ? '…' : ''}`
+  }
   return 'Shape'
 }
 
