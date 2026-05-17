@@ -5462,14 +5462,10 @@
         class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg min-w-11 focus:outline-none text-gray-600 hover:bg-gray-200"
         title={$_('toolbar.math.title')}
       >
-        <svg
-          class="w-5 h-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"><path d="M5 4h12l-7 16M9 12h7" /></svg
+        <svg class="w-5 h-5" viewBox="0 0 256 256" fill="currentColor"
+          ><path
+            d="M208,40a8,8,0,0,1-8,8H170.71a24,24,0,0,0-23.62,19.71L137.59,120H184a8,8,0,0,1,0,16H134.68l-10,55.16A40,40,0,0,1,85.29,224H56a8,8,0,0,1,0-16H85.29a24,24,0,0,0,23.62-19.71l9.5-52.29H72a8,8,0,0,1,0-16h49.32l10-55.16A40,40,0,0,1,170.71,32H200A8,8,0,0,1,208,40Z"
+          /></svg
         >
         <span class="text-[10px] font-medium leading-none text-gray-500">{$_('toolbar.math')}</span>
       </button>
