@@ -407,7 +407,9 @@
   // Snapshots omit src blobs; this map is used to re-attach them on restore.
   const imageAssets = new SvelteMap<string, string>()
 
-  type ElementSnapshot = Omit<TwigElement, 'src'>
+  // `src` is omitted at snapshot time for image elements (see
+  // stripSrcForSnapshot) but kept for math elements — keep the type loose.
+  type ElementSnapshot = TwigElement
   type SlideSnapshot = {
     elements: ElementSnapshot[]
     background: SlideBackground | undefined
@@ -683,11 +685,21 @@
     return historyBySlideId.get(slideId)!
   }
 
+  // Image src is omitted from snapshots and re-attached on restore from the
+  // stable imageAssets cache — saves memory and is safe because an image's
+  // bytes never change after import. Math elements re-render their SVG on
+  // every LaTeX edit, so imageAssets is unstable for them; the snapshot must
+  // carry its own src to stay consistent with its own latex.
+  function stripSrcForSnapshot(el: TwigElement): TwigElement {
+    if (el.type === 'image') return { ...el, src: undefined }
+    return { ...el }
+  }
+
   function takeSnapshot(): SlideSnapshot | null {
     if (!appState.currentSlide) return null
     return {
       elements: appState.currentSlide.elements.map(
-        (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
+        (el) => JSON.parse(JSON.stringify(stripSrcForSnapshot(el))) as ElementSnapshot
       ),
       background: appState.currentSlide.background
         ? (JSON.parse(JSON.stringify(appState.currentSlide.background)) as SlideBackground)
@@ -703,7 +715,7 @@
     if (appState.readOnly) return
     const snapshot: SlideSnapshot = {
       elements: slide.elements.map(
-        (el) => JSON.parse(JSON.stringify({ ...el, src: undefined })) as ElementSnapshot
+        (el) => JSON.parse(JSON.stringify(stripSrcForSnapshot(el))) as ElementSnapshot
       ),
       background: slide.background
         ? (JSON.parse(JSON.stringify(slide.background)) as SlideBackground)
@@ -753,6 +765,13 @@
     fabCanvas?.discardActiveObject()
 
     const restoredElements = snapshot.elements.map((el) => {
+      if (el.type === 'math' && el.src) {
+        // Snapshot carries its own SVG src (see stripSrcForSnapshot). Re-seed
+        // imageAssets so later renders / autosave agree with the restored
+        // latex revision instead of whatever the latest edit had pushed in.
+        imageAssets.set(el.id, el.src)
+        return { ...el } as TwigElement
+      }
       if (el.type === 'image' || el.type === 'math') {
         return { ...el, src: imageAssets.get(el.id) } as TwigElement
       }
@@ -2023,6 +2042,30 @@
     obj.setCoords()
   }
 
+  // Math elements must scale uniformly: stretching a rendered equation
+  // squashes its glyphs. `lockUniScaling` in fabric@7 doesn't reliably do
+  // this, so instead we hide the side handles (no axis-only scaling possible)
+  // and clamp scaleX/scaleY to match on every corner scale event.
+  function applyMathAspectLock(obj: FabricObject): void {
+    ;(obj as ControlLayoutTarget).setControlsVisibility({
+      mt: false,
+      mb: false,
+      ml: false,
+      mr: false
+    })
+    obj.set({ lockScalingFlip: true })
+    obj.on('scaling', () => {
+      const sx = obj.scaleX ?? 1
+      const sy = obj.scaleY ?? 1
+      if (sx === sy) return
+      // Use whichever axis the user pulled further — feels more natural than
+      // averaging when dragging mostly horizontally or vertically.
+      const s = Math.abs(sx - 1) > Math.abs(sy - 1) ? sx : sy
+      obj.scaleX = s
+      obj.scaleY = s
+    })
+  }
+
   function createActiveSelectionWithLayout(objects: FabricObject[]): ActiveSelection {
     const selection = new ActiveSelection(objects, { canvas: fabCanvas })
     selection.set(ROTATION_SNAP)
@@ -2268,15 +2311,11 @@
         id: element.id,
         ...ROTATION_SNAP
       })
-      // Math elements lock to uniform scaling so resizing can't distort the
-      // equation's aspect ratio (the rendered SVG has intrinsic proportions).
-      if (element.type === 'math') {
-        img.set({ lockUniScaling: true })
-      }
       applyControlLayout(img as ControlLayoutTarget, {
         widthPx: element.width,
         heightPx: element.height
       })
+      if (element.type === 'math') applyMathAspectLock(img)
       applyReadOnlyCanvasGuards(img)
       const insertIndex = (fabCanvas.getObjects() as TwigFabricObject[]).filter(
         (obj) => (obj.id ? (zIndexById.get(obj.id) ?? 0) : 0) < imageZIndex
@@ -2313,13 +2352,11 @@
               id: element.id,
               ...ROTATION_SNAP
             })
-            if (element.type === 'math') {
-              img.set({ lockUniScaling: true })
-            }
             applyControlLayout(img as ControlLayoutTarget, {
               widthPx: element.width,
               heightPx: element.height
             })
+            if (element.type === 'math') applyMathAspectLock(img)
             applyReadOnlyCanvasGuards(img)
 
             // Count objects already on the canvas whose zIndex is lower than ours
