@@ -52,6 +52,7 @@
     onPropertyChange,
     onBeforePropertyChange,
     onSlideBackgroundChange,
+    onEndBackgroundMutation,
     onSetAsDefault,
     onApplyToAll,
     onAnimationChange,
@@ -63,6 +64,10 @@
     onPropertyChange?: () => void
     onBeforePropertyChange?: () => void
     onSlideBackgroundChange?: (bg: SlideBackground) => void
+    // Called when a non-pointer background edit (keyboard nudge, number-input typing
+    // session) finishes, so the parent can close the undo batch that pointerup would
+    // normally end.
+    onEndBackgroundMutation?: () => void
     onSetAsDefault?: (bg: SlideBackground | null) => void
     onApplyToAll?: (bg: SlideBackground | null) => void
     onAnimationChange?: (elementId: string, animations: ElementAnimations) => void
@@ -315,6 +320,91 @@
         { offset: 1, color: color2 }
       ]
     })
+  }
+
+  // Gradient angle dial: free rotation with magnetic snap to the 8 cardinal/diagonal
+  // directions. Angle convention matches CSS / canvas coords: 0° points right and
+  // increases clockwise (90° = down, 180° = left, 270° = up).
+  const GRADIENT_SNAP_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315] as const
+  const GRADIENT_SNAP_THRESHOLD_DEG = 7
+
+  let gradientDialEl: SVGSVGElement | null = $state(null)
+  let gradientDialDragging = $state(false)
+
+  const gradientAngle = $derived(currentBg?.type === 'gradient' ? currentBg.angle : 90)
+  const gradientHandleX = $derived(50 + 38 * Math.cos((gradientAngle * Math.PI) / 180))
+  const gradientHandleY = $derived(50 + 38 * Math.sin((gradientAngle * Math.PI) / 180))
+
+  function normalizeAngle(deg: number): number {
+    return ((deg % 360) + 360) % 360
+  }
+
+  function snapGradientAngle(deg: number): number {
+    const n = normalizeAngle(deg)
+    for (const snap of GRADIENT_SNAP_ANGLES) {
+      const diff = Math.min(Math.abs(n - snap), Math.abs(n - snap - 360), Math.abs(n - snap + 360))
+      if (diff <= GRADIENT_SNAP_THRESHOLD_DEG) return snap
+    }
+    return Math.round(n)
+  }
+
+  function pointerEventToAngle(ev: PointerEvent): number | null {
+    if (!gradientDialEl) return null
+    const rect = gradientDialEl.getBoundingClientRect()
+    const dx = ev.clientX - (rect.left + rect.width / 2)
+    const dy = ev.clientY - (rect.top + rect.height / 2)
+    if (dx === 0 && dy === 0) return null
+    return normalizeAngle((Math.atan2(dy, dx) * 180) / Math.PI)
+  }
+
+  function emitGradientAngle(angle: number): void {
+    const c1 = currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5'
+    const c2 = currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'
+    emitGradient(angle, c1, c2)
+  }
+
+  function applyGradientAngleFromPointer(ev: PointerEvent): void {
+    const raw = pointerEventToAngle(ev)
+    if (raw == null) return
+    emitGradientAngle(ev.altKey ? normalizeAngle(Math.round(raw)) : snapGradientAngle(raw))
+  }
+
+  function onGradientDialPointerDown(ev: PointerEvent): void {
+    if (appState.readOnly) return
+    gradientDialDragging = true
+    ;(ev.currentTarget as Element).setPointerCapture(ev.pointerId)
+    applyGradientAngleFromPointer(ev)
+  }
+
+  function onGradientDialPointerMove(ev: PointerEvent): void {
+    if (!gradientDialDragging) return
+    applyGradientAngleFromPointer(ev)
+  }
+
+  function onGradientDialPointerUp(ev: PointerEvent): void {
+    gradientDialDragging = false
+    try {
+      ;(ev.currentTarget as Element).releasePointerCapture(ev.pointerId)
+    } catch {
+      // ignore
+    }
+  }
+
+  function onGradientDialKeyDown(ev: KeyboardEvent): void {
+    if (appState.readOnly) return
+    const step = ev.shiftKey ? 45 : 5
+    let delta = 0
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') delta = step
+    else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') delta = -step
+    else return
+    ev.preventDefault()
+    emitGradientAngle(normalizeAngle(gradientAngle + delta))
+  }
+
+  function setGradientAngleFromInput(ev: Event): void {
+    const v = (ev.target as HTMLInputElement).valueAsNumber
+    if (!Number.isFinite(v)) return
+    emitGradientAngle(normalizeAngle(v))
   }
 
   async function pickImageBackground(): Promise<void> {
@@ -1058,21 +1148,76 @@
           </div>
           <div>
             <span class="block text-sm font-medium text-gray-600">{$_('bg.angle')}</span>
-            <div class="flex gap-1 mt-1 flex-wrap">
-              {#each [[0, '→'], [90, '↓'], [45, '↘'], [135, '↙'], [180, '←'], [270, '↑']] as [deg, label] (deg)}
-                <button
-                  class="flex-1 py-1 text-xs rounded border {currentBg?.type === 'gradient' &&
-                  currentBg.angle === deg
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'border-gray-300 hover:bg-gray-50'}"
-                  onclick={() =>
-                    emitGradient(
-                      deg as number,
-                      currentBg?.type === 'gradient' ? currentBg.stops[0].color : '#4f46e5',
-                      currentBg?.type === 'gradient' ? currentBg.stops[1].color : '#7c3aed'
-                    )}>{label}</button
-                >
-              {/each}
+            <div class="mt-1 flex items-center gap-3">
+              <svg
+                bind:this={gradientDialEl}
+                viewBox="0 0 100 100"
+                class="h-20 w-20 cursor-pointer touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-full"
+                role="slider"
+                aria-label={$_('bg.angle')}
+                aria-valuemin="0"
+                aria-valuemax="359"
+                aria-valuenow={gradientAngle}
+                tabindex="0"
+                onpointerdown={onGradientDialPointerDown}
+                onpointermove={onGradientDialPointerMove}
+                onpointerup={onGradientDialPointerUp}
+                onpointercancel={onGradientDialPointerUp}
+                onkeydown={onGradientDialKeyDown}
+                onkeyup={() => onEndBackgroundMutation?.()}
+              >
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  fill="white"
+                  stroke="rgb(209 213 219)"
+                  stroke-width="1.5"
+                />
+                {#each GRADIENT_SNAP_ANGLES as snap (snap)}
+                  <line
+                    x1={50 + 34 * Math.cos((snap * Math.PI) / 180)}
+                    y1={50 + 34 * Math.sin((snap * Math.PI) / 180)}
+                    x2={50 + 40 * Math.cos((snap * Math.PI) / 180)}
+                    y2={50 + 40 * Math.sin((snap * Math.PI) / 180)}
+                    stroke="rgb(156 163 175)"
+                    stroke-width={snap % 90 === 0 ? 1.5 : 1}
+                  />
+                {/each}
+                <line
+                  x1="50"
+                  y1="50"
+                  x2={gradientHandleX}
+                  y2={gradientHandleY}
+                  stroke="rgb(79 70 229)"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                />
+                <circle
+                  cx={gradientHandleX}
+                  cy={gradientHandleY}
+                  r="5"
+                  fill="white"
+                  stroke="rgb(79 70 229)"
+                  stroke-width="2.5"
+                />
+                <circle cx="50" cy="50" r="2" fill="rgb(79 70 229)" />
+              </svg>
+              <div class="flex items-baseline gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="359"
+                  step="1"
+                  value={gradientAngle}
+                  oninput={setGradientAngleFromInput}
+                  onblur={() => onEndBackgroundMutation?.()}
+                  onchange={() => onEndBackgroundMutation?.()}
+                  disabled={appState.readOnly}
+                  class="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm tabular-nums"
+                />
+                <span class="text-xs text-gray-500">°</span>
+              </div>
             </div>
           </div>
         </div>

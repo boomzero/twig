@@ -5983,6 +5983,9 @@
                 scheduleThumbnailCapture()
               }
             }}
+            onEndBackgroundMutation={() => {
+              bgCheckpointPushed = false
+            }}
             onSetAsDefault={async (bg) => {
               if (!appState.currentFilePath || appState.readOnly) return
               // JSON round-trip strips any Svelte 5 reactive Proxy before IPC/storage
