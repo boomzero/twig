@@ -3347,6 +3347,7 @@
 
   async function openPresentationAtPath(filePath: string): Promise<boolean> {
     loadingScreenPhase = 'opening'
+    const previousFilePath = appState.currentFilePath
     try {
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
@@ -3354,6 +3355,15 @@
         return false
       }
       throw error
+    }
+    // Evict the previous file's cached DB connection now that the new
+    // presentation is loaded. Skipped when reopening the same path.
+    if (previousFilePath && previousFilePath !== filePath) {
+      try {
+        await window.api.db.closeConnection(previousFilePath)
+      } catch (error) {
+        console.warn('Failed to close previous presentation connection:', error)
+      }
     }
     // Clear history only after a replacement file actually loads; canceling a
     // too-new read-only open keeps the current presentation and undo stack.
