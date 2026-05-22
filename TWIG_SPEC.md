@@ -152,6 +152,11 @@ For shape elements, `fill` and `stroke` may be the literal CSS keyword `"transpa
 In JavaScript/clipboard payloads the border width field is `strokeWidth`; in SQL it is
 stored as `stroke_width`.
 
+**Image elements** carry the picture in `src` as a base64 data URI. Twig accepts any image MIME the host browser engine can decode — in practice `image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`, and `image/gif`. Storage, schema, and IPC are identical for all formats; the differences are at render time:
+
+- **SVG (`image/svg+xml`).** When the editor imports an SVG (via file picker, drag-and-drop, or clipboard), it parses the document, resolves a concrete pixel size from `width`/`height`/`viewBox`, writes those values back as the root SVG element's `width` and `height` attributes, and re-encodes the result as `data:image/svg+xml;base64,...`. This keeps layout deterministic across hosts that disagree about intrinsic sizing. External writers may store any well-formed SVG data URI; twig does not re-normalize on read.
+- **Animated GIF (`image/gif`).** Stored as-is. The editor canvas renders a static frame (no animation); the **presentation window** decodes the GIF and animates frames at runtime. There is no per-element flag for animation — any `image/gif` `src` is animated in presentation. Decoded playback is gated by per-canvas budgets (encoded size, frame count, logical dimensions, memory) enforced by the renderer; a GIF that exceeds them falls back to a static frame.
+
 **Math elements** carry the LaTeX source in `latex`. When twig itself writes a math element it also stores the MathJax-rendered SVG (as a `data:image/svg+xml;base64,...` URI) in `src` so subsequent opens render without re-running MathJax. External generators (scripts, AI agents) are not expected to produce the SVG — they may set `src` to `NULL` and write any positive placeholder for `width`/`height` (which the schema requires non-null). On first open, twig renders the SVG from `latex`, replaces `src`, `width`, and `height` with the rendered values, and writes them back so later loads pay no MathJax cost. The editor enforces uniform scaling on math elements; out-of-band edits should preserve the SVG's natural aspect ratio or the equation will appear distorted.
 
 **Default values used by the editor when adding elements:**
@@ -919,7 +924,8 @@ The stamp operation itself is idempotent: running it twice in a row produces the
 - Clipboard element payloads may include `stroke` and `strokeWidth`.
 - Added `math` element type (TeX/LaTeX → SVG via MathJax) and the `latex TEXT` column on `elements`. Math rows reuse `src` for the rendered SVG data URI; external generators may write `latex` alone and let twig render `src`/`width`/`height` on first open.
 - Clipboard element payloads may include `latex` (math elements). Pasting a math element with `latex` but no `src` re-renders via MathJax before placement.
-- `compat_notes` for v2 writers names the new capabilities (transparent fills, shape borders, math elements) so older v1 readers display a meaningful warning instead of silently dropping them.
+- `image` element `src` formally documents support for `image/svg+xml` (vector) and `image/gif` (animated) in addition to raster MIME types. No schema change — these have always been valid base64 data URIs — but the editor and presenter now treat them specially: SVGs are normalized to baked-in pixel dimensions on import; GIFs are static on the editor canvas and animated in the presentation window.
+- `compat_notes` for v2 writers names the new capabilities (transparent fills, shape borders, math elements) so older v1 readers display a meaningful warning instead of silently dropping them. SVG and GIF image sources do not require a compat note because v1 readers display them as static images either way.
 - Older v1 readers should treat v2 files as too new rather than silently rendering bordered shapes without borders or dropping math elements.
 
 ### v1 — 2026-04-24 (shipped in twig 1.1.0)
