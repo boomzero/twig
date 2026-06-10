@@ -46,6 +46,16 @@ export interface ImageData {
   filename: string
 }
 
+export interface ExportFolderResult {
+  /** Canonical path to the selected export directory */
+  dirPath: string
+}
+
+export interface WriteImageFileResult {
+  ok: boolean
+  error?: string
+}
+
 /**
  * Result of probing a candidate `.tb` file for its format identity.
  */
@@ -107,7 +117,15 @@ declare global {
       dialog: {
         showOpenDialog: () => Promise<string | null>
         showSaveDialog: () => Promise<string | null>
+        showExportFolderDialog: () => Promise<ExportFolderResult | null>
         showImageDialog: () => Promise<ImageData | null>
+      }
+      fs: {
+        writeImageFile: (args: {
+          dirPath: string
+          filename: string
+          base64: string
+        }) => Promise<WriteImageFileResult>
       }
       db: {
         getSlideIds: (filePath: string) => Promise<string[]>
@@ -187,6 +205,7 @@ declare global {
         getFileToOpen: () => Promise<string | null>
         onOpenSettings: (callback: () => void) => () => void
         onOpenFile: (callback: (filePath: string) => void) => () => void
+        onMenuExportImages: (callback: () => void) => () => void
         checkForUpdates: () => Promise<'checking' | 'up-to-date' | 'error'>
         installUpdate: () => Promise<void>
         checkForUpdateManual: () => Promise<{

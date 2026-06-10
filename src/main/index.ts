@@ -19,7 +19,7 @@ import {
   Menu
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { join, normalize, basename, extname, sep } from 'path'
+import { join, normalize, basename, extname, sep, resolve, relative, isAbsolute } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import * as dbService from './db'
@@ -77,6 +77,26 @@ const PRIVACY_POLICY_URL = 'https://twig.boomzero.uk/privacy/'
 const isStoreManagedBuild =
   process.mas === true ||
   (process as NodeJS.Process & { windowsStore?: boolean }).windowsStore === true
+const MAX_EXPORT_FOLDER_ALLOWLIST_ENTRIES = 16
+const exportFolderAllowlist = new Set<string>()
+const exportFolderBookmarks = new Map<string, string>()
+
+function allowExportFolder(dirPath: string, bookmark?: string): void {
+  exportFolderAllowlist.delete(dirPath)
+  exportFolderAllowlist.add(dirPath)
+
+  if (bookmark) {
+    exportFolderBookmarks.delete(dirPath)
+    exportFolderBookmarks.set(dirPath, bookmark)
+  }
+
+  while (exportFolderAllowlist.size > MAX_EXPORT_FOLDER_ALLOWLIST_ENTRIES) {
+    const oldest = exportFolderAllowlist.values().next().value
+    if (!oldest) break
+    exportFolderAllowlist.delete(oldest)
+    exportFolderBookmarks.delete(oldest)
+  }
+}
 
 // ============================================================================
 // Font Detection Utility
@@ -312,6 +332,22 @@ function openSettingsInMainWindow(): void {
   })
 }
 
+function openExportImagesInMainWindow(): void {
+  const existingWindow = getMainWindow()
+  if (existingWindow) {
+    focusMainWindow(existingWindow)
+    existingWindow.webContents.send('menu:export-images')
+    return
+  }
+
+  const window = showOrCreateMainWindow()
+  window.webContents.once('did-finish-load', () => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('menu:export-images')
+    }
+  })
+}
+
 function createWindow(): BrowserWindow {
   const existingWindow = getMainWindow()
   if (existingWindow) {
@@ -323,7 +359,9 @@ function createWindow(): BrowserWindow {
     width: 1440,
     height: 900,
     show: false, // Don't show until ready-to-show event (prevents visual flash)
-    autoHideMenuBar: true,
+    // The menu bar must stay visible on Windows/Linux: it is the only entry
+    // point for File > Export as Images and (on those platforms) Settings.
+    autoHideMenuBar: false,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -518,43 +556,71 @@ if (process.platform !== 'darwin') {
 }
 
 // ============================================================================
-// Application Menu (macOS)
+// Application Menu
 // ============================================================================
 
 /**
- * Sets up the macOS application menu.
- * On macOS the system menu bar is always visible, so a proper menu with
- * a Window submenu is required — otherwise there is no way to reopen a
- * window after it has been closed (MAS Guideline 4).
+ * Sets up the application menu.
+ * On macOS the system menu bar needs the standard app/Window menus so users can
+ * reopen windows after close (MAS Guideline 4). On Windows/Linux, avoid applying
+ * macOS-only roles such as Services/Hide.
  */
-function setupMacAppMenu(): void {
+function setupAppMenu(): void {
+  const fileMenu: Electron.MenuItemConstructorOptions = {
+    label: 'File',
+    submenu: [
+      ...(process.platform === 'darwin'
+        ? []
+        : [
+            {
+              label: 'Settings…',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => {
+                openSettingsInMainWindow()
+              }
+            },
+            { type: 'separator' as const }
+          ]),
+      {
+        label: 'Export as Images…',
+        accelerator: 'CmdOrCtrl+Shift+E',
+        click: () => {
+          openExportImagesInMainWindow()
+        }
+      },
+      { type: 'separator' },
+      { role: 'close' }
+    ]
+  }
+
   const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        {
-          label: 'Settings…',
-          accelerator: 'Cmd+,',
-          click: () => {
-            openSettingsInMainWindow()
+    ...(process.platform === 'darwin'
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' as const },
+              { type: 'separator' as const },
+              {
+                label: 'Settings…',
+                accelerator: 'Cmd+,',
+                click: () => {
+                  openSettingsInMainWindow()
+                }
+              },
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const }
+            ]
           }
-        },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    },
-    {
-      label: 'File',
-      submenu: [{ role: 'close' }]
-    },
+        ]
+      : []),
+    fileMenu,
     {
       label: 'Edit',
       submenu: [
@@ -578,7 +644,7 @@ function setupMacAppMenu(): void {
             const next = !getPref('snapToGuides')
             setPref('snapToGuides', next)
             getMainWindow()?.webContents.send('snap:changed', next)
-            setupMacAppMenu()
+            setupAppMenu()
           }
         },
         { type: 'separator' as const },
@@ -623,18 +689,13 @@ app.whenReady().then(() => {
   // Set app user model ID for Windows
   electronApp.setAppUserModelId('com.electron')
 
-  // Set up macOS application menu (required for MAS: Window menu lets users
-  // reopen windows and the menu bar remains usable when no windows are open)
-  if (process.platform === 'darwin') {
-    setupMacAppMenu()
-  }
+  // Set up application menu.
+  setupAppMenu()
 
   // Enable dev tools shortcuts optimization
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-
-  setupMacAppMenu()
 
   // Close all cached database connections before the system sleeps so that
   // connections are never stale after wake (SQLITE_READONLY_DBMOVED). Iterate
@@ -676,7 +737,7 @@ app.whenReady().then(() => {
       // Only the main editor window owns the interactive canvas
       getMainWindow()?.webContents.send('snap:changed', value)
       // Rebuild the menu so the checkbox state stays in sync
-      if (process.platform === 'darwin') setupMacAppMenu()
+      setupAppMenu()
     }
     // Unknown key or invalid value type: silently ignore
   })
@@ -698,6 +759,8 @@ app.whenReady().then(() => {
       'dialog.open.title': { en: 'Open Presentation', zh: '打开演示文稿' },
       'dialog.save.title': { en: 'Save Presentation', zh: '保存演示文稿' },
       'dialog.image.title': { en: 'Insert Image', zh: '插入图片' },
+      'dialog.export_images.title': { en: 'Choose Export Folder', zh: '选择导出文件夹' },
+      'dialog.export_images.select': { en: 'Select', zh: '选择' },
       'dialog.filter.twig': { en: 'twig Files', zh: 'twig 文件' },
       'dialog.filter.image': { en: 'Images', zh: '图片' }
     }
@@ -747,6 +810,35 @@ app.whenReady().then(() => {
       bookmarksService.saveBookmark(filePath, bookmark)
     }
     return filePath
+  })
+
+  /**
+   * Shows a folder picker for exporting one image file per slide.
+   * Returns the canonical selected directory path or null if cancelled.
+   */
+  ipcMain.handle('dialog:show-export-folder-dialog', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(window!, {
+      title: tDialog('dialog.export_images.title'),
+      buttonLabel: tDialog('dialog.export_images.select'),
+      properties: ['openDirectory', 'createDirectory'],
+      securityScopedBookmarks: process.mas === true
+    })
+    const { filePaths, bookmarks } = result
+
+    if (!filePaths || filePaths.length === 0) {
+      return null
+    }
+
+    const resolved = fs.realpathSync(resolve(filePaths[0]))
+
+    if (process.mas && bookmarks && bookmarks.length > 0) {
+      bookmarksService.saveBookmark(resolved, bookmarks[0])
+      bookmarksService.ensureAccess(resolved)
+    }
+
+    allowExportFolder(resolved, bookmarks?.[0])
+    return { dirPath: resolved }
   })
 
   /**
@@ -807,6 +899,74 @@ app.whenReady().then(() => {
       )
     }
   })
+
+  /**
+   * Writes a rendered slide image into a previously user-selected export folder.
+   */
+  ipcMain.handle(
+    'fs:write-image-file',
+    async (
+      _event,
+      args: { dirPath?: unknown; filename?: unknown; base64?: unknown }
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const { dirPath, filename, base64 } = args ?? {}
+
+        if (
+          typeof dirPath !== 'string' ||
+          typeof filename !== 'string' ||
+          typeof base64 !== 'string'
+        ) {
+          throw new Error('Invalid image write arguments')
+        }
+
+        const canon = fs.realpathSync(resolve(dirPath))
+        if (!exportFolderAllowlist.has(canon)) {
+          throw new Error('Export folder is not allowlisted')
+        }
+
+        if (!/^slide-\d{3,}\.(png|jpe?g)$/.test(filename)) {
+          throw new Error('Invalid export image filename')
+        }
+
+        const target = resolve(canon, filename)
+        const rel = relative(canon, target)
+        if (rel.startsWith('..') || isAbsolute(rel) || rel === '') {
+          throw new Error('Invalid export image path')
+        }
+
+        if (base64.includes(',') || /[^A-Za-z0-9+/=]/.test(base64)) {
+          throw new Error('Invalid base64 image data')
+        }
+
+        let stopAccessing: (() => void) | null = null
+        try {
+          if (process.mas) {
+            const bookmark = exportFolderBookmarks.get(canon)
+            if (bookmark) {
+              stopAccessing = app.startAccessingSecurityScopedResource(bookmark) as () => void
+            } else {
+              bookmarksService.ensureAccess(canon)
+            }
+          }
+
+          fs.writeFileSync(target, Buffer.from(base64, 'base64'))
+        } finally {
+          try {
+            stopAccessing?.()
+          } catch {
+            // Ignore security-scoped resource cleanup failures.
+          }
+        }
+
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown image write error'
+        console.error('Error in fs:write-image-file:', error)
+        return { ok: false, error: message }
+      }
+    }
+  )
 
   // --------------------------------------------------------------------------
   // Database Operation Handlers

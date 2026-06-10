@@ -35,8 +35,18 @@ const api = {
     /** Show a file save dialog and return the selected path */
     showSaveDialog: () => ipcRenderer.invoke('dialog:show-save-dialog'),
 
+    /** Show an export folder dialog and return the selected directory path */
+    showExportFolderDialog: () => ipcRenderer.invoke('dialog:show-export-folder-dialog'),
+
     /** Show an image file dialog and return the image as base64 data URI */
     showImageDialog: () => ipcRenderer.invoke('dialog:show-image-dialog')
+  },
+
+  // File system operations
+  fs: {
+    /** Write a rendered slide image into an allowlisted export folder */
+    writeImageFile: (args: { dirPath: string; filename: string; base64: string }) =>
+      ipcRenderer.invoke('fs:write-image-file', args)
   },
 
   // Database operations
@@ -250,6 +260,15 @@ const api = {
       ipcRenderer.on('app:open-file', handler)
       return (): void => {
         ipcRenderer.removeListener('app:open-file', handler)
+      }
+    },
+
+    /** Listen for the main process requesting the export-images modal to open */
+    onMenuExportImages: (callback: () => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('menu:export-images', handler)
+      return (): void => {
+        ipcRenderer.removeListener('menu:export-images', handler)
       }
     },
 

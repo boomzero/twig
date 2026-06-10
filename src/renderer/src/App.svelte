@@ -107,11 +107,13 @@
   import CloseFailureModal from './components/CloseFailureModal.svelte'
   import TempPresentationGuardModal from './components/TempPresentationGuardModal.svelte'
   import TooNewFileModal from './components/TooNewFileModal.svelte'
+  import ExportImagesModal from './components/ExportImagesModal.svelte'
   import LoadingScreen, { type LoadingPhase } from './components/LoadingScreen.svelte'
   import { PressedKeys } from 'runed'
   import { _, locale } from 'svelte-i18n'
   import { resolveCompatNotes } from './lib/compatNotes'
   import { get } from 'svelte/store'
+  import type { ExportImageFormat } from './lib/exportImages'
   import {
     closePresentationWithTempGuard,
     switchPresentationWithTempGuard,
@@ -124,6 +126,8 @@
   type FabricFontStyle = TextboxProps['fontStyle']
   const SLIDE_CANVAS_WIDTH = 960
   const SLIDE_CANVAS_HEIGHT = 540
+  // 960x540 authored canvas at 4x yields 3840x2160 image exports.
+  const EXPORT_IMAGE_MULTIPLIER = 4
   const SVG_BASE64_CHUNK_SIZE = 0x8000 - (0x8000 % 3)
 
   function setTwigId<T extends FabricObject>(obj: T, id: string): T & { id: string } {
@@ -246,6 +250,7 @@
 
   // Settings modal
   let settingsOpen = $state(false)
+  let exportModalOpen = $state(false)
 
   // Math editor modal state. When `mathModalOpen` is true the modal is shown,
   // seeded with `mathModalLatex`. `mathModalElementId` is null on insert and
@@ -314,6 +319,9 @@
   let systemFonts: { family: string; path: string; format: string }[] = []
   let availableFonts = $state(['Arial', 'Helvetica', 'Times New Roman', 'Courier New']) // Default fallbacks
   let loadedFonts = new SvelteSet<string>() // Track which fonts have been loaded via @font-face
+  // Non-reactive async bookkeeping; export waits on it directly.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const pendingFontInjections = new Set<Promise<void>>()
 
   // Custom font dropdown state
   let fontDropdownOpen = $state(false)
@@ -1411,6 +1419,224 @@
     fabCanvas?.renderAll()
   }
 
+  type RenderSlideToDataUrlOptions = {
+    format: ExportImageFormat
+    quality: number
+    multiplier: number
+  }
+
+  function createFabricObjectFromElement(element: TwigElement): TwigFabricObject | undefined {
+    if (element.type === 'rect') {
+      return setTwigId(
+        new Rect({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          angle: element.angle,
+          ...shapeStyle(element)
+        }),
+        element.id
+      )
+    }
+
+    if (element.type === 'ellipse') {
+      return setTwigId(
+        new Ellipse({
+          left: element.x,
+          top: element.y,
+          rx: element.width / 2,
+          ry: element.height / 2,
+          angle: element.angle,
+          ...shapeStyle(element)
+        }),
+        element.id
+      )
+    }
+
+    if (element.type === 'triangle') {
+      return setTwigId(
+        new Triangle({
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          angle: element.angle,
+          ...shapeStyle(element)
+        }),
+        element.id
+      )
+    }
+
+    if (element.type === 'star') {
+      return setTwigId(
+        new Polygon(makeStarPoints(), {
+          left: element.x,
+          top: element.y,
+          angle: element.angle,
+          ...shapeStyle(element),
+          scaleX: element.width / STAR_CANONICAL_W,
+          scaleY: element.height / STAR_CANONICAL_H
+        }),
+        element.id
+      )
+    }
+
+    if (element.type === 'arrow') {
+      const width = Math.abs(element.width)
+      const height = Math.abs(element.height)
+      const shape = { ...DEFAULT_ARROW_SHAPE, ...(element.arrowShape ?? {}) }
+      const arrowPoly = setTwigId(
+        new Polygon(makeArrowPoints(width, height, shape), {
+          left: element.x,
+          top: element.y,
+          angle: element.angle,
+          ...shapeStyle(element)
+        }),
+        element.id
+      )
+      setArrowPolygonBox(arrowPoly, width, height)
+      return arrowPoly
+    }
+
+    if (element.type === 'text') {
+      const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
+      return setTwigId(
+        new Textbox(element.text || 'Hello', {
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          angle: element.angle,
+          fill: element.fill,
+          fontFamily: element.fontFamily,
+          fontSize: element.fontSize,
+          fontWeight: element.fontWeight,
+          fontStyle: toFabricFontStyle(element.fontStyle),
+          underline: element.underline,
+          styles: cleanedStyles,
+          ...getTextboxWrappingOptions(element.text),
+          lockScalingY: true
+        }),
+        element.id
+      )
+    }
+
+    return undefined
+  }
+
+  async function renderSlideToDataUrl(
+    slide: Slide,
+    { format, quality, multiplier }: RenderSlideToDataUrlOptions
+  ): Promise<string> {
+    const tempEl = document.createElement('canvas')
+    tempEl.style.cssText = 'position:absolute;left:-9999px;top:-9999px'
+    document.body.appendChild(tempEl)
+
+    const tempCanvas = new StaticCanvas(tempEl, {
+      width: SLIDE_CANVAS_WIDTH,
+      height: SLIDE_CANVAS_HEIGHT
+    })
+
+    try {
+      await applySlideBackground(slide.background, tempCanvas)
+
+      const sortedElements = [...slide.elements].sort((a, b) => a.zIndex - b.zIndex)
+      for (const element of sortedElements) {
+        let fabObj: FabricObject | undefined
+
+        if ((element.type === 'image' || element.type === 'math') && element.src) {
+          const img = await FabricImage.fromURL(element.src, { crossOrigin: 'anonymous' })
+          const scaleX = element.width / (img.width || 1)
+          const scaleY = element.height / (img.height || 1)
+          img.set({
+            left: element.x,
+            top: element.y,
+            angle: element.angle,
+            scaleX,
+            scaleY,
+            id: element.id
+          })
+          fabObj = img
+        } else {
+          fabObj = createFabricObjectFromElement(element)
+        }
+
+        if (fabObj) {
+          tempCanvas.add(fabObj)
+        }
+      }
+
+      tempCanvas.renderAll()
+      return tempCanvas.toDataURL({ format, quality, multiplier })
+    } finally {
+      tempCanvas.dispose()
+      document.body.removeChild(tempEl)
+    }
+  }
+
+  async function exportAllSlidesAsImages({
+    format,
+    quality,
+    dirPath,
+    onProgress,
+    onSlideError
+  }: {
+    format: ExportImageFormat
+    quality: number
+    dirPath: string
+    onProgress: (done: number, total: number) => void
+    onSlideError?: (error: { slideNumber: number; slideId: string; error: string }) => void
+  }): Promise<void> {
+    await flushPendingSave()
+    await waitForFontsReady()
+
+    if (!appState.currentFilePath) {
+      throw new Error('No presentation is open')
+    }
+
+    const slideIds = [...appState.slideIds]
+    const total = slideIds.length
+    const pad = Math.max(3, String(appState.slideIds.length).length)
+
+    for (let i = 0; i < slideIds.length; i += 1) {
+      const slideId = slideIds[i]
+      const slideNumber = i + 1
+
+      try {
+        const slide = await window.api.db.getSlide(appState.currentFilePath, slideId)
+        if (!slide) {
+          throw new Error('Slide could not be loaded')
+        }
+
+        const dataUrl = await renderSlideToDataUrl(slide, {
+          format,
+          quality,
+          multiplier: EXPORT_IMAGE_MULTIPLIER
+        })
+        const comma = dataUrl.indexOf(',')
+        if (comma < 0) {
+          throw new Error('Rendered image data was invalid')
+        }
+        const base64 = dataUrl.slice(comma + 1)
+        const filename = `slide-${String(slideNumber).padStart(pad, '0')}.${
+          format === 'jpeg' ? 'jpg' : 'png'
+        }`
+        const result = await window.api.fs.writeImageFile({ dirPath, filename, base64 })
+        if (!result.ok) {
+          throw new Error(result.error ?? 'Image write failed')
+        }
+      } catch (error) {
+        onSlideError?.({
+          slideNumber,
+          slideId,
+          error: error instanceof Error ? error.message : 'Unknown export error'
+        })
+      } finally {
+        onProgress(slideNumber, total)
+      }
+    }
+  }
+
   /**
    * Regenerates thumbnails for every slide in the presentation using a new background.
    * Renders each slide on a hidden offscreen StaticCanvas, captures the result,
@@ -1572,6 +1798,7 @@
   let unsubscribeOpenFile: (() => void) | undefined
   let unsubscribeUpdateDownloaded: (() => void) | undefined
   let unsubscribeOpenSettings: (() => void) | undefined
+  let unsubscribeMenuExportImages: (() => void) | undefined
   let unsubscribeSnapChanged: (() => void) | undefined
 
   // Reset background and transition checkpoint gates on pointer release so the next drag
@@ -1672,6 +1899,10 @@
       settingsOpen = true
     })
 
+    unsubscribeMenuExportImages = window.api?.app?.onMenuExportImages(() => {
+      exportModalOpen = true
+    })
+
     // Initialize alignment-guide snap toggle from the main-owned pref and
     // subscribe to changes pushed from the View menu.
     try {
@@ -1724,6 +1955,7 @@
     unsubscribeOpenFile?.()
     unsubscribeUpdateDownloaded?.()
     unsubscribeOpenSettings?.()
+    unsubscribeMenuExportImages?.()
     unsubscribeSnapChanged?.()
 
     // Unregister flush save callback
@@ -2239,74 +2471,18 @@
     sortedElements.forEach((element) => {
       if (element.type === 'image' || element.type === 'math') return
 
-      let fabObj: FabricObject | undefined
-      if (element.type === 'rect') {
-        fabObj = setTwigId(
-          new Rect({
-            left: element.x,
-            top: element.y,
-            width: element.width,
-            height: element.height,
-            angle: element.angle,
-            ...shapeStyle(element)
-          }),
-          element.id
-        )
-      } else if (element.type === 'ellipse') {
-        fabObj = setTwigId(
-          new Ellipse({
-            left: element.x,
-            top: element.y,
-            rx: element.width / 2,
-            ry: element.height / 2,
-            angle: element.angle,
-            ...shapeStyle(element)
-          }),
-          element.id
-        )
-      } else if (element.type === 'triangle') {
-        fabObj = setTwigId(
-          new Triangle({
-            left: element.x,
-            top: element.y,
-            width: element.width,
-            height: element.height,
-            angle: element.angle,
-            ...shapeStyle(element)
-          }),
-          element.id
-        )
-      } else if (element.type === 'star') {
-        fabObj = setTwigId(
-          new Polygon(makeStarPoints(), {
-            left: element.x,
-            top: element.y,
-            angle: element.angle,
-            ...shapeStyle(element),
-            scaleX: element.width / STAR_CANONICAL_W,
-            scaleY: element.height / STAR_CANONICAL_H
-          }),
-          element.id
-        )
-      } else if (element.type === 'arrow') {
+      if (element.type === 'arrow') {
         ensureArrowShape(element)
-        const shape = element.arrowShape ?? DEFAULT_ARROW_SHAPE
         // Defensive: persisted rows (or a user typing a negative into the size
         // field) may arrive with signed dimensions. Normalize in state so the
         // fabric polygon and everything downstream see positive magnitudes.
         element.width = Math.abs(element.width)
         element.height = Math.abs(element.height)
-        const arrowPoly = setTwigId(
-          new Polygon(makeArrowPoints(element.width, element.height, shape), {
-            left: element.x,
-            top: element.y,
-            angle: element.angle,
-            ...shapeStyle(element)
-          }),
-          element.id
-        )
-        setArrowPolygonBox(arrowPoly, element.width, element.height)
-        installArrowAdjustmentHandles(arrowPoly, element, {
+      }
+
+      const fabObj = createFabricObjectFromElement(element)
+      if (element.type === 'arrow' && fabObj instanceof Polygon) {
+        installArrowAdjustmentHandles(fabObj, element, {
           getElement: (id) => appState.currentSlide?.elements.find((e) => e.id === id),
           isReadOnly: () => appState.readOnly,
           pushCheckpoint,
@@ -2314,28 +2490,8 @@
           scheduleThumbnailCapture,
           renderAdjustmentDiamond
         })
-        fabObj = arrowPoly
-      } else if (element.type === 'text') {
-        const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
-        fabObj = setTwigId(
-          new Textbox(element.text || 'Hello', {
-            left: element.x,
-            top: element.y,
-            width: element.width,
-            angle: element.angle,
-            fill: element.fill,
-            fontFamily: element.fontFamily,
-            fontSize: element.fontSize,
-            fontWeight: element.fontWeight,
-            fontStyle: toFabricFontStyle(element.fontStyle),
-            underline: element.underline,
-            styles: cleanedStyles,
-            ...getTextboxWrappingOptions(element.text),
-            lockScalingY: true
-          }),
-          element.id
-        )
       }
+
       if (fabObj) {
         fabObj.set(ROTATION_SNAP)
         applyControlLayout(fabObj as ControlLayoutTarget, {
@@ -3809,6 +3965,23 @@
    * Loads embedded fonts from the database and injects them via CSS @font-face.
    * Should be called after opening a presentation file.
    */
+  function trackFontInjection(promise: Promise<void>): Promise<void> {
+    pendingFontInjections.add(promise)
+    promise.then(
+      () => pendingFontInjections.delete(promise),
+      () => pendingFontInjections.delete(promise)
+    )
+    return promise
+  }
+
+  async function waitForFontsReady(): Promise<void> {
+    // New injections can be registered while an earlier batch is settling.
+    while (pendingFontInjections.size > 0) {
+      await Promise.allSettled([...pendingFontInjections])
+    }
+    await document.fonts.ready
+  }
+
   async function loadEmbeddedFonts(): Promise<void> {
     if (!appState.currentFilePath) return
 
@@ -3827,7 +4000,9 @@
 
       // Inject the fonts into the page
       for (const font of embeddedFonts) {
-        await injectFontFace(font.fontFamily, font.fontData, font.format, font.variant)
+        await trackFontInjection(
+          injectFontFace(font.fontFamily, font.fontData, font.format, font.variant)
+        )
       }
 
       if (document?.fonts?.ready) {
@@ -4003,11 +4178,8 @@
       )
 
       if (fontData) {
-        await injectFontFace(
-          fontData.fontFamily,
-          fontData.fontData,
-          fontData.format,
-          fontData.variant
+        await trackFontInjection(
+          injectFontFace(fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
         )
         console.log(`Embedded and loaded font: ${fontFamily}`)
       }
@@ -4042,7 +4214,9 @@
       // Load font data directly from system path
       const fontData = await window.api.fonts.loadFontFile(systemFont.path)
       if (fontData) {
-        await injectFontFace(fontFamily, fontData, systemFont.format, 'normal-normal')
+        await trackFontInjection(
+          injectFontFace(fontFamily, fontData, systemFont.format, 'normal-normal')
+        )
       }
     } catch (error) {
       console.error(`Failed to load font for preview ${fontFamily}:`, error)
@@ -5163,6 +5337,11 @@
 />
 
 <SettingsModal bind:open={settingsOpen} />
+<ExportImagesModal
+  open={exportModalOpen}
+  onClose={() => (exportModalOpen = false)}
+  onExport={exportAllSlidesAsImages}
+/>
 
 <MathEditorModal
   open={mathModalOpen}
