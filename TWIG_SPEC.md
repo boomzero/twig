@@ -917,7 +917,7 @@ The stamp operation itself is idempotent: running it twice in a row produces the
 
 ## 12. Format changelog
 
-### v2 — 2026-04-30 (targeted for twig 1.2.0)
+### v2 — 2026-04-30 (shipped in twig 1.2.0)
 
 - Added shape-only `stroke` and `stroke_width` columns to `elements`.
 - Shape `fill` and `stroke` may use the literal CSS keyword `"transparent"`.

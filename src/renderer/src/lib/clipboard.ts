@@ -47,10 +47,7 @@ export function serializeElementsForClipboard(args: {
 }): string {
   const elements = args.elements.map((el) => ({
     ...el,
-    src:
-      el.type === 'image' || el.type === 'math'
-        ? (args.imageSrcOf(el.id) ?? el.src)
-        : undefined
+    src: el.type === 'image' || el.type === 'math' ? (args.imageSrcOf(el.id) ?? el.src) : undefined
   }))
   const payload: TwigClipboardPayload = {
     __twig_clipboard__: true,

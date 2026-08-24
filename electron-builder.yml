@@ -30,8 +30,8 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
-  bundleShortVersion: 1.1.0
-  bundleVersion: 1.0.21
+  bundleShortVersion: 1.2.0
+  bundleVersion: 1.0.22
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist

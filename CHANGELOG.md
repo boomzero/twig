@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.0] - 2026-08-24
+
+### Added
+
+- Math elements with TeX/LaTeX editing and MathJax-rendered SVG output
+- SVG image imports and animated GIF playback in presentation mode
+- Shape fill and stroke controls, including transparent fills and configurable borders
+- Slide export to PNG or JPEG images from the File menu
+
+### Fixed
+
+- Save and Save As now stage and integrity-check presentation databases before replacing an existing file, preserve recovery data when SQLite checkpoint or shadow-copy synchronization fails, and retain crash-recovered temporary presentations
+- Opening another presentation now closes the previous database connection instead of leaving stale handles behind
+- Untrusted or malformed `.tb` JSON fields are normalized before reaching the renderer
+- Empty text boxes no longer render placeholder text, and embedded fonts no longer leak between presentations
+- Presentation windows now use sandboxed, role-scoped APIs; arbitrary renderer-controlled file reads and unrestricted Electron IPC access have been removed
+
+### Changed
+
+- Advanced the `.tb` format to v2 for shape borders, transparent fills, and math elements
+- Replaced gradient angle presets with a snapping angle dial
+- Development and release builds now require Node.js 22 or newer
+
 ## [1.1.0] - 2026-04-25
 
 ### Added

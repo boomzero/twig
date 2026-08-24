@@ -5,6 +5,9 @@
   "main": "./out/main/index.js",
   "author": "boomzero",
   "homepage": "https://github.com/boomzero/twig",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "format": "prettier --plugin prettier-plugin-svelte --write .",
     "lint": "eslint --cache .",
