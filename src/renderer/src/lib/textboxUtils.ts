@@ -3,6 +3,11 @@ import { Textbox } from 'fabric'
 const CJK_GRAPHEME_WRAP_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Bopomofo}]/u
 
+/** Preserve intentional empty text; only absent values become empty strings. */
+export function resolveTextboxText(text: string | null | undefined): string {
+  return text ?? ''
+}
+
 /**
  * Fabric textboxes wrap on whitespace by default. CJK text often has no spaces,
  * so opt those textboxes into grapheme-based wrapping instead.

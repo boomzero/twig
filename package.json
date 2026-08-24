@@ -35,7 +35,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@types/adm-zip": "^0.5.7",
     "adm-zip": "^0.5.16",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.3",
     "codemirror": "^6.0.2",
     "electron-updater": "^6.8.3",
     "fabric": "^7.2.0",

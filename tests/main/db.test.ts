@@ -645,6 +645,84 @@ describe('src/main/db.ts', () => {
       errorSpy.mockRestore()
     }
   })
+
+  it('normalizes syntactically valid but structurally unsafe presentation data', () => {
+    db.prepare(
+      'INSERT INTO slides (id, slide_order, background, animation_order, transition) VALUES (?, ?, ?, ?, ?)'
+    ).run(
+      'slide-unsafe-shapes',
+      0,
+      JSON.stringify({ type: 'image', src: 'https://example.test/tracker.png' }),
+      JSON.stringify({ elementId: 'not-an-array' }),
+      JSON.stringify({ type: 'push', duration: 'forever' })
+    )
+
+    const insert = db.prepare(`
+      INSERT INTO elements (
+        id, slide_id, type, x, y, width, height, angle, z_index,
+        animations, styles, shape_params, src
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    insert.run(
+      'unsafe-arrow',
+      'slide-unsafe-shapes',
+      'arrow',
+      10,
+      20,
+      -30,
+      -40,
+      0,
+      1.9,
+      JSON.stringify({
+        buildIn: { type: 'explode', duration: -1 },
+        actions: [{ id: 'move-1', type: 'move', toX: 'far', toY: 2, duration: 1 }]
+      }),
+      JSON.stringify([]),
+      JSON.stringify({
+        headWidthRatio: -1,
+        headLengthRatio: 2,
+        shaftThicknessRatio: 'invalid'
+      }),
+      'javascript:alert(1)'
+    )
+    insert.run(
+      'unknown-element',
+      'slide-unsafe-shapes',
+      'video',
+      0,
+      0,
+      10,
+      10,
+      0,
+      2,
+      null,
+      null,
+      null,
+      null
+    )
+
+    const slide = getSlide(db, 'slide-unsafe-shapes')
+
+    expect(slide?.background).toBeUndefined()
+    expect(slide?.animationOrder).toEqual([])
+    expect(slide?.transition).toBeUndefined()
+    expect(slide?.elements).toHaveLength(1)
+    expect(slide?.elements[0]).toMatchObject({
+      id: 'unsafe-arrow',
+      type: 'arrow',
+      width: 30,
+      height: 40,
+      zIndex: 1,
+      animations: undefined,
+      styles: undefined,
+      src: undefined,
+      arrowShape: {
+        headWidthRatio: 0,
+        headLengthRatio: 1,
+        shaftThicknessRatio: 0.4
+      }
+    })
+  })
 })
 
 describe('format versioning', () => {

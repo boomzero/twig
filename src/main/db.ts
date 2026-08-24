@@ -360,6 +360,166 @@ function serializeJson<T>(value: T | undefined): string | null {
   return value !== undefined ? JSON.stringify(value) : null
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function parseJson(text: string | null | undefined): unknown {
+  if (!text) return undefined
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
+const ELEMENT_TYPES = new Set<TwigElement['type']>([
+  'rect',
+  'ellipse',
+  'triangle',
+  'star',
+  'arrow',
+  'text',
+  'image',
+  'math'
+])
+
+function isElementType(value: string): value is TwigElement['type'] {
+  return ELEMENT_TYPES.has(value as TwigElement['type'])
+}
+
+function normalizeDuration(value: unknown, maximum = 3600): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
+  return Math.min(value, maximum)
+}
+
+function parseElementAnimations(text: string | null | undefined): ElementAnimations | undefined {
+  const value = parseJson(text)
+  if (!isRecord(value)) return undefined
+
+  const result: ElementAnimations = {}
+  if (isRecord(value.buildIn)) {
+    const duration = normalizeDuration(value.buildIn.duration)
+    if (
+      duration !== undefined &&
+      (value.buildIn.type === 'appear' || value.buildIn.type === 'fade-in')
+    ) {
+      result.buildIn = { type: value.buildIn.type, duration }
+    }
+  }
+
+  if (Array.isArray(value.actions)) {
+    const actions = value.actions.flatMap((action) => {
+      if (!isRecord(action) || action.type !== 'move' || typeof action.id !== 'string') return []
+      const duration = normalizeDuration(action.duration)
+      if (
+        duration === undefined ||
+        typeof action.toX !== 'number' ||
+        !Number.isFinite(action.toX) ||
+        typeof action.toY !== 'number' ||
+        !Number.isFinite(action.toY)
+      ) {
+        return []
+      }
+      return [{ id: action.id, type: 'move' as const, toX: action.toX, toY: action.toY, duration }]
+    })
+    if (actions.length > 0) result.actions = actions
+  }
+
+  if (isRecord(value.buildOut)) {
+    const duration = normalizeDuration(value.buildOut.duration)
+    if (
+      duration !== undefined &&
+      (value.buildOut.type === 'disappear' || value.buildOut.type === 'fade-out')
+    ) {
+      result.buildOut = { type: value.buildOut.type, duration }
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined
+}
+
+function parseAnimationOrder(text: string | null): AnimationStep[] {
+  const value = parseJson(text)
+  if (!Array.isArray(value)) return []
+  return value.flatMap((step) => {
+    if (
+      !isRecord(step) ||
+      typeof step.elementId !== 'string' ||
+      !['buildIn', 'action', 'buildOut'].includes(String(step.category))
+    ) {
+      return []
+    }
+    if (step.category === 'action' && typeof step.actionId !== 'string') return []
+    return [
+      {
+        elementId: step.elementId,
+        category: step.category as AnimationStep['category'],
+        ...(typeof step.actionId === 'string' ? { actionId: step.actionId } : {})
+      }
+    ]
+  })
+}
+
+function parseBackground(text: string | null): SlideBackground | undefined {
+  const value = parseJson(text)
+  if (!isRecord(value)) return undefined
+  if (value.type === 'solid' && typeof value.color === 'string') {
+    return { type: 'solid', color: value.color }
+  }
+  if (
+    value.type === 'gradient' &&
+    typeof value.angle === 'number' &&
+    Number.isFinite(value.angle) &&
+    Array.isArray(value.stops) &&
+    value.stops.length === 2 &&
+    value.stops.every((stop) => isRecord(stop) && typeof stop.color === 'string')
+  ) {
+    return {
+      type: 'gradient',
+      angle: value.angle,
+      stops: [
+        { offset: 0, color: (value.stops[0] as Record<string, unknown>).color as string },
+        { offset: 1, color: (value.stops[1] as Record<string, unknown>).color as string }
+      ]
+    }
+  }
+  if (
+    value.type === 'image' &&
+    typeof value.src === 'string' &&
+    value.src.startsWith('data:image/')
+  ) {
+    const fit = ['stretch', 'contain', 'cover'].includes(String(value.fit))
+      ? (value.fit as 'stretch' | 'contain' | 'cover')
+      : undefined
+    return {
+      type: 'image',
+      src: value.src,
+      ...(typeof value.filename === 'string' ? { filename: value.filename } : {}),
+      ...(fit ? { fit } : {})
+    }
+  }
+  return undefined
+}
+
+function parseTransition(text: string | null): SlideTransition | undefined {
+  const value = parseJson(text)
+  if (!isRecord(value) || !['none', 'dissolve', 'push'].includes(String(value.type))) {
+    return undefined
+  }
+  const duration = normalizeDuration(value.duration, 60)
+  if (duration === undefined) return undefined
+  return { type: value.type as SlideTransition['type'], duration }
+}
+
 /**
  * Applies per-connection SQLite hardening before any application queries run.
  *
@@ -584,13 +744,13 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     )
     .all(slideId) as ElementRow[]
 
-  const elements: TwigElement[] = elementRows.map((el) => {
-    let parsedAnimations: ElementAnimations | undefined
-    try {
-      parsedAnimations = el.animations ? JSON.parse(el.animations) : undefined
-    } catch {
-      parsedAnimations = undefined
-    }
+  const elements: TwigElement[] = elementRows.flatMap((el) => {
+    // A syntactically valid SQLite file is still untrusted input. Unknown
+    // element types would otherwise reach renderer switches as impossible
+    // values and can crash Fabric/presentation rendering.
+    if (!isElementType(el.type) || typeof el.id !== 'string') return []
+
+    const parsedAnimations = parseElementAnimations(el.animations)
 
     // Parse shape_params and seed defaults for arrows so the renderer and
     // properties panel never see `undefined` on legacy rows.
@@ -598,12 +758,17 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     if (el.type === 'arrow') {
       if (el.shape_params) {
         try {
-          const parsed = JSON.parse(el.shape_params) as Partial<ArrowShape>
+          const parsed = parseJson(el.shape_params)
+          if (!isRecord(parsed)) throw new Error('shape_params must be an object')
+          const ratio = (value: unknown, fallback: number): number =>
+            Math.min(1, Math.max(0, finiteNumber(value, fallback)))
           arrowShape = {
-            headWidthRatio: parsed.headWidthRatio ?? DEFAULT_ARROW_SHAPE.headWidthRatio,
-            headLengthRatio: parsed.headLengthRatio ?? DEFAULT_ARROW_SHAPE.headLengthRatio,
-            shaftThicknessRatio:
-              parsed.shaftThicknessRatio ?? DEFAULT_ARROW_SHAPE.shaftThicknessRatio
+            headWidthRatio: ratio(parsed.headWidthRatio, DEFAULT_ARROW_SHAPE.headWidthRatio),
+            headLengthRatio: ratio(parsed.headLengthRatio, DEFAULT_ARROW_SHAPE.headLengthRatio),
+            shaftThicknessRatio: ratio(
+              parsed.shaftThicknessRatio,
+              DEFAULT_ARROW_SHAPE.shaftThicknessRatio
+            )
           }
         } catch {
           arrowShape = { ...DEFAULT_ARROW_SHAPE }
@@ -616,15 +781,24 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     // Pre-fix saves may have persisted negative width/height for arrows after
     // a mirrored drag. Fabric's polygon geometry assumes non-negative intrinsic
     // dimensions, so sanitize on read for arrows.
-    const normalizedWidth = el.type === 'arrow' ? Math.abs(el.width) : el.width
-    const normalizedHeight = el.type === 'arrow' ? Math.abs(el.height) : el.height
+    const normalizedWidth = Math.abs(finiteNumber(el.width, 0))
+    const normalizedHeight = Math.abs(finiteNumber(el.height, 0))
 
     // Text rows saved before these columns existed have NULL here; Fabric's
     // Textbox will call .toLowerCase() on fontWeight/fontStyle and throw if
     // the value is undefined/null, so seed the standard defaults for text.
     const isText = el.type === 'text'
-    const textFontWeight = isText ? (el.fontWeight ?? 'normal') : undefined
-    const textFontStyle = isText ? (el.fontStyle ?? 'normal') : undefined
+    const textFontWeight = isText
+      ? typeof el.fontWeight === 'string' ||
+        (typeof el.fontWeight === 'number' && Number.isFinite(el.fontWeight))
+        ? el.fontWeight
+        : 'normal'
+      : undefined
+    const textFontStyle = isText
+      ? typeof el.fontStyle === 'string'
+        ? el.fontStyle
+        : 'normal'
+      : undefined
     const textUnderline = isText
       ? el.underline === null || el.underline === undefined
         ? false
@@ -634,15 +808,18 @@ export function getSlide(db: Database, slideId: string): Slide | null {
     const element: TwigElement = {
       type: el.type as TwigElement['type'],
       id: el.id,
-      x: el.x,
-      y: el.y,
+      x: finiteNumber(el.x, 0),
+      y: finiteNumber(el.y, 0),
       width: normalizedWidth,
       height: normalizedHeight,
-      angle: el.angle,
-      fill: el.fill,
-      text: el.text,
-      fontSize: el.fontSize,
-      fontFamily: el.fontFamily,
+      angle: finiteNumber(el.angle, 0),
+      fill: optionalString(el.fill),
+      text: optionalString(el.text),
+      fontSize:
+        typeof el.fontSize === 'number' && Number.isFinite(el.fontSize) && el.fontSize >= 0
+          ? el.fontSize
+          : undefined,
+      fontFamily: optionalString(el.fontFamily),
       fontWeight: textFontWeight,
       fontStyle: textFontStyle,
       underline: textUnderline,
@@ -650,7 +827,8 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       styles: el.styles
         ? (() => {
             try {
-              return JSON.parse(el.styles)
+              const parsed = JSON.parse(el.styles)
+              return isRecord(parsed) ? parsed : undefined
             } catch (error) {
               console.error(`Failed to parse styles for element ${el.id}:`, error)
               return undefined
@@ -658,10 +836,10 @@ export function getSlide(db: Database, slideId: string): Slide | null {
           })()
         : undefined,
       // Image / math fields
-      src: el.src || undefined,
-      filename: el.filename || undefined,
-      latex: el.latex || undefined,
-      zIndex: el.z_index ?? 0,
+      src: typeof el.src === 'string' && el.src.startsWith('data:image/') ? el.src : undefined,
+      filename: optionalString(el.filename),
+      latex: optionalString(el.latex),
+      zIndex: Math.trunc(finiteNumber(el.z_index, 0)),
       animations: parsedAnimations,
       arrowShape
     }
@@ -673,37 +851,22 @@ export function getSlide(db: Database, slideId: string): Slide | null {
       el.type === 'star' ||
       el.type === 'arrow'
     ) {
-      if (el.stroke !== null && el.stroke !== undefined) element.stroke = el.stroke
-      if (el.stroke_width !== null && el.stroke_width !== undefined) {
+      if (typeof el.stroke === 'string') element.stroke = el.stroke
+      if (
+        typeof el.stroke_width === 'number' &&
+        Number.isFinite(el.stroke_width) &&
+        el.stroke_width >= 0
+      ) {
         element.strokeWidth = el.stroke_width
       }
     }
 
-    return element
+    return [element]
   })
 
-  let background: SlideBackground | undefined
-  if (slideRow.background) {
-    try {
-      background = JSON.parse(slideRow.background)
-    } catch {
-      /* ignore malformed JSON */
-    }
-  }
-
-  let animationOrder: AnimationStep[]
-  try {
-    animationOrder = slideRow.animation_order ? JSON.parse(slideRow.animation_order) : []
-  } catch {
-    animationOrder = []
-  }
-
-  let transition: SlideTransition | undefined
-  try {
-    transition = slideRow.transition ? JSON.parse(slideRow.transition) : undefined
-  } catch {
-    transition = undefined
-  }
+  const background = parseBackground(slideRow.background)
+  const animationOrder = parseAnimationOrder(slideRow.animation_order)
+  const transition = parseTransition(slideRow.transition)
 
   return { id: slideRow.id, elements, background, animationOrder, transition }
 }

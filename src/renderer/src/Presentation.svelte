@@ -35,7 +35,7 @@
   import { isStepConfiguredForElement } from './lib/animationUtils'
   import { normalizeFontBytes, type FontBytes } from './lib/fontUtils'
   import { shapeStyle } from './lib/shapeStyle'
-  import { getTextboxWrappingOptions } from './lib/textboxUtils'
+  import { getTextboxWrappingOptions, resolveTextboxText } from './lib/textboxUtils'
   import { GifAnimationManager, isGifDataUrl } from './lib/gif'
 
   interface PresentationState {
@@ -166,7 +166,10 @@
   let pendingAdvanceAfterImageLoad = false
   // Tracks which fonts have been injected in this window so we don't repeat work.
   let loadedFontKeys = new SvelteSet<string>()
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const loadedFontFaces = new Map<string, FontFace>()
   let fontsLoadedForPath: string | null = null
+  let fontLoadGeneration = 0
   // Shared promise for the in-progress font load. Concurrent slide navigations
   // to the same file all await this same promise, so none of them render before
   // fonts are ready even if they arrive while loading is still in flight.
@@ -255,6 +258,9 @@
   })
 
   onDestroy(() => {
+    for (const fontFace of loadedFontFaces.values()) document.fonts.delete(fontFace)
+    loadedFontFaces.clear()
+    loadedFontKeys.clear()
     // Dispose GIF manager BEFORE the canvas: dispose() cancels timers and
     // schedulers that would otherwise touch a torn-down canvas.
     gifManager?.dispose()
@@ -506,7 +512,7 @@
         setArrowPolygonBox(fabObj as Polygon, w, h)
       } else if (element.type === 'text') {
         fabObj = setPresentationId(
-          new Textbox(element.text || '', {
+          new Textbox(resolveTextboxText(element.text), {
             left: element.x,
             top: element.y,
             width: element.width,
@@ -763,14 +769,23 @@
    * FontFaceSet so fabric.js canvas rendering uses the correct typefaces.
    */
   async function loadEmbeddedFonts(filePath: string): Promise<void> {
+    const generation = ++fontLoadGeneration
+    if (fontsLoadedForPath !== filePath) {
+      for (const fontFace of loadedFontFaces.values()) document.fonts.delete(fontFace)
+      loadedFontFaces.clear()
+      loadedFontKeys.clear()
+    }
     fontsLoadedForPath = filePath
     try {
       const embeddedFonts = await window.api.fonts.getEmbeddedFonts(filePath)
+      if (generation !== fontLoadGeneration || fontsLoadedForPath !== filePath) return
       await Promise.all(
-        embeddedFonts.map((font) => injectFont(font.fontFamily, font.fontData, font.variant))
+        embeddedFonts.map((font) =>
+          injectFont(font.fontFamily, font.fontData, font.variant, generation)
+        )
       )
     } catch (err) {
-      fontsLoadedForPath = null
+      if (generation === fontLoadGeneration) fontsLoadedForPath = null
       console.error('Failed to load embedded fonts in presentation window:', err)
     }
   }
@@ -778,7 +793,8 @@
   async function injectFont(
     fontFamily: string,
     fontData: FontBytes,
-    variant: string = 'normal-normal'
+    variant: string = 'normal-normal',
+    generation: number = fontLoadGeneration
   ): Promise<void> {
     const key = `${fontFamily}-${variant}`
     if (loadedFontKeys.has(key)) return
@@ -788,13 +804,19 @@
       if (!bytes) throw new Error('Unsupported font data type')
 
       const [weight, style] = variant.split('-')
-      const normalizedStyle = style === 'italic' ? 'italic' : 'normal'
+      const normalizedWeight = /^(?:normal|bold|[1-9]00)$/.test(weight) ? weight : 'normal'
+      const normalizedStyle = style === 'italic' || style === 'oblique' ? style : 'normal'
       const fontBuffer = new ArrayBuffer(bytes.byteLength)
       new Uint8Array(fontBuffer).set(bytes)
 
-      const fontFace = new FontFace(fontFamily, fontBuffer, { weight, style: normalizedStyle })
+      const fontFace = new FontFace(fontFamily, fontBuffer, {
+        weight: normalizedWeight,
+        style: normalizedStyle
+      })
       await fontFace.load()
+      if (generation !== fontLoadGeneration) return
       document.fonts.add(fontFace)
+      loadedFontFaces.set(key, fontFace)
       loadedFontKeys.add(key)
     } catch (err) {
       console.error(`Failed to load font ${fontFamily} (${variant}):`, err)

@@ -43,9 +43,13 @@
   } from './lib/types'
   import { normalizeAnimationOrder, insertAnimationStep } from './lib/animationUtils'
   import { resolveControlLayout } from './lib/controlLayout'
-  import { fontDataToBase64 } from './lib/fontUtils'
+  import { normalizeFontBytes } from './lib/fontUtils'
   import { isShapeElement, shapeStyle } from './lib/shapeStyle'
-  import { getTextboxWrappingOptions, syncTextboxWrapping } from './lib/textboxUtils'
+  import {
+    getTextboxWrappingOptions,
+    resolveTextboxText,
+    syncTextboxWrapping
+  } from './lib/textboxUtils'
   import { isSvgDataUrl, isSvgMime, normalizeSvgDataUrl } from './lib/svg'
   import {
     Canvas,
@@ -318,7 +322,13 @@
   // Font management state
   let systemFonts: { family: string; path: string; format: string }[] = []
   let availableFonts = $state(['Arial', 'Helvetica', 'Times New Roman', 'Courier New']) // Default fallbacks
-  let loadedFonts = new SvelteSet<string>() // Track which fonts have been loaded via @font-face
+  let loadedFonts = new SvelteSet<string>()
+  // Keep the actual FontFace objects so presentation-specific faces can be
+  // removed when the user switches files.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const loadedFontFaces = new Map<string, FontFace>()
+  let embeddedFontsPath: string | null = null
+  let embeddedFontLoadGeneration = 0
   // Non-reactive async bookkeeping; export waits on it directly.
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const pendingFontInjections = new Set<Promise<void>>()
@@ -1502,7 +1512,7 @@
     if (element.type === 'text') {
       const cleanedStyles = element.styles ? cleanStylesObject(element.styles) : {}
       return setTwigId(
-        new Textbox(element.text || 'Hello', {
+        new Textbox(resolveTextboxText(element.text), {
           left: element.x,
           top: element.y,
           width: element.width,
@@ -3974,6 +3984,17 @@
     return promise
   }
 
+  function resetEmbeddedFontFaces(filePath: string): void {
+    if (embeddedFontsPath === filePath) return
+    embeddedFontsPath = filePath
+    for (const [key, fontFace] of loadedFontFaces) {
+      if (!key.startsWith('embedded:')) continue
+      document.fonts.delete(fontFace)
+      loadedFontFaces.delete(key)
+      loadedFonts.delete(key)
+    }
+  }
+
   async function waitForFontsReady(): Promise<void> {
     // New injections can be registered while an earlier batch is settling.
     while (pendingFontInjections.size > 0) {
@@ -3985,8 +4006,13 @@
   async function loadEmbeddedFonts(): Promise<void> {
     if (!appState.currentFilePath) return
 
+    const filePath = appState.currentFilePath
+    const generation = ++embeddedFontLoadGeneration
+    resetEmbeddedFontFaces(filePath)
+
     try {
-      const embeddedFonts = await window.api.fonts.getEmbeddedFonts(appState.currentFilePath)
+      const embeddedFonts = await window.api.fonts.getEmbeddedFonts(filePath)
+      if (generation !== embeddedFontLoadGeneration || appState.currentFilePath !== filePath) return
 
       // Get unique font families from embedded fonts
       const embeddedFamilies = Array.from(new Set(embeddedFonts.map((f) => f.fontFamily)))
@@ -4000,8 +4026,18 @@
 
       // Inject the fonts into the page
       for (const font of embeddedFonts) {
+        if (generation !== embeddedFontLoadGeneration || appState.currentFilePath !== filePath) {
+          return
+        }
         await trackFontInjection(
-          injectFontFace(font.fontFamily, font.fontData, font.format, font.variant)
+          injectFontFace(
+            font.fontFamily,
+            font.fontData,
+            font.format,
+            font.variant,
+            'embedded',
+            generation
+          )
         )
       }
 
@@ -4045,7 +4081,8 @@
   }
 
   /**
-   * Injects a font into the page using CSS @font-face.
+   * Loads a font with the FontFace API. This avoids interpolating untrusted
+   * presentation metadata into a CSS rule and gives us a removable object.
    *
    * @param fontFamily - The font family name
    * @param fontData - Binary font data as Buffer
@@ -4055,44 +4092,44 @@
   async function injectFontFace(
     fontFamily: string,
     fontData: Buffer,
-    format: string,
-    variant: string = 'normal-normal'
+    _format: string,
+    variant: string = 'normal-normal',
+    source: 'embedded' | 'preview' = 'preview',
+    generation: number = embeddedFontLoadGeneration
   ): Promise<void> {
-    const key = `${fontFamily}-${variant}`
+    const key = `${source}:${fontFamily}-${variant}`
     if (loadedFonts.has(key)) {
       return // Already loaded
     }
 
     try {
-      // Convert Buffer to base64 for data URI
-      const base64 = fontDataToBase64(fontData)
-
-      // Determine font format for @font-face
-      const normalizedFormat = format === 'ttc' ? 'ttf' : format
-      let fontFormat = normalizedFormat
-      if (normalizedFormat === 'ttf') fontFormat = 'truetype'
-      else if (normalizedFormat === 'otf') fontFormat = 'opentype'
-
-      // Parse variant to get weight and style
+      const bytes = normalizeFontBytes(fontData)
+      if (!bytes) throw new Error('Unsupported font data type')
       const [weight, style] = variant.split('-')
+      const normalizedWeight = /^(?:normal|bold|[1-9]00)$/.test(weight) ? weight : 'normal'
+      const normalizedStyle = style === 'italic' || style === 'oblique' ? style : 'normal'
+      const fontBuffer = new ArrayBuffer(bytes.byteLength)
+      new Uint8Array(fontBuffer).set(bytes)
+      const fontFace = new FontFace(fontFamily, fontBuffer, {
+        weight: normalizedWeight,
+        style: normalizedStyle
+      })
+      await fontFace.load()
+      if (source === 'embedded' && generation !== embeddedFontLoadGeneration) return
 
-      // Create @font-face CSS rule
-      const fontFaceRule = `
-        @font-face {
-          font-family: '${fontFamily}';
-          src: url(data:font/${normalizedFormat};base64,${base64}) format('${fontFormat}');
-          font-weight: ${weight};
-          font-style: ${style};
-        }
-      `
+      // An embedded face must win over a previously loaded system preview.
+      if (source === 'embedded') {
+        const previewKey = `preview:${fontFamily}-${variant}`
+        const previewFace = loadedFontFaces.get(previewKey)
+        if (previewFace) document.fonts.delete(previewFace)
+        loadedFontFaces.delete(previewKey)
+        loadedFonts.delete(previewKey)
+      }
 
-      // Inject into document
-      const styleEl = document.createElement('style')
-      styleEl.textContent = fontFaceRule
-      document.head.appendChild(styleEl)
-
+      document.fonts.add(fontFace)
+      loadedFontFaces.set(key, fontFace)
       loadedFonts.add(key)
-      await ensureFontReady(fontFamily, weight, style)
+      await ensureFontReady(fontFamily, normalizedWeight, normalizedStyle)
       cache.clearFontCache(fontFamily)
       console.log(`Injected font: ${fontFamily} (${variant})`)
     } catch (error) {
@@ -4142,14 +4179,13 @@
     if (!appState.currentFilePath) {
       throw new Error('Invariant violation: no currentFilePath when embedding font')
     }
+    const filePath = appState.currentFilePath
+    const generation = embeddedFontLoadGeneration
 
     try {
       // Check if font is already embedded
-      const existingFont = await window.api.fonts.getFontData(
-        appState.currentFilePath,
-        fontFamily,
-        'normal-normal'
-      )
+      const existingFont = await window.api.fonts.getFontData(filePath, fontFamily, 'normal-normal')
+      if (appState.currentFilePath !== filePath) return
 
       if (existingFont) {
         return // Already embedded
@@ -4163,23 +4199,23 @@
       }
 
       // Embed the font
-      await window.api.fonts.embedFont(
-        appState.currentFilePath,
-        systemFont.path,
-        fontFamily,
-        'normal-normal'
-      )
+      await window.api.fonts.embedFont(filePath, systemFont.path, fontFamily, 'normal-normal')
+      if (appState.currentFilePath !== filePath) return
 
       // Load the embedded font
-      const fontData = await window.api.fonts.getFontData(
-        appState.currentFilePath,
-        fontFamily,
-        'normal-normal'
-      )
+      const fontData = await window.api.fonts.getFontData(filePath, fontFamily, 'normal-normal')
+      if (appState.currentFilePath !== filePath) return
 
       if (fontData) {
         await trackFontInjection(
-          injectFontFace(fontData.fontFamily, fontData.fontData, fontData.format, fontData.variant)
+          injectFontFace(
+            fontData.fontFamily,
+            fontData.fontData,
+            fontData.format,
+            fontData.variant,
+            'embedded',
+            generation
+          )
         )
         console.log(`Embedded and loaded font: ${fontFamily}`)
       }
@@ -4199,7 +4235,7 @@
       return
     }
 
-    const key = `${fontFamily}-normal-normal`
+    const key = `preview:${fontFamily}-normal-normal`
     if (loadedFonts.has(key)) {
       return // Already loaded
     }
@@ -4215,7 +4251,7 @@
       const fontData = await window.api.fonts.loadFontFile(systemFont.path)
       if (fontData) {
         await trackFontInjection(
-          injectFontFace(fontFamily, fontData, systemFont.format, 'normal-normal')
+          injectFontFace(fontFamily, fontData, systemFont.format, 'normal-normal', 'preview')
         )
       }
     } catch (error) {

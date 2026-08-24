@@ -12,7 +12,6 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 
 const isStoreBuild =
   process.mas === true ||
@@ -66,9 +65,6 @@ const api = {
 
     /** Save a slide to the database */
     saveSlide: (filePath, slide) => ipcRenderer.invoke('db:save-slide', filePath, slide),
-
-    /** Save all slides to a new file (Save As) */
-    saveAs: (filePath, slides) => ipcRenderer.invoke('db:save-as', filePath, slides),
 
     /** Close a database connection (used before overwriting files) */
     closeConnection: (filePath) => ipcRenderer.invoke('db:close-connection', filePath),
@@ -358,20 +354,42 @@ const api = {
 // ============================================================================
 
 /**
- * Expose APIs to the renderer process safely via contextBridge.
- * If context isolation is disabled (not recommended), fall back to window global.
+ * Expose only the capabilities needed by each renderer entry point. A bug or
+ * injection in the fullscreen presentation must not gain editor filesystem or
+ * database-write privileges.
  */
+const windowRole = process.argv
+  .find((argument) => argument.startsWith('--twig-window-role='))
+  ?.slice('--twig-window-role='.length)
+const exposedApi =
+  windowRole === 'presentation'
+    ? {
+        db: { getSlide: api.db.getSlide },
+        fonts: { getEmbeddedFonts: api.fonts.getEmbeddedFonts },
+        presentation: {
+          navigate: api.presentation.navigate,
+          exit: api.presentation.exit,
+          onStateChanged: api.presentation.onStateChanged,
+          signalReady: api.presentation.signalReady
+        }
+      }
+    : windowRole === 'debug'
+      ? {
+          debug: {
+            onStateUpdate: api.debug.onStateUpdate,
+            requestState: api.debug.requestState
+          }
+        }
+      : windowRole === 'editor'
+        ? api
+        : {}
+
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('api', exposedApi)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // Fallback for when context isolation is disabled (not recommended for security)
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
+  throw new Error('twig requires context isolation')
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { shouldSplitTextboxByGrapheme } from '../../src/renderer/src/lib/textboxUtils'
+import {
+  resolveTextboxText,
+  shouldSplitTextboxByGrapheme
+} from '../../src/renderer/src/lib/textboxUtils'
 
 describe('src/renderer/src/lib/textboxUtils.ts', () => {
   it('keeps whitespace-based wrapping for Latin text', () => {
@@ -19,5 +22,11 @@ describe('src/renderer/src/lib/textboxUtils.ts', () => {
     expect(shouldSplitTextboxByGrapheme('')).toBe(false)
     expect(shouldSplitTextboxByGrapheme(null)).toBe(false)
     expect(shouldSplitTextboxByGrapheme(undefined)).toBe(false)
+  })
+
+  it('preserves intentionally empty text instead of substituting placeholder copy', () => {
+    expect(resolveTextboxText('')).toBe('')
+    expect(resolveTextboxText(undefined)).toBe('')
+    expect(resolveTextboxText('Hello')).toBe('Hello')
   })
 })

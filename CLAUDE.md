@@ -44,13 +44,15 @@ npm run format           # Format code with Prettier
 npm run typecheck        # Run TypeScript type checking
 npm run typecheck:node   # Check main/preload process types only
 npm run svelte-check     # Check Svelte component types
+npm test                 # Run the complete Vitest suite once
+npm run test:watch       # Run Vitest in watch mode
+npm run test:coverage    # Run tests with coverage
 ```
 
-### Native Dependencies
+### Runtime Requirements
 
-```bash
-npm run rebuild          # Rebuild native modules (e.g., after Node version change)
-```
+- Development requires Node.js 22 or newer.
+- Use the dependency versions pinned by `package-lock.json`.
 
 ## Architecture
 
@@ -65,9 +67,10 @@ twig follows Electron's standard architecture:
 ### Database Layer (`src/main/db.ts`)
 
 - Uses better-sqlite3 for synchronous SQLite operations
-- Schema: `slides` table (id, slide_order) and `elements` table (properties of shapes/text)
-- Connection caching: Main process maintains a Map of open database connections by file path
+- Schema: `slides`, `elements`, `fonts`, and `settings`; see `TWIG_SPEC.md` for the exact `.tb` contract
+- Connection caching, WAL lifecycle, MAS shadow copies, integrity checks, and path validation live in `src/main/db/connection.ts`
 - All database operations are transactional for consistency
+- Treat every `.tb` as untrusted input. JSON-backed fields are structurally normalized in `getSlide`; do not replace this with unchecked `JSON.parse` casts
 
 ### State Management (`src/renderer/src/lib/state.svelte.ts`)
 
@@ -90,12 +93,15 @@ twig follows Electron's standard architecture:
 
 ### IPC Communication
 
-The preload script exposes these APIs to the renderer:
+The preload script exposes role-scoped APIs via `window.api`:
 
-- `window.api.dialog`: File open/save dialogs
-- `window.api.db`: All database operations (getSlideIds, getSlide, createSlide, saveSlide, saveAs)
+- Editor window: full dialog, persistence, font, application, debug, and presentation controls
+- Presentation window: read-only `getSlide`/embedded-font access plus presentation navigation
+- Debug window: debug state subscription/request only
 
-All IPC calls are asynchronous and return Promises.
+Browser windows must keep `sandbox: true`, `contextIsolation: true`, and `nodeIntegration: false`. Never expose `@electron-toolkit/preload`'s raw `electronAPI` or unrestricted `ipcRenderer`. Window roles are assigned with `--twig-window-role=...`; unknown roles receive no API.
+
+All invoked IPC calls are asynchronous and return Promises. There is no `db:save-as`/`db.saveAs`; Save and Save As use `saveToLocation` and `copyToLocation` so they preserve the existing database until a verified replacement is ready.
 
 ## Key Concepts
 
@@ -126,7 +132,17 @@ This project uses Svelte 5's runes syntax. See https://svelte.dev/llms-full.txt 
 - Individual slides loaded on-demand from database
 - Connection caching for performance
 - WAL mode with checkpointing for data integrity
-- Temp files cleaned up on app shutdown (24-hour orphan cleanup on startup)
+- Save/Save As copies into a sibling staging file, runs `integrity_check`, then installs it with destination-preserving replacement (`src/main/files/atomicFile.ts`)
+- A failed WAL checkpoint, MAS shadow sync, or database close must abort destructive cleanup and retain the connection/shadow as recovery data
+- MAS shadow/probe snapshots include SQLite WAL/SHM companions; shadow sync stages and verifies data before replacing the external file
+- Active registered temp files are removed only after a successful clean shutdown. Crash-recovered `temp-*`, `shadow-*`, and `recovery-*` databases are never age-swept or recursively deleted; only disposable `probe-*` artifacts are age-cleaned
+- Do not unlink an existing save destination before its staged replacement passes integrity verification
+
+### Rendering and Font Invariants
+
+- Intentional empty text must remain empty. Use `resolveTextboxText` (`text ?? ''`), never truthy fallbacks such as `text || 'Hello'`.
+- Embedded `FontFace` objects are scoped to the current presentation path and removed when switching files. Async font loads must verify their file-path/generation token before installation.
+- System font file reads are restricted to canonical paths returned by `fonts:get-system-fonts`; do not add arbitrary renderer-controlled file reads.
 
 ### fabric.js Custom Properties
 
@@ -142,9 +158,14 @@ This ID is crucial for synchronizing Canvas modifications back to the state.
 
 - `src/main/index.ts`: Main process entry, IPC handlers, window management
 - `src/main/db.ts`: Database schema and CRUD operations
+- `src/main/db/connection.ts`: Connection/WAL/MAS-shadow lifecycle and integrity validation
+- `src/main/files/atomicFile.ts`: Recoverable/atomic database replacement helpers
+- `src/main/files/tempManager.ts`: Temp and crash-recovery retention rules
 - `src/renderer/src/App.svelte`: Main UI component, Canvas logic, event handlers
 - `src/renderer/src/lib/state.svelte.ts`: Global state management
 - `src/preload/index.ts`: IPC bridge definitions
+- `scripts/run-tests.mjs`: Vitest launcher used by the test scripts
+- `TWIG_SPEC.md`: Canonical `.tb` file format
 - `AGENTS.md`: Notes about technology choices
 
 ## Debugging & Development Tools

@@ -24,6 +24,11 @@ import {
   registerTempFile,
   unregisterTempFile
 } from '../files/tempManager'
+import {
+  createSiblingStagingPath,
+  removeDatabaseCompanions,
+  replaceFilePreservingDestination
+} from '../files/atomicFile'
 
 // ============================================================================
 // Input Validation
@@ -68,6 +73,19 @@ export function validateSlideId(slideId: unknown): asserts slideId is string {
 
 const masShadowCopies = new Map<string, string>()
 
+function copyDatabaseBundle(sourcePath: string, destinationPath: string): void {
+  fs.copyFileSync(sourcePath, destinationPath)
+  for (const suffix of ['-wal', '-shm']) {
+    const sourceCompanion = `${sourcePath}${suffix}`
+    const destinationCompanion = `${destinationPath}${suffix}`
+    if (fs.existsSync(sourceCompanion)) {
+      fs.copyFileSync(sourceCompanion, destinationCompanion)
+    } else if (fs.existsSync(destinationCompanion)) {
+      fs.unlinkSync(destinationCompanion)
+    }
+  }
+}
+
 export function isMasExternalFilePath(filePath: string): boolean {
   return process.mas && !isPathInTempDir(filePath)
 }
@@ -90,7 +108,7 @@ export function getMasShadowPath(filePath: string): string {
   ensureTempDir()
   const shadowPath = join(getTempDir(), `shadow-${crypto.randomUUID()}.tb`)
   if (fs.existsSync(filePath)) {
-    fs.copyFileSync(filePath, shadowPath)
+    copyDatabaseBundle(filePath, shadowPath)
     safeLog(`[db] created MAS shadow copy ${shadowPath} for ${filePath}`)
   } else {
     safeLog(`[db] reserved MAS shadow path ${shadowPath} for ${filePath}`)
@@ -114,11 +132,79 @@ export function syncMasShadowCopy(filePath: string): void {
   // never produce WAL changes to flush.
   const db = rwConnectionCache.get(filePath)
   if (db) {
-    db.pragma('wal_checkpoint(TRUNCATE)')
+    const checkpointResult = db.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy?: number }>
+    if (checkpointResult[0]?.busy !== 0) {
+      throw new Error(
+        `MAS shadow WAL checkpoint remained busy: ${JSON.stringify(checkpointResult)}`
+      )
+    }
   }
 
   ensureMasFileAccess(filePath)
-  fs.copyFileSync(shadowPath, filePath)
+  const siblingStagingPath = createSiblingStagingPath(filePath)
+  try {
+    fs.copyFileSync(shadowPath, siblingStagingPath, fs.constants.COPYFILE_EXCL)
+    verifyDatabaseIntegrity(siblingStagingPath, 'MAS shadow staging', {
+      forceExternalCheck: true
+    })
+    replaceFilePreservingDestination(siblingStagingPath, filePath)
+    removeDatabaseCompanions(filePath)
+  } catch (error) {
+    try {
+      if (fs.existsSync(siblingStagingPath)) fs.unlinkSync(siblingStagingPath)
+    } catch {
+      // A valid sibling staging file is recoverable and uniquely named.
+    }
+
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') throw error
+
+    // Some security-scoped file bookmarks allow replacing the selected file
+    // but not creating siblings. In that case keep a verified temp staging file
+    // and a crash-recovery backup while doing the final copy.
+    ensureTempDir()
+    const verifiedPath = join(getTempDir(), `sync-${crypto.randomUUID()}.tb`)
+    const recoveryPath = join(getTempDir(), `recovery-${crypto.randomUUID()}.tb`)
+    const originalExisted = fs.existsSync(filePath)
+    let retainRecovery = false
+    try {
+      fs.copyFileSync(shadowPath, verifiedPath, fs.constants.COPYFILE_EXCL)
+      verifyDatabaseIntegrity(verifiedPath, 'MAS shadow fallback staging')
+      if (originalExisted) copyDatabaseBundle(filePath, recoveryPath)
+
+      try {
+        fs.copyFileSync(verifiedPath, filePath)
+        removeDatabaseCompanions(filePath)
+      } catch (copyError) {
+        try {
+          if (originalExisted) {
+            copyDatabaseBundle(recoveryPath, filePath)
+          } else if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath)
+          }
+        } catch (restoreError) {
+          retainRecovery = true
+          throw new AggregateError(
+            [copyError, restoreError],
+            `Failed to sync ${filePath}; recovery copy retained at ${recoveryPath}`
+          )
+        }
+        throw copyError
+      }
+    } finally {
+      const cleanupPaths = [verifiedPath, `${verifiedPath}-wal`, `${verifiedPath}-shm`]
+      if (!retainRecovery) {
+        cleanupPaths.push(recoveryPath, `${recoveryPath}-wal`, `${recoveryPath}-shm`)
+      }
+      for (const candidatePath of cleanupPaths) {
+        try {
+          if (fs.existsSync(candidatePath)) fs.unlinkSync(candidatePath)
+        } catch {
+          // Never mask the sync result with cleanup failure.
+        }
+      }
+    }
+  }
   safeLog(`[db] synced MAS shadow copy ${shadowPath} -> ${filePath}`)
 }
 
@@ -462,7 +548,7 @@ export function probeDatabaseFormat(filePath: string): dbService.FormatProbeResu
   if (isMasExternalFilePath(filePath)) {
     ensureTempDir()
     disposableProbePath = join(getTempDir(), `probe-${crypto.randomUUID()}.tb`)
-    fs.copyFileSync(filePath, disposableProbePath)
+    copyDatabaseBundle(filePath, disposableProbePath)
     probePath = disposableProbePath
     safeLog(`[db] probing MAS external file via temp copy ${probePath} for ${filePath}`)
   }
@@ -566,8 +652,12 @@ export async function retryFileOperation<T>(
  * Verifies database integrity using PRAGMA integrity_check.
  * Performs robust validation of the pragma result format.
  */
-export function verifyDatabaseIntegrity(filePath: string, context: string): void {
-  if (shouldSkipExternalIntegrityChecks(filePath)) {
+export function verifyDatabaseIntegrity(
+  filePath: string,
+  context: string,
+  options: { forceExternalCheck?: boolean } = {}
+): void {
+  if (shouldSkipExternalIntegrityChecks(filePath) && !options.forceExternalCheck) {
     safeLog(`[db] skipping integrity_check for MAS external file ${filePath} (${context})`, 'warn')
     return
   }
@@ -639,32 +729,28 @@ export function closeDbConnection(
   // Close the writable connection (if any). Shadow sync + WAL checkpoint only
   // apply here - RO connections never mutate the file.
   if (rwConnectionCache.has(filePath)) {
-    try {
-      const db = rwConnectionCache.get(filePath)!
+    const db = rwConnectionCache.get(filePath)!
 
+    try {
       if (hasShadowCopy) {
-        try {
-          syncMasShadowCopy(filePath)
-        } catch (checkpointError) {
-          safeLog(
-            `Failed to sync MAS shadow copy for ${filePath}: ${formatError(checkpointError)}`,
-            'warn'
-          )
-        }
+        syncMasShadowCopy(filePath)
       } else if (checkpointMode !== 'none') {
-        try {
-          const mode = checkpointMode === 'passive' ? 'PASSIVE' : 'TRUNCATE'
-          db.pragma(`wal_checkpoint(${mode})`)
-          safeLog(`Checkpointed WAL (${mode}) for ${filePath}`)
-        } catch (checkpointError) {
-          safeLog(`Failed to checkpoint WAL for ${filePath}: ${checkpointError}`, 'warn')
-          // Continue anyway - close will still work
+        const mode = checkpointMode === 'passive' ? 'PASSIVE' : 'TRUNCATE'
+        const checkpointResult = db.pragma(`wal_checkpoint(${mode})`) as Array<{
+          busy?: number
+        }>
+        if (checkpointMode === 'truncate' && checkpointResult[0]?.busy !== 0) {
+          throw new Error(`WAL checkpoint remained busy: ${JSON.stringify(checkpointResult)}`)
         }
+        safeLog(`Checkpointed WAL (${mode}) for ${filePath}`)
       }
 
       db.close()
     } catch (error) {
-      safeLog(`Error closing database connection for ${filePath}: ${error}`, 'error')
+      // Do not evict the connection or dispose its shadow. It may contain the
+      // user's only unflushed changes, and callers must abort destructive work.
+      safeLog(`Failed to safely close database ${filePath}: ${formatError(error)}`, 'error')
+      throw error
     }
     rwConnectionCache.delete(filePath)
     const rwIndex = rwAccessOrder.indexOf(filePath)
@@ -678,7 +764,8 @@ export function closeDbConnection(
     try {
       roConnectionCache.get(filePath)!.close()
     } catch (error) {
-      safeLog(`Error closing RO database connection for ${filePath}: ${error}`, 'error')
+      safeLog(`Failed to close RO database ${filePath}: ${formatError(error)}`, 'error')
+      throw error
     }
     roConnectionCache.delete(filePath)
     const roIndex = roAccessOrder.indexOf(filePath)

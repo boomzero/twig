@@ -21,9 +21,12 @@ import { safeLog } from '../logging'
 const TEMP_DIR = join(app.getPath('userData'), 'temp')
 
 /**
- * Maximum age for orphaned temp files before automatic cleanup (24 hours).
+ * Maximum age for disposable probe files before automatic cleanup.
+ * Unsaved `temp-*.tb` presentations are deliberately never age-swept: after a
+ * crash they may be the user's only recoverable copy. Shadow files are also
+ * preserved because a failed MAS sync can leave the newest data there.
  */
-const TEMP_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const DISPOSABLE_FILE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 /**
  * Tracks which database file paths are temporary files.
@@ -40,28 +43,30 @@ export function isPathInTempDir(filePath: string): boolean {
 }
 
 /**
- * Ensures the temp directory exists and cleans up old orphaned temp files.
- * The orphan sweep runs on EVERY call (not memoized) - current behavior.
+ * Ensures the temp directory exists and cleans up only disposable probe
+ * artifacts. Crash-recovered unsaved presentations are preserved indefinitely.
  */
 export function ensureTempDir(): void {
   // Create temp directory with restrictive permissions (user-only access)
   // Mode 0o700 = rwx------ (owner read/write/execute only)
   fs.mkdirSync(TEMP_DIR, { recursive: true, mode: 0o700 })
 
-  // Clean up orphaned temp files older than 24 hours (crash recovery)
+  // Clean up orphaned disposable files older than 24 hours.
   try {
     const now = Date.now()
 
     if (fs.existsSync(TEMP_DIR)) {
       const files = fs.readdirSync(TEMP_DIR)
       for (const file of files) {
-        if (file.endsWith('.tb')) {
+        const disposableMatch = /^probe-.+\.tb(?:-(?:wal|shm))?$/.test(file)
+        const mainPath = join(TEMP_DIR, file.replace(/-(?:wal|shm)$/, ''))
+        if (disposableMatch && !tempFilePaths.has(mainPath)) {
           const filePath = join(TEMP_DIR, file)
           try {
             const stats = fs.statSync(filePath)
-            if (now - stats.mtimeMs > TEMP_FILE_MAX_AGE_MS) {
+            if (now - stats.mtimeMs > DISPOSABLE_FILE_MAX_AGE_MS) {
               fs.unlinkSync(filePath)
-              console.log(`Cleaned up orphaned temp file: ${filePath}`)
+              safeLog(`Cleaned up orphaned disposable file: ${filePath}`)
             }
           } catch (err) {
             console.warn(`Failed to clean up temp file ${filePath}:`, err)
@@ -106,29 +111,32 @@ export function getRegisteredTempFiles(): readonly string[] {
  */
 export function cleanupAllTempFiles(): void {
   for (const tempPath of tempFilePaths) {
-    try {
-      if (fs.existsSync(tempPath)) {
-        fs.unlinkSync(tempPath)
-        safeLog(`Deleted temp file: ${tempPath}`)
+    for (const candidatePath of [tempPath, `${tempPath}-wal`, `${tempPath}-shm`]) {
+      try {
+        if (fs.existsSync(candidatePath)) {
+          fs.unlinkSync(candidatePath)
+          safeLog(`Deleted temp file: ${candidatePath}`)
+        }
+      } catch (error) {
+        safeLog(`Failed to delete temp file ${candidatePath}: ${error}`, 'warn')
       }
-    } catch (error) {
-      safeLog(`Failed to delete temp file ${tempPath}: ${error}`, 'warn')
     }
   }
   tempFilePaths.clear()
 }
 
 /**
- * Recursively removes the temp directory. Used on app shutdown after
- * `cleanupAllTempFiles`.
+ * Removes the temp directory only when empty. Unregistered crash-recovery files
+ * must survive a later clean shutdown.
  */
 export function removeTempDir(): void {
   try {
     if (fs.existsSync(TEMP_DIR)) {
-      fs.rmSync(TEMP_DIR, { recursive: true, force: true })
-      safeLog('Cleaned up temp directory')
+      fs.rmdirSync(TEMP_DIR)
+      safeLog('Removed empty temp directory')
     }
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOTEMPTY') return
     safeLog(`Failed to clean up temp directory: ${error}`, 'warn')
   }
 }

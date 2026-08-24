@@ -19,7 +19,7 @@ import {
   Menu
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { join, normalize, basename, extname, sep, resolve, relative, isAbsolute } from 'path'
+import { join, basename, extname, sep, resolve, relative, isAbsolute } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import * as dbService from './db'
@@ -50,9 +50,14 @@ import {
   isOpenedReadOnly,
   probeDatabaseFormat,
   verifyDatabaseIntegrity,
-  retryFileOperation,
   ensureMasFileAccess
 } from './db/connection'
+import {
+  createSiblingStagingPath,
+  pathsReferToSameFile,
+  removeDatabaseCompanions,
+  replaceFilePreservingDestination
+} from './files/atomicFile'
 import fs from 'fs'
 import os from 'os'
 import crypto from 'crypto'
@@ -80,6 +85,123 @@ const isStoreManagedBuild =
 const MAX_EXPORT_FOLDER_ALLOWLIST_ENTRIES = 16
 const exportFolderAllowlist = new Set<string>()
 const exportFolderBookmarks = new Map<string, string>()
+const allowedSystemFontPaths = new Set<string>()
+
+function assertAllowedSystemFontPath(fontPath: unknown): string {
+  if (typeof fontPath !== 'string' || !isAbsolute(fontPath)) {
+    throw new Error('Font path must be absolute')
+  }
+
+  let realPath: string
+  try {
+    realPath = fs.realpathSync(fontPath)
+  } catch {
+    throw new Error('Font file does not exist')
+  }
+
+  if (!allowedSystemFontPaths.has(realPath)) {
+    throw new Error('Font file was not selected from the system font list')
+  }
+  if (!['.ttf', '.otf', '.ttc', '.woff', '.woff2'].includes(extname(realPath).toLowerCase())) {
+    throw new Error('Unsupported font format')
+  }
+  return realPath
+}
+
+function stageVerifiedDatabaseCopy(sourcePath: string, destinationPath: string): string {
+  const stageAt = (stagingPath: string): string => {
+    fs.copyFileSync(sourcePath, stagingPath, fs.constants.COPYFILE_EXCL)
+    verifyDatabaseIntegrity(stagingPath, 'staged save', { forceExternalCheck: true })
+    return stagingPath
+  }
+
+  const siblingPath = createSiblingStagingPath(destinationPath)
+  try {
+    return stageAt(siblingPath)
+  } catch (error) {
+    for (const candidatePath of [siblingPath, `${siblingPath}-wal`, `${siblingPath}-shm`]) {
+      try {
+        if (fs.existsSync(candidatePath)) fs.unlinkSync(candidatePath)
+      } catch {
+        // Keep the original failure; a uniquely named staging artifact is safe.
+      }
+    }
+
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') throw error
+
+    // A MAS security-scoped bookmark can permit writing the chosen file but
+    // forbid creating siblings. Stage and verify in the app container instead;
+    // installation retains a recovery backup for the non-atomic final copy.
+    ensureTempDir()
+    const tempStagingPath = join(getTempDir(), `save-${crypto.randomUUID()}.tb`)
+    try {
+      return stageAt(tempStagingPath)
+    } catch (tempError) {
+      try {
+        if (fs.existsSync(tempStagingPath)) fs.unlinkSync(tempStagingPath)
+      } catch {
+        // Preserve the original staging failure.
+      }
+      throw tempError
+    }
+  }
+}
+
+function installStagedDatabase(stagingPath: string, destinationPath: string): void {
+  try {
+    replaceFilePreservingDestination(stagingPath, destinationPath)
+    try {
+      // A successfully checkpointed destination can still leave an inert SHM file.
+      removeDatabaseCompanions(destinationPath)
+    } catch (cleanupError) {
+      safeLog(
+        `Installed ${destinationPath}, but could not remove an inert SQLite companion: ${formatError(cleanupError)}`,
+        'warn'
+      )
+    }
+    return
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EXDEV' && code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') throw error
+  }
+
+  ensureTempDir()
+  const recoveryPath = join(getTempDir(), `recovery-save-${crypto.randomUUID()}.tb`)
+  const originalExisted = fs.existsSync(destinationPath)
+  let retainRecovery = false
+  try {
+    if (originalExisted) fs.copyFileSync(destinationPath, recoveryPath, fs.constants.COPYFILE_EXCL)
+    try {
+      fs.copyFileSync(stagingPath, destinationPath)
+      removeDatabaseCompanions(destinationPath)
+      fs.unlinkSync(stagingPath)
+    } catch (copyError) {
+      try {
+        if (originalExisted) {
+          fs.copyFileSync(recoveryPath, destinationPath)
+        } else if (fs.existsSync(destinationPath)) {
+          fs.unlinkSync(destinationPath)
+        }
+      } catch (restoreError) {
+        retainRecovery = true
+        throw new AggregateError(
+          [copyError, restoreError],
+          `Failed to install ${destinationPath}; recovery copy retained at ${recoveryPath}`
+        )
+      }
+      throw copyError
+    }
+  } finally {
+    if (!retainRecovery) {
+      try {
+        if (fs.existsSync(recoveryPath)) fs.unlinkSync(recoveryPath)
+      } catch {
+        // A leftover recovery copy is safe and should not mask a completed save.
+      }
+    }
+  }
+}
 
 function allowExportFolder(dirPath: string, bookmark?: string): void {
   exportFolderAllowlist.delete(dirPath)
@@ -365,7 +487,10 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false // Required for better-sqlite3 native module
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments: ['--twig-window-role=editor']
     }
   })
   mainWindow = window
@@ -413,7 +538,14 @@ function createWindow(): BrowserWindow {
 
   // Open external links in the system browser instead of within the app
   window.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    try {
+      const url = new URL(details.url)
+      if (url.protocol === 'https:' || url.protocol === 'http:') {
+        void shell.openExternal(url.toString())
+      }
+    } catch {
+      safeLog(`Blocked invalid external URL: ${details.url}`, 'warn')
+    }
     return { action: 'deny' }
   })
 
@@ -465,7 +597,10 @@ function createDebugWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments: ['--twig-window-role=debug']
     }
   })
 
@@ -505,7 +640,10 @@ function createPresentationWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      additionalArguments: ['--twig-window-role=presentation']
     }
   })
 
@@ -703,7 +841,14 @@ app.whenReady().then(() => {
   powerMonitor.on('suspend', () => {
     safeLog('System suspending — closing all database connections')
     for (const filePath of getOpenConnectionPaths()) {
-      closeDbConnection(filePath, 'passive')
+      try {
+        closeDbConnection(filePath, 'passive')
+      } catch (error) {
+        safeLog(
+          `Could not safely close ${filePath} before suspend; retaining its connection and recovery data: ${formatError(error)}`,
+          'error'
+        )
+      }
     }
   })
 
@@ -1153,55 +1298,6 @@ app.whenReady().then(() => {
   })
 
   /**
-   * Saves all slides to a new file (Save As operation).
-   * This creates a completely new database file with all slides.
-   */
-  ipcMain.handle('db:save-as', (_event, filePath: string, slides: Slide[]): void => {
-    try {
-      validateFilePath(filePath)
-      ensureMasFileAccess(filePath)
-      // Validate all slide IDs
-      for (const slide of slides) {
-        validateSlideId(slide.id)
-      }
-      // Close any existing connection to this file path
-      closeDbConnection(filePath, 'none', { forgetReadOnly: true })
-
-      // Delete the file if it exists to ensure a clean overwrite
-      // We try to delete it atomically, and handle common error cases
-      try {
-        fs.unlinkSync(filePath)
-      } catch (unlinkError) {
-        const errCode = (unlinkError as NodeJS.ErrnoException).code
-        // ENOENT: File doesn't exist - that's fine, we wanted to delete it anyway
-        if (errCode === 'ENOENT') {
-          // No action needed
-        }
-        // EBUSY/EPERM: File is locked or in use by another process
-        else if (errCode === 'EBUSY' || errCode === 'EPERM') {
-          console.error('File is locked or in use by another process:', unlinkError)
-          throw new Error(
-            `Cannot save to ${filePath} because it is currently in use by another process. Please close any applications using this file and try again.`
-          )
-        }
-        // Other errors: log and attempt to proceed (better-sqlite3 may handle overwrite)
-        else {
-          console.warn('Failed to delete existing file, attempting to overwrite:', unlinkError)
-        }
-      }
-
-      // Create a new database and save all slides in a single transaction
-      withDbConnection(filePath, (db) => dbService.saveAllSlides(db, slides), {
-        syncShadowBack: true,
-        write: true
-      })
-    } catch (error) {
-      console.error('Error in db:save-as:', error)
-      throw error
-    }
-  })
-
-  /**
    * Closes a database connection and removes it from the cache.
    * Used before overwriting or deleting a file.
    * Uses PASSIVE checkpoint mode for non-blocking WAL flush.
@@ -1353,152 +1449,64 @@ app.whenReady().then(() => {
   ipcMain.handle(
     'db:save-to-location',
     async (_event, sourcePath: string, destPath: string): Promise<string> => {
+      let stagingPath: string | null = null
       try {
         validateFilePath(sourcePath)
         validateFilePath(destPath)
         ensureMasFileAccess(sourcePath)
         ensureMasFileAccess(destPath)
 
-        // Verify source file exists
         if (!fs.existsSync(sourcePath)) {
           throw new Error(`Source file does not exist: ${sourcePath}`)
         }
-
-        // Reject Save if the source was opened read-only (newer-than-supported
-        // file): the user explicitly declined to migrate it, so we must not
-        // write its bytes to a new location under a writable connection.
+        if (pathsReferToSameFile(sourcePath, destPath)) {
+          throw new Error('Cannot save a temporary presentation onto itself')
+        }
         if (isOpenedReadOnly(sourcePath)) {
           throw new Error(
             'Cannot save a file that was opened read-only. Close and reopen it after upgrading twig, or save a copy through your file manager.'
           )
         }
 
-        // Close connections to both paths and checkpoint WAL with full TRUNCATE
+        // These calls are intentionally strict. A failed checkpoint or MAS
+        // shadow sync aborts the save while its recoverable source stays open.
         closeDbConnection(sourcePath, 'truncate', { forgetReadOnly: true })
         closeDbConnection(destPath, 'truncate', { forgetReadOnly: true })
 
-        // Delete destination if it exists (with retry logic for file locks)
-        if (fs.existsSync(destPath)) {
-          try {
-            await retryFileOperation(() => {
-              fs.unlinkSync(destPath)
-            })
-          } catch (unlinkError) {
-            const errCode = (unlinkError as NodeJS.ErrnoException).code
-            if (errCode === 'EBUSY' || errCode === 'EPERM') {
-              throw new Error(
-                `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
-              )
-            }
-            // ENOENT is fine, other errors we'll try to proceed
-            if (errCode !== 'ENOENT') {
-              console.warn('Failed to delete existing destination file:', unlinkError)
-            }
-          }
-        }
+        stagingPath = stageVerifiedDatabaseCopy(sourcePath, destPath)
+        installStagedDatabase(stagingPath, destPath)
+        stagingPath = null
 
-        // Try to rename (move) the file (with retry logic)
-        try {
-          await retryFileOperation(() => {
-            fs.renameSync(sourcePath, destPath)
-          })
-
-          // Clean up any orphaned WAL companion files at source path
-          // Even after TRUNCATE checkpoint, .tb-shm can persist
-          for (const suffix of ['-wal', '-shm']) {
-            const companionPath = sourcePath + suffix
-            try {
-              if (fs.existsSync(companionPath)) {
-                fs.unlinkSync(companionPath)
-              }
-            } catch {
-              // Non-fatal: orphaned companion files don't affect correctness
-            }
-          }
-        } catch (renameError) {
-          // If cross-device move (EXDEV) or sandbox permission error (EPERM/EACCES on
-          // macOS MAS when renaming out of the app container), fall back to copy+delete.
-          const errCode = (renameError as NodeJS.ErrnoException).code
-          if (errCode === 'EXDEV' || errCode === 'EPERM' || errCode === 'EACCES') {
-            console.log(
-              'Rename blocked (cross-device or sandbox permission), using copy+delete fallback'
-            )
-
-            // Verify source database integrity before copying
-            try {
-              verifyDatabaseIntegrity(sourcePath, 'before cross-device copy')
-            } catch (sourceVerifyError) {
-              throw new Error(
-                `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
-              )
-            }
-
-            // Copy with retry logic
-            await retryFileOperation(() => {
-              fs.copyFileSync(sourcePath, destPath)
-            })
-
-            // Verify destination database integrity before deleting source
-            try {
-              verifyDatabaseIntegrity(destPath, 'after cross-device copy')
-            } catch (verifyError) {
-              // Destination is corrupted, delete it and don't delete source
-              try {
-                fs.unlinkSync(destPath)
-              } catch {
-                // Ignore cleanup error
-              }
-              throw new Error(
-                `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
-              )
-            }
-
-            // Destination verified, safe to delete source (with retry)
-            await retryFileOperation(() => {
-              fs.unlinkSync(sourcePath)
-            })
-
-            // Verify source is actually deleted
-            if (fs.existsSync(sourcePath)) {
-              throw new Error(
-                'Source file still exists after move operation - this indicates a file system error'
-              )
-            }
-
-            // Clean up any orphaned WAL companion files at source path
-            for (const suffix of ['-wal', '-shm']) {
-              const companionPath = sourcePath + suffix
-              try {
-                if (fs.existsSync(companionPath)) {
-                  fs.unlinkSync(companionPath)
-                }
-              } catch {
-                // Non-fatal: orphaned companion files don't affect correctness
-              }
-            }
-          } else {
-            throw renameError
-          }
-        }
-
-        // Remove from temp files set
-        unregisterTempFile(sourcePath)
-
-        // Evict source path from both connection caches to prevent memory leak
-        // (the connection was already closed before the move operation).
-        evictConnectionCaches(sourcePath)
-
-        // Open a writable connection at the destination. `getWritableConnection`
-        // runs `initializeDatabase`, which stamps format metadata, so the
-        // newly-placed file carries the same pragmas and settings rows as any
-        // other saved .tb.
+        // Do not remove the only source until the installed destination has
+        // successfully opened and initialized.
         getWritableConnection(destPath)
+        try {
+          fs.unlinkSync(sourcePath)
+          removeDatabaseCompanions(sourcePath)
+          unregisterTempFile(sourcePath)
+          evictConnectionCaches(sourcePath)
+        } catch (cleanupError) {
+          // The destination is valid; retaining a duplicate temp source is much
+          // safer than reporting the save as failed or hiding the recovery copy.
+          safeLog(
+            `Saved ${destPath}, but retained temp source ${sourcePath}: ${formatError(cleanupError)}`,
+            'warn'
+          )
+        }
 
-        safeLog(`Moved temp database from ${sourcePath} to ${destPath}`)
+        safeLog(`Saved temp database from ${sourcePath} to ${destPath}`)
         return destPath
       } catch (error) {
         console.error('Error in db:save-to-location:', error)
         throw error
+      } finally {
+        if (stagingPath) {
+          try {
+            if (fs.existsSync(stagingPath)) fs.unlinkSync(stagingPath)
+          } catch {
+            // A unique, verified staging file is a recoverable artifact.
+          }
+        }
       }
     }
   )
@@ -1509,92 +1517,34 @@ app.whenReady().then(() => {
   ipcMain.handle(
     'db:copy-to-location',
     async (_event, sourcePath: string, destPath: string): Promise<string> => {
+      let stagingPath: string | null = null
       try {
         validateFilePath(sourcePath)
         validateFilePath(destPath)
         ensureMasFileAccess(sourcePath)
         ensureMasFileAccess(destPath)
 
-        // Prevent data loss by checking if source and destination are the same path
-        // Use normalize to handle trailing slashes and relative path segments
-        const normalizedSourcePath = normalize(sourcePath)
-        const normalizedDestPath = normalize(destPath)
-
-        if (normalizedSourcePath === normalizedDestPath) {
+        if (pathsReferToSameFile(sourcePath, destPath)) {
           throw new Error(
             'Cannot save to the same file. Please choose a different filename or location.'
           )
         }
 
-        // Verify source file exists
         if (!fs.existsSync(sourcePath)) {
           throw new Error(`Source file does not exist: ${sourcePath}`)
         }
-
-        // A read-only source means the user opened it without agreeing to
-        // migrate. Copying it as a new writable twig file would stamp metadata
-        // from this build onto bytes written by a future format — refuse.
         if (isOpenedReadOnly(sourcePath)) {
           throw new Error(
             'Cannot copy a file that was opened read-only. Close and reopen it after upgrading twig, or copy it through your file manager.'
           )
         }
 
-        // Close connections and checkpoint WAL with full TRUNCATE
         closeDbConnection(sourcePath, 'truncate')
         closeDbConnection(destPath, 'truncate', { forgetReadOnly: true })
 
-        // Delete destination if it exists (with retry logic)
-        if (fs.existsSync(destPath)) {
-          try {
-            await retryFileOperation(() => {
-              fs.unlinkSync(destPath)
-            })
-          } catch (unlinkError) {
-            const errCode = (unlinkError as NodeJS.ErrnoException).code
-            if (errCode === 'EBUSY' || errCode === 'EPERM') {
-              throw new Error(
-                `Cannot save to ${destPath} because it is currently in use. Please close any applications using this file and try again.`
-              )
-            }
-            // ENOENT is fine, other errors we'll try to proceed
-            if (errCode !== 'ENOENT') {
-              console.warn('Failed to delete existing destination file:', unlinkError)
-            }
-          }
-        }
-
-        // Verify source database integrity before copying
-        try {
-          verifyDatabaseIntegrity(sourcePath, 'before Save As copy')
-        } catch (sourceVerifyError) {
-          throw new Error(
-            `Source database is corrupted: ${sourceVerifyError instanceof Error ? sourceVerifyError.message : 'Unknown error'}`
-          )
-        }
-
-        // Copy the file (with retry logic)
-        await retryFileOperation(() => {
-          fs.copyFileSync(sourcePath, destPath)
-        })
-
-        // Verify destination database integrity
-        try {
-          verifyDatabaseIntegrity(destPath, 'after Save As copy')
-        } catch (verifyError) {
-          // Destination is corrupted, delete it and throw
-          try {
-            fs.unlinkSync(destPath)
-          } catch {
-            // Ignore cleanup error
-          }
-          throw new Error(
-            `Failed to verify destination database after copy: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`
-          )
-        }
-
-        // Open a writable connection at the destination. `getWritableConnection`
-        // runs `initializeDatabase`, which stamps format metadata on the copy.
+        stagingPath = stageVerifiedDatabaseCopy(sourcePath, destPath)
+        installStagedDatabase(stagingPath, destPath)
+        stagingPath = null
         getWritableConnection(destPath)
 
         safeLog(`Copied database from ${sourcePath} to ${destPath}`)
@@ -1602,6 +1552,14 @@ app.whenReady().then(() => {
       } catch (error) {
         console.error('Error in db:copy-to-location:', error)
         throw error
+      } finally {
+        if (stagingPath) {
+          try {
+            if (fs.existsSync(stagingPath)) fs.unlinkSync(stagingPath)
+          } catch {
+            // A unique, verified staging file is a recoverable artifact.
+          }
+        }
       }
     }
   )
@@ -1615,7 +1573,16 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('fonts:get-system-fonts', (): SystemFont[] => {
     try {
-      return getSystemFonts()
+      const fonts = getSystemFonts().flatMap((font) => {
+        try {
+          const realPath = fs.realpathSync(font.path)
+          allowedSystemFontPaths.add(realPath)
+          return [{ ...font, path: realPath }]
+        } catch {
+          return []
+        }
+      })
+      return fonts
     } catch (error) {
       console.error('Error in fonts:get-system-fonts:', error)
       throw error
@@ -1638,11 +1605,19 @@ app.whenReady().then(() => {
       try {
         validateFilePath(filePath)
 
-        // Read the font file
-        const fontData = fs.readFileSync(fontPath)
+        const allowedFontPath = assertAllowedSystemFontPath(fontPath)
+        if (typeof fontFamily !== 'string' || fontFamily.length === 0 || fontFamily.length > 256) {
+          throw new Error('Invalid font family')
+        }
+        if (!/^[a-z0-9-]{1,64}$/i.test(variant)) {
+          throw new Error('Invalid font variant')
+        }
+
+        // Read only a font path returned by fonts:get-system-fonts.
+        const fontData = fs.readFileSync(allowedFontPath)
 
         // Determine format from file extension
-        const ext = extname(fontPath).toLowerCase()
+        const ext = extname(allowedFontPath).toLowerCase()
         const format = ext.substring(1) // Remove dot
         if (!['ttf', 'otf', 'ttc', 'woff', 'woff2'].includes(format)) {
           throw new Error(`Unsupported font format: ${format}`)
@@ -1714,7 +1689,7 @@ app.whenReady().then(() => {
    */
   ipcMain.handle('fonts:load-font-file', (_event, fontPath: string): Buffer => {
     try {
-      return fs.readFileSync(fontPath)
+      return fs.readFileSync(assertAllowedSystemFontPath(fontPath))
     } catch (error) {
       console.error('Error in fonts:load-font-file:', error)
       throw error
@@ -1943,20 +1918,28 @@ async function cleanupResources(): Promise<void> {
   if (cleanupPromise) return cleanupPromise
 
   cleanupPromise = (async () => {
+    let closeFailed = false
     // Close all database connections with full WAL checkpoint. Iterate both
     // RW and RO caches (RO close skips the checkpoint internally).
     for (const filePath of getOpenConnectionPaths()) {
-      closeDbConnection(filePath, 'truncate')
+      try {
+        closeDbConnection(filePath, 'truncate')
+      } catch (error) {
+        closeFailed = true
+        safeLog(
+          `Preserving temp/recovery files because ${filePath} could not be safely closed: ${formatError(error)}`,
+          'error'
+        )
+      }
     }
 
-    // Clean up temp files
-    cleanupAllTempFiles()
+    if (!closeFailed) {
+      cleanupAllTempFiles()
+      removeTempDir()
+    }
 
     // Release all security-scoped resource access (MAS builds only)
     bookmarksService.stopAccessingAllBookmarks()
-
-    // Clean up temp directory
-    removeTempDir()
   })()
 
   try {
