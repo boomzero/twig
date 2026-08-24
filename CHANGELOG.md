@@ -16,6 +16,7 @@
 - Untrusted or malformed `.tb` JSON fields are normalized before reaching the renderer
 - Empty text boxes no longer render placeholder text, and embedded fonts no longer leak between presentations
 - Presentation windows now use sandboxed, role-scoped APIs; arbitrary renderer-controlled file reads and unrestricted Electron IPC access have been removed
+- Patched security advisories in Electron, Fabric, Vite, the auto-updater, and the packaging toolchain; removed the unused vulnerable ZIP dependency
 
 ### Changed
 
