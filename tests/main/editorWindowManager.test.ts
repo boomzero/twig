@@ -39,6 +39,30 @@ describe('EditorWindowManager', () => {
     }
   })
 
+  it('uses the same identity for hard links to an existing file', () => {
+    const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
+    try {
+      const filePath = join(directory, 'deck.tb')
+      const aliasPath = join(directory, 'hard-link.tb')
+      fs.writeFileSync(filePath, '')
+      fs.linkSync(filePath, aliasPath)
+
+      expect(canonicalPathIdentity(aliasPath)).toBe(canonicalPathIdentity(filePath))
+
+      const manager = new EditorWindowManager<FakeWindow>()
+      const first = new FakeWindow()
+      const second = new FakeWindow()
+      manager.registerEditor(first)
+      manager.registerEditor(second)
+      expect(manager.reserveDocument(first, filePath)).toBe('reserved')
+      manager.commitDocument(first, filePath)
+      expect(manager.reserveDocument(second, aliasPath)).toBe('focused-existing')
+      expect(first.focus).toHaveBeenCalledOnce()
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
   it('normalizes pending paths on a case-insensitive filesystem', () => {
     const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
     try {
@@ -138,6 +162,40 @@ describe('EditorWindowManager', () => {
     expect(manager.commitDocument(window, '/after.tb')).toBe('/before.tb')
     expect(manager.ownsDocument(window, '/before.tb')).toBe(false)
     expect(manager.ownsDocument(window, '/after.tb')).toBe(true)
+  })
+
+  it('commits a pending destination after it gains an inode identity', () => {
+    const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
+    try {
+      const filePath = join(directory, 'saved.tb')
+      const manager = new EditorWindowManager<FakeWindow>()
+      const window = new FakeWindow()
+      manager.registerEditor(window)
+
+      expect(manager.reserveDocument(window, filePath)).toBe('reserved')
+      fs.writeFileSync(filePath, '')
+      expect(manager.commitDocument(window, filePath)).toBeNull()
+      expect(manager.ownsDocument(window, filePath)).toBe(true)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('cancels a pending destination after it gains an inode identity', () => {
+    const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
+    try {
+      const filePath = join(directory, 'failed-save.tb')
+      const manager = new EditorWindowManager<FakeWindow>()
+      const window = new FakeWindow()
+      manager.registerEditor(window)
+
+      expect(manager.reserveDocument(window, filePath)).toBe('reserved')
+      fs.writeFileSync(filePath, '')
+      manager.cancelDocument(window, filePath)
+      expect(manager.ownsDocument(window, filePath)).toBe(false)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
   })
 
   it('routes auxiliary windows back to their owning editor', () => {

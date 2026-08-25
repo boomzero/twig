@@ -137,6 +137,13 @@ export function canonicalPathIdentity(
   isCaseSensitive: (directoryPath: string) => boolean = detectDirectoryCaseSensitivity
 ): string {
   const absolutePath = normalize(resolve(filePath))
+  try {
+    const stats = fs.statSync(absolutePath, { bigint: true })
+    return `inode:${stats.dev}:${stats.ino}`
+  } catch {
+    // Not-yet-created Save As destinations use a canonical path reservation.
+  }
+
   let identity: string
   let parentPath: string
   try {
@@ -161,6 +168,25 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
   constructor(
     private readonly identifyPath: (filePath: string) => string = canonicalPathIdentity
   ) {}
+
+  private claimMatches(
+    claimPath: string | null,
+    claimIdentity: string | null,
+    filePath: string,
+    identity: string
+  ): boolean {
+    if (!claimPath || !claimIdentity) return false
+    if (claimPath === filePath || claimIdentity === identity) return true
+
+    // A reserved Save As destination changes from a path identity to an inode
+    // identity after the staged file is installed. Re-identifying the claim also
+    // keeps ownership conservative if an owned path is replaced externally.
+    try {
+      return this.identifyPath(claimPath) === identity
+    } catch {
+      return false
+    }
+  }
 
   registerEditor(window: W, launchFile: string | null = null): EditorWindowRecord<W> {
     const record: EditorWindowRecord<W> = {
@@ -242,7 +268,8 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
       this.getEditors().find(
         (record) =>
           record.window.id !== excludingWindow?.id &&
-          (record.currentIdentity === identity || record.pendingIdentity === identity)
+          (this.claimMatches(record.currentPath, record.currentIdentity, filePath, identity) ||
+            this.claimMatches(record.pendingPath, record.pendingIdentity, filePath, identity))
       ) ?? null
     )
   }
@@ -252,8 +279,12 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
     if (!record) throw new Error('Document reservations require an editor window')
 
     const identity = this.identifyPath(filePath)
-    if (record.currentIdentity === identity) return 'already-current'
-    if (record.pendingIdentity === identity) return 'reserved'
+    if (this.claimMatches(record.currentPath, record.currentIdentity, filePath, identity)) {
+      return 'already-current'
+    }
+    if (this.claimMatches(record.pendingPath, record.pendingIdentity, filePath, identity)) {
+      return 'reserved'
+    }
 
     const existingOwner = this.findDocumentOwner(filePath, window)
     if (existingOwner) {
@@ -271,7 +302,10 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
     if (!record) throw new Error('Document commits require an editor window')
 
     const identity = this.identifyPath(filePath)
-    if (record.pendingIdentity !== identity && record.currentIdentity !== identity) {
+    if (
+      !this.claimMatches(record.pendingPath, record.pendingIdentity, filePath, identity) &&
+      !this.claimMatches(record.currentPath, record.currentIdentity, filePath, identity)
+    ) {
       throw new Error('Cannot commit an unreserved document')
     }
 
@@ -287,7 +321,7 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
     const record = this.getEditor(window)
     if (!record) return
     const identity = this.identifyPath(filePath)
-    if (record.pendingIdentity === identity) {
+    if (this.claimMatches(record.pendingPath, record.pendingIdentity, filePath, identity)) {
       record.pendingPath = null
       record.pendingIdentity = null
     }
@@ -305,11 +339,11 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
     const record = this.getEditor(window)
     if (!record) return
     const identity = this.identifyPath(filePath)
-    if (record.currentIdentity === identity) {
+    if (this.claimMatches(record.currentPath, record.currentIdentity, filePath, identity)) {
       record.currentPath = null
       record.currentIdentity = null
     }
-    if (record.pendingIdentity === identity) {
+    if (this.claimMatches(record.pendingPath, record.pendingIdentity, filePath, identity)) {
       record.pendingPath = null
       record.pendingIdentity = null
     }
@@ -320,7 +354,9 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
     if (!record) return false
     const identity = this.identifyPath(filePath)
     return (
-      record.currentIdentity === identity || (includePending && record.pendingIdentity === identity)
+      this.claimMatches(record.currentPath, record.currentIdentity, filePath, identity) ||
+      (includePending &&
+        this.claimMatches(record.pendingPath, record.pendingIdentity, filePath, identity))
     )
   }
 

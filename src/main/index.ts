@@ -19,7 +19,7 @@ import {
   Menu
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import { join, basename, extname, sep, resolve, relative, isAbsolute, normalize } from 'path'
+import { join, basename, extname, sep, resolve, relative, isAbsolute } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import * as dbService from './db'
@@ -28,6 +28,7 @@ import { getPref, setPref } from './prefs'
 import * as bookmarksService from './bookmarks'
 import { closeWindowsSequentially, createWindowCloseController } from './windowCloseController'
 import { EditorWindowManager } from './editorWindowManager'
+import { presentationPathsFromArgv } from './launchPaths'
 import { safeLog, formatError } from './logging'
 import {
   getTempDir,
@@ -677,12 +678,6 @@ function createPresentationWindow(owner: BrowserWindow): void {
 
 const pendingOpenFiles: string[] = []
 
-function presentationPathsFromArgv(argv: string[]): string[] {
-  return argv
-    .filter((argument) => argument.toLowerCase().endsWith('.tb'))
-    .map((argument) => (isAbsolute(argument) ? normalize(argument) : resolve(argument)))
-}
-
 function routeExternalOpen(filePath: string): void {
   ensureMasFileAccess(filePath)
   const existingOwner = editorWindows.findDocumentOwner(filePath)
@@ -717,8 +712,8 @@ app.on('open-file', (event, path) => {
 if (process.platform !== 'darwin')
   pendingOpenFiles.push(...presentationPathsFromArgv(process.argv.slice(1)))
 
-app.on('second-instance', (_event, argv) => {
-  const paths = presentationPathsFromArgv(argv)
+app.on('second-instance', (_event, argv, workingDirectory) => {
+  const paths = presentationPathsFromArgv(argv, workingDirectory)
   for (const filePath of paths) routeExternalOpen(filePath)
   if (paths.length === 0) showOrCreateEditorWindow()
 })
