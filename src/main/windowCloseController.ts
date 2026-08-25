@@ -19,7 +19,10 @@ interface CloseEventLike {
 }
 
 type WebContentsLike = Pick<WebContents, 'send' | 'on' | 'once' | 'removeListener'>
-type WindowLike = Pick<BrowserWindow, 'destroy' | 'isDestroyed'> & {
+type WindowLike = Pick<
+  BrowserWindow,
+  'destroy' | 'focus' | 'isDestroyed' | 'isMinimized' | 'restore' | 'show'
+> & {
   webContents: WebContentsLike
 }
 type IpcMainLike = Pick<IpcMain, 'on' | 'removeListener'>
@@ -144,6 +147,9 @@ export function createWindowCloseController(options: WindowCloseControllerOption
       webContents.once('destroyed', destroyedHandler)
 
       try {
+        if (window.isMinimized()) window.restore()
+        window.show()
+        window.focus()
         webContents.send(CLOSE_REQUEST_CHANNEL, requestId)
       } catch (error) {
         logger.warn(`Failed to request close confirmation: ${String(error)}`)
