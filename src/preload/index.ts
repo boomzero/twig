@@ -12,6 +12,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
+import { selectWindowRoleApi } from './roleApi'
 
 const isStoreBuild =
   process.mas === true ||
@@ -178,6 +179,18 @@ const api = {
 
     /** Request current state (for debug window) */
     requestState: () => ipcRenderer.send('debug:request-state'),
+
+    /** Read the locale without exposing the complete preferences API. */
+    getLocale: () => ipcRenderer.invoke('prefs:get', 'locale'),
+
+    /** Keep translated debug UI in sync with global locale changes. */
+    onLocaleChanged: (callback: (locale: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, locale: string): void => callback(locale)
+      ipcRenderer.on('locale:changed', handler)
+      return (): void => {
+        ipcRenderer.removeListener('locale:changed', handler)
+      }
+    },
 
     /** Listen for state requests from debug window (for main window) */
     onStateRequest: (callback) => {
@@ -390,28 +403,7 @@ const api = {
 const windowRole = process.argv
   .find((argument) => argument.startsWith('--twig-window-role='))
   ?.slice('--twig-window-role='.length)
-const exposedApi =
-  windowRole === 'presentation'
-    ? {
-        db: { getSlide: api.db.getSlide },
-        fonts: { getEmbeddedFonts: api.fonts.getEmbeddedFonts },
-        presentation: {
-          navigate: api.presentation.navigate,
-          exit: api.presentation.exit,
-          onStateChanged: api.presentation.onStateChanged,
-          signalReady: api.presentation.signalReady
-        }
-      }
-    : windowRole === 'debug'
-      ? {
-          debug: {
-            onStateUpdate: api.debug.onStateUpdate,
-            requestState: api.debug.requestState
-          }
-        }
-      : windowRole === 'editor'
-        ? api
-        : {}
+const exposedApi = selectWindowRoleApi(api, windowRole)
 
 if (process.contextIsolated) {
   try {

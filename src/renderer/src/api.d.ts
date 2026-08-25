@@ -211,6 +211,8 @@ declare global {
         sendStateUpdate: (state: DebugState) => void
         onStateUpdate: (callback: (state: DebugState) => void) => () => void
         requestState: () => void
+        getLocale: () => Promise<string | null>
+        onLocaleChanged: (callback: (locale: string) => void) => () => void
         onStateRequest: (callback: () => void) => () => void
       }
       app: {
