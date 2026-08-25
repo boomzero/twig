@@ -4,6 +4,7 @@
 
 ### Added
 
+- Multi-window editing with one independently autosaved presentation per editor window, per-editor presentation/debug windows, duplicate-file focusing, and cross-platform file-open routing
 - Math elements with TeX/LaTeX editing and MathJax-rendered SVG output
 - SVG image imports and animated GIF playback in presentation mode
 - Shape fill and stroke controls, including transparent fills and configurable borders

@@ -55,6 +55,10 @@ export interface WriteImageFileResult {
   error?: string
 }
 
+export type SaveLocationResult =
+  | { status: 'saved'; filePath: string }
+  | { status: 'focused-existing' }
+
 /**
  * Result of probing a candidate `.tb` file for its format identity.
  */
@@ -112,6 +116,17 @@ export interface DebugState {
 declare global {
   interface Window {
     api: {
+      windows: {
+        createEditor: () => Promise<void>
+        openFile: (filePath: string) => Promise<'created' | 'focused-existing'>
+        closeIfEmpty: () => Promise<boolean>
+        signalReady: () => void
+      }
+      documents: {
+        reserve: (filePath: string) => Promise<'reserved' | 'already-current' | 'focused-existing'>
+        commit: (filePath: string) => Promise<void>
+        cancel: (filePath: string) => Promise<void>
+      }
       dialog: {
         showOpenDialog: () => Promise<string | null>
         showSaveDialog: () => Promise<string | null>
@@ -137,8 +152,8 @@ declare global {
         createTemp: () => Promise<string>
         isTempFile: (filePath: string) => Promise<boolean>
         isBootstrapPresentation: (filePath: string) => Promise<boolean>
-        saveToLocation: (sourcePath: string, destPath: string) => Promise<string>
-        copyToLocation: (sourcePath: string, destPath: string) => Promise<string>
+        saveToLocation: (sourcePath: string, destPath: string) => Promise<SaveLocationResult>
+        copyToLocation: (sourcePath: string, destPath: string) => Promise<SaveLocationResult>
         deleteTemp: (filePath: string) => Promise<void>
         saveThumbnail: (filePath: string, slideId: string, thumbnail: string) => Promise<void>
         getThumbnails: (filePath: string) => Promise<Record<string, string>>
@@ -203,6 +218,8 @@ declare global {
         onOpenSettings: (callback: () => void) => () => void
         onOpenFile: (callback: (filePath: string) => void) => () => void
         onMenuExportImages: (callback: () => void) => () => void
+        onMenuNewPresentation: (callback: () => void) => () => void
+        onMenuOpenPresentation: (callback: () => void) => () => void
         checkForUpdates: () => Promise<'checking' | 'up-to-date' | 'error'>
         installUpdate: () => Promise<void>
         checkForUpdateManual: () => Promise<{

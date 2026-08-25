@@ -4,6 +4,7 @@ import {
   CLOSE_READY_CHANNEL,
   CLOSE_REQUEST_CHANNEL,
   CLOSE_RESPONSE_CHANNEL,
+  closeWindowsSequentially,
   createWindowCloseController
 } from '../../src/main/windowCloseController'
 
@@ -198,5 +199,18 @@ describe('windowCloseController', () => {
     ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 2, 'cancel')
     await Promise.resolve()
     expect(window.destroy).not.toHaveBeenCalled()
+  })
+})
+
+describe('closeWindowsSequentially', () => {
+  it('stops requesting closes after the first cancellation', async () => {
+    const first = { requestClose: vi.fn().mockResolvedValue('proceed') }
+    const second = { requestClose: vi.fn().mockResolvedValue('cancel') }
+    const third = { requestClose: vi.fn().mockResolvedValue('proceed') }
+
+    await expect(closeWindowsSequentially([first, second, third])).resolves.toBe(false)
+    expect(first.requestClose).toHaveBeenCalledOnce()
+    expect(second.requestClose).toHaveBeenCalledOnce()
+    expect(third.requestClose).not.toHaveBeenCalled()
   })
 })

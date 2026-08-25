@@ -26,6 +26,19 @@ const isStoreBuild =
  * These wrap IPC calls to the main process for file dialogs and database operations.
  */
 const api = {
+  windows: {
+    createEditor: () => ipcRenderer.invoke('windows:create-editor'),
+    openFile: (filePath: string) => ipcRenderer.invoke('windows:open-file', filePath),
+    closeIfEmpty: () => ipcRenderer.invoke('windows:close-if-empty'),
+    signalReady: () => ipcRenderer.send('windows:ready')
+  },
+
+  documents: {
+    reserve: (filePath: string) => ipcRenderer.invoke('documents:reserve', filePath),
+    commit: (filePath: string) => ipcRenderer.invoke('documents:commit', filePath),
+    cancel: (filePath: string) => ipcRenderer.invoke('documents:cancel', filePath)
+  },
+
   // File dialog operations
   dialog: {
     /** Show a file open dialog and return the selected path */
@@ -265,6 +278,22 @@ const api = {
       ipcRenderer.on('menu:export-images', handler)
       return (): void => {
         ipcRenderer.removeListener('menu:export-images', handler)
+      }
+    },
+
+    onMenuNewPresentation: (callback: () => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('menu:new-presentation', handler)
+      return (): void => {
+        ipcRenderer.removeListener('menu:new-presentation', handler)
+      }
+    },
+
+    onMenuOpenPresentation: (callback: () => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('menu:open-presentation', handler)
+      return (): void => {
+        ipcRenderer.removeListener('menu:open-presentation', handler)
       }
     },
 

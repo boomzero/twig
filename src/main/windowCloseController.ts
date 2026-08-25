@@ -5,6 +5,15 @@ export const CLOSE_RESPONSE_CHANNEL = 'lifecycle:close-response'
 export const CLOSE_READY_CHANNEL = 'lifecycle:close-ready'
 export type CloseDecision = 'proceed' | 'cancel'
 
+export async function closeWindowsSequentially(
+  controllers: Array<{ requestClose: () => Promise<CloseDecision> }>
+): Promise<boolean> {
+  for (const controller of controllers) {
+    if ((await controller.requestClose()) === 'cancel') return false
+  }
+  return true
+}
+
 interface CloseEventLike {
   preventDefault(): void
 }
@@ -28,6 +37,7 @@ interface WindowCloseControllerOptions {
 
 export function createWindowCloseController(options: WindowCloseControllerOptions): {
   handleClose: (event: CloseEventLike) => void
+  requestClose: () => Promise<CloseDecision>
 } {
   const {
     window,
@@ -39,7 +49,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
     logger = console
   } = options
 
-  let closePromise: Promise<void> | null = null
+  let closePromise: Promise<CloseDecision> | null = null
   let nextRequestId = 0
   let isRendererReadyForCloseRequests = false
 
@@ -142,7 +152,7 @@ export function createWindowCloseController(options: WindowCloseControllerOption
     })
   }
 
-  async function runClose(): Promise<void> {
+  async function runClose(): Promise<CloseDecision> {
     const decision = await requestCloseDecision()
 
     if (decision === 'proceed') {
@@ -152,32 +162,37 @@ export function createWindowCloseController(options: WindowCloseControllerOption
       if (getIsQuitting()) {
         quitApp()
       }
-      return
+      return decision
     }
 
     setIsQuitting(false)
+    return decision
+  }
+
+  function requestClose(): Promise<CloseDecision> {
+    if (window.isDestroyed()) return Promise.resolve('proceed')
+    if (closePromise) return closePromise
+
+    let shouldKeepPromise = false
+    closePromise = runClose()
+      .then((decision) => {
+        shouldKeepPromise = window.isDestroyed()
+        return decision
+      })
+      .finally(() => {
+        if (!shouldKeepPromise) closePromise = null
+      })
+    return closePromise
   }
 
   function handleClose(event: CloseEventLike): void {
     event.preventDefault()
 
-    if (window.isDestroyed() || closePromise) {
-      return
-    }
-
-    let shouldKeepPromise = false
-    closePromise = runClose()
-      .then(() => {
-        shouldKeepPromise = window.isDestroyed()
-      })
-      .finally(() => {
-        if (!shouldKeepPromise) {
-          closePromise = null
-        }
-      })
+    void requestClose()
   }
 
   return {
-    handleClose
+    handleClose,
+    requestClose
   }
 }
