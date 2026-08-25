@@ -35,7 +35,7 @@ Presentations are stored as `.tb` files — plain SQLite databases. No cloud req
 
 ## Status
 
-twig is in active development. It handles the essentials — editing, alignment guides, transitions, animations, custom fonts, backgrounds — and works well for day-to-day use.
+twig is in active development. It handles the essentials — editing, multi-window workflows, alignment guides, transitions, animations, custom fonts, backgrounds — and works well for day-to-day use.
 
 On the roadmap: templates, element grouping, and more transitions and animation types.
 

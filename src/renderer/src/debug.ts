@@ -11,11 +11,11 @@ import Debug from './Debug.svelte'
 import { normalizeLocale, setupI18n } from './lib/i18n'
 import { locale } from 'svelte-i18n'
 
-const savedLocale = (await window.api.prefs.get('locale')) as string | null
+const savedLocale = await window.api.debug.getLocale()
 await setupI18n(savedLocale)
 
 // Keep in sync when the user changes language in the main window
-window.api?.app?.onLocaleChanged((newLocale) => {
+window.api.debug.onLocaleChanged((newLocale) => {
   locale.set(normalizeLocale(newLocale))
 })
 

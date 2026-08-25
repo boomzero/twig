@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Multi-window editing with one independently autosaved presentation per editor window, per-editor presentation/debug windows, duplicate-file focusing, and cross-platform file-open routing
+
 ## [1.2.0] - 2026-08-24
 
 ### Added

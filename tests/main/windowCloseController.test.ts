@@ -4,26 +4,37 @@ import {
   CLOSE_READY_CHANNEL,
   CLOSE_REQUEST_CHANNEL,
   CLOSE_RESPONSE_CHANNEL,
+  closeWindowsSequentially,
   createWindowCloseController
 } from '../../src/main/windowCloseController'
 
 class FakeWebContents extends EventEmitter {
   sentMessages: Array<{ channel: string; args: unknown[] }> = []
 
-  send(channel: string, ...args: unknown[]): void {
+  send = vi.fn((channel: string, ...args: unknown[]): void => {
     this.sentMessages.push({ channel, args })
-  }
+  })
 }
 
 class FakeWindow {
   destroyed = false
+  minimized = false
   destroy = vi.fn(() => {
     this.destroyed = true
   })
+  restore = vi.fn(() => {
+    this.minimized = false
+  })
+  show = vi.fn()
+  focus = vi.fn()
   webContents = new FakeWebContents()
 
   isDestroyed(): boolean {
     return this.destroyed
+  }
+
+  isMinimized(): boolean {
+    return this.minimized
   }
 }
 
@@ -117,6 +128,24 @@ describe('windowCloseController', () => {
     expect(getIsQuitting()).toBe(false)
   })
 
+  it('restores and focuses the window before requesting close confirmation', async () => {
+    const { controller, window, ipcMain, signalRendererReady } = createHarness()
+    window.minimized = true
+    signalRendererReady()
+
+    const closePromise = controller.requestClose()
+
+    expect(window.restore).toHaveBeenCalledOnce()
+    expect(window.show).toHaveBeenCalledOnce()
+    expect(window.focus).toHaveBeenCalledOnce()
+    expect(window.focus.mock.invocationCallOrder[0]).toBeLessThan(
+      window.webContents.send.mock.invocationCallOrder[0]
+    )
+
+    ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 1, 'cancel')
+    await expect(closePromise).resolves.toBe('cancel')
+  })
+
   it('falls back to a local close when the renderer never becomes close-ready', async () => {
     vi.useFakeTimers()
     const { controller, event, window, quitApp } = createHarness(true)
@@ -198,5 +227,18 @@ describe('windowCloseController', () => {
     ipcMain.emit(CLOSE_RESPONSE_CHANNEL, { sender: window.webContents }, 2, 'cancel')
     await Promise.resolve()
     expect(window.destroy).not.toHaveBeenCalled()
+  })
+})
+
+describe('closeWindowsSequentially', () => {
+  it('stops requesting closes after the first cancellation', async () => {
+    const first = { requestClose: vi.fn().mockResolvedValue('proceed') }
+    const second = { requestClose: vi.fn().mockResolvedValue('cancel') }
+    const third = { requestClose: vi.fn().mockResolvedValue('proceed') }
+
+    await expect(closeWindowsSequentially([first, second, third])).resolves.toBe(false)
+    expect(first.requestClose).toHaveBeenCalledOnce()
+    expect(second.requestClose).toHaveBeenCalledOnce()
+    expect(third.requestClose).not.toHaveBeenCalled()
   })
 })

@@ -16,7 +16,8 @@ import {
   dialog,
   powerMonitor,
   webContents,
-  Menu
+  Menu,
+  clipboard
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, basename, extname, sep, resolve, relative, isAbsolute } from 'path'
@@ -26,7 +27,10 @@ import * as dbService from './db'
 import type { Slide, FontData } from './db'
 import { getPref, setPref } from './prefs'
 import * as bookmarksService from './bookmarks'
-import { createWindowCloseController } from './windowCloseController'
+import { closeWindowsSequentially, createWindowCloseController } from './windowCloseController'
+import { EditorWindowManager } from './editorWindowManager'
+import { presentationPathsFromArgv } from './launchPaths'
+import { createWindowMenu } from './windowMenu'
 import { safeLog, formatError } from './logging'
 import {
   getTempDir,
@@ -63,6 +67,9 @@ import os from 'os'
 import crypto from 'crypto'
 import fontkit from 'fontkit'
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) app.quit()
+
 // Suppress EIO errors on stdout/stderr that occur when the computer sleeps.
 // Node.js emits 'error' events asynchronously on these streams when the
 // underlying pipe is broken; without a listener, they crash the process.
@@ -86,6 +93,8 @@ const MAX_EXPORT_FOLDER_ALLOWLIST_ENTRIES = 16
 const exportFolderAllowlist = new Set<string>()
 const exportFolderBookmarks = new Map<string, string>()
 const allowedSystemFontPaths = new Set<string>()
+
+type SaveLocationResult = { status: 'saved'; filePath: string } | { status: 'focused-existing' }
 
 function assertAllowedSystemFontPath(fontPath: unknown): string {
   if (typeof fontPath !== 'string' || !isAbsolute(fontPath)) {
@@ -404,77 +413,82 @@ function getSystemFonts(): SystemFont[] {
 // Window Management
 // ============================================================================
 
-/**
- * Creates and configures the main application window.
- * Sets up window properties, event handlers, and loads the renderer content.
- */
-let mainWindow: BrowserWindow | null = null
+const editorWindows = new EditorWindowManager<BrowserWindow>()
+const editorCloseControllers = new Map<number, ReturnType<typeof createWindowCloseController>>()
+const readyEditorIds = new Set<number>()
+const queuedEditorOpenFiles = new Map<number, string[]>()
 
-function getMainWindow(): BrowserWindow | null {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    return mainWindow
-  }
-
-  mainWindow = null
-  return null
+function getActiveEditorWindow(): BrowserWindow | null {
+  return editorWindows.getActiveEditor(BrowserWindow.getFocusedWindow())?.window ?? null
 }
 
-function focusMainWindow(window: BrowserWindow): void {
+function getEditorForSender(senderId: number): BrowserWindow | null {
+  return editorWindows.getEditorByWebContentsId(senderId)?.window ?? null
+}
+
+function getOwnerForSender(senderId: number): BrowserWindow | null {
+  return editorWindows.getOwnerByWebContentsId(senderId)?.window ?? null
+}
+
+function assertSenderOwnsDocument(senderId: number, filePath: string): BrowserWindow {
+  const editor = getEditorForSender(senderId)
+  const owner = editor ?? getOwnerForSender(senderId)
+  if (!owner || !editorWindows.ownsDocument(owner, filePath, Boolean(editor))) {
+    throw new Error('Presentation is owned by another editor window')
+  }
+  return owner
+}
+
+function sendToEditor(window: BrowserWindow, channel: string, ...args: unknown[]): void {
   if (window.isDestroyed()) return
-  if (window.isMinimized()) {
-    window.restore()
+  const send = (): void => {
+    if (!window.isDestroyed()) window.webContents.send(channel, ...args)
   }
-  window.show()
-  window.focus()
+  if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', send)
+  else send()
 }
 
-function showOrCreateMainWindow(): BrowserWindow {
-  const existingWindow = getMainWindow()
+function showOrCreateEditorWindow(): BrowserWindow {
+  const existingWindow = getActiveEditorWindow()
   if (existingWindow) {
-    focusMainWindow(existingWindow)
+    editorWindows.focus(existingWindow)
     return existingWindow
   }
-
   return createWindow()
 }
 
 function openSettingsInMainWindow(): void {
-  const existingWindow = getMainWindow()
+  const existingWindow = getActiveEditorWindow()
   if (existingWindow) {
-    focusMainWindow(existingWindow)
-    existingWindow.webContents.send('app:open-settings')
+    editorWindows.focus(existingWindow)
+    sendToEditor(existingWindow, 'app:open-settings')
     return
   }
 
   const window = createWindow()
-  window.webContents.once('did-finish-load', () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('app:open-settings')
-    }
-  })
+  sendToEditor(window, 'app:open-settings')
 }
 
 function openExportImagesInMainWindow(): void {
-  const existingWindow = getMainWindow()
+  const existingWindow = getActiveEditorWindow()
   if (existingWindow) {
-    focusMainWindow(existingWindow)
-    existingWindow.webContents.send('menu:export-images')
+    editorWindows.focus(existingWindow)
+    sendToEditor(existingWindow, 'menu:export-images')
     return
   }
 
-  const window = showOrCreateMainWindow()
-  window.webContents.once('did-finish-load', () => {
-    if (!window.isDestroyed()) {
-      window.webContents.send('menu:export-images')
-    }
-  })
+  const window = showOrCreateEditorWindow()
+  sendToEditor(window, 'menu:export-images')
 }
 
-function createWindow(): BrowserWindow {
-  const existingWindow = getMainWindow()
-  if (existingWindow) {
-    focusMainWindow(existingWindow)
-    return existingWindow
+function createWindow(launchFile: string | null = null): BrowserWindow {
+  if (launchFile) {
+    ensureMasFileAccess(launchFile)
+    const existingOwner = editorWindows.findDocumentOwner(launchFile)
+    if (existingOwner) {
+      editorWindows.focus(existingOwner.window)
+      return existingOwner.window
+    }
   }
 
   const window = new BrowserWindow({
@@ -493,7 +507,9 @@ function createWindow(): BrowserWindow {
       additionalArguments: ['--twig-window-role=editor']
     }
   })
-  mainWindow = window
+  const windowId = window.id
+  editorWindows.registerEditor(window, launchFile)
+  window.on('focus', () => editorWindows.noteFocused(window))
 
   let hasShownWindow = false
   let showFallbackTimeout: NodeJS.Timeout | null = null
@@ -523,14 +539,11 @@ function createWindow(): BrowserWindow {
     window,
     ipcMain,
     timeoutMs: 30000,
-    getIsQuitting: () => isQuitting,
-    setIsQuitting: (value) => {
-      isQuitting = value
-    },
-    quitApp: () => {
-      app.quit()
-    }
+    getIsQuitting: () => false,
+    setIsQuitting: () => {},
+    quitApp: () => {}
   })
+  editorCloseControllers.set(windowId, closeController)
 
   window.on('close', (event) => {
     closeController.handleClose(event)
@@ -557,38 +570,32 @@ function createWindow(): BrowserWindow {
   }
 
   window.on('closed', () => {
-    if (mainWindow === window) {
-      mainWindow = null
+    const queuedOpenFiles = queuedEditorOpenFiles.get(windowId) ?? []
+    const record = editorWindows.getEditor(window)
+    for (const auxiliary of [record?.debugWindow, record?.presentationWindow]) {
+      if (auxiliary && !auxiliary.isDestroyed()) auxiliary.destroy()
+    }
+    editorWindows.unregisterEditor(window)
+    editorCloseControllers.delete(windowId)
+    readyEditorIds.delete(windowId)
+    queuedEditorOpenFiles.delete(windowId)
+    setupAppMenu()
+    if (!isQuitting) {
+      for (const filePath of queuedOpenFiles) setImmediate(() => routeExternalOpen(filePath))
     }
   })
 
   return window
 }
 
-/**
- * Reference to the debug window (if open).
- * Only one debug window can be open at a time.
- */
-let debugWindow: BrowserWindow | null = null
-
-/**
- * Reference to the presentation window (if open).
- * Only one presentation window can be open at a time.
- */
-let presentationWindow: BrowserWindow | null = null
-
-/**
- * Creates and opens the debug window.
- * If a debug window is already open, focuses it instead of creating a new one.
- */
-function createDebugWindow(): void {
-  // If debug window already exists, focus it
-  if (debugWindow && !debugWindow.isDestroyed()) {
-    debugWindow.focus()
+function createDebugWindow(owner: BrowserWindow): void {
+  const existingWindow = editorWindows.getAuxiliary(owner, 'debug')
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    editorWindows.focus(existingWindow)
     return
   }
 
-  debugWindow = new BrowserWindow({
+  const debugWindow = new BrowserWindow({
     width: 800,
     height: 900,
     title: 'twig Debug Panel',
@@ -603,14 +610,16 @@ function createDebugWindow(): void {
       additionalArguments: ['--twig-window-role=debug']
     }
   })
+  editorWindows.attachAuxiliary(owner, 'debug', debugWindow)
+  debugWindow.on('focus', () => editorWindows.noteFocused(debugWindow))
 
   debugWindow.on('ready-to-show', () => {
-    debugWindow?.show()
+    if (!debugWindow.isDestroyed()) debugWindow.show()
   })
 
   // Clean up reference when window is closed
   debugWindow.on('closed', () => {
-    debugWindow = null
+    editorWindows.detachAuxiliary(debugWindow)
   })
 
   // Load the debug window content
@@ -625,13 +634,14 @@ function createDebugWindow(): void {
  * Creates and opens the presentation window in fullscreen.
  * If already open, focuses it instead.
  */
-function createPresentationWindow(): void {
-  if (presentationWindow && !presentationWindow.isDestroyed()) {
-    presentationWindow.focus()
+function createPresentationWindow(owner: BrowserWindow): void {
+  const existingWindow = editorWindows.getAuxiliary(owner, 'presentation')
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    editorWindows.focus(existingWindow)
     return
   }
 
-  presentationWindow = new BrowserWindow({
+  const presentationWindow = new BrowserWindow({
     fullscreen: true,
     frame: false,
     title: 'twig Presentation',
@@ -646,15 +656,16 @@ function createPresentationWindow(): void {
       additionalArguments: ['--twig-window-role=presentation']
     }
   })
+  editorWindows.attachAuxiliary(owner, 'presentation', presentationWindow)
+  presentationWindow.on('focus', () => editorWindows.noteFocused(presentationWindow))
 
   presentationWindow.on('ready-to-show', () => {
-    presentationWindow?.show()
+    if (!presentationWindow.isDestroyed()) presentationWindow.show()
   })
 
   presentationWindow.on('closed', () => {
-    // Notify main window that presentation was closed
-    getMainWindow()?.webContents.send('presentation:window-closed')
-    presentationWindow = null
+    sendToEditor(owner, 'presentation:window-closed')
+    editorWindows.detachAuxiliary(presentationWindow)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -668,30 +679,47 @@ function createPresentationWindow(): void {
 // File Association Handling
 // ============================================================================
 
-// Path of a .tb file to open on launch (set by OS file association)
-let fileToOpen: string | null = null
+const pendingOpenFiles: string[] = []
+
+function routeExternalOpen(filePath: string): void {
+  ensureMasFileAccess(filePath)
+  const existingOwner = editorWindows.findDocumentOwner(filePath)
+  if (existingOwner) {
+    editorWindows.focus(existingOwner.window)
+    return
+  }
+
+  const activeEditor = getActiveEditorWindow()
+  if (!activeEditor) {
+    createWindow(filePath)
+    return
+  }
+  if (readyEditorIds.has(activeEditor.id)) {
+    sendToEditor(activeEditor, 'app:open-file', filePath)
+    return
+  }
+  const queued = queuedEditorOpenFiles.get(activeEditor.id) ?? []
+  queued.push(filePath)
+  queuedEditorOpenFiles.set(activeEditor.id, queued)
+}
 
 // macOS: open-file fires before and after app ready when double-clicking a .tb file
 app.on('open-file', (event, path) => {
   event.preventDefault()
-  if (path.endsWith('.tb')) {
-    fileToOpen = path
-    ensureMasFileAccess(path)
-    const window = getMainWindow()
-    if (window) {
-      focusMainWindow(window)
-      window.webContents.send('app:open-file', path)
-    } else if (app.isReady()) {
-      createWindow()
-    }
+  if (path.toLowerCase().endsWith('.tb')) {
+    if (app.isReady()) routeExternalOpen(path)
+    else pendingOpenFiles.push(path)
   }
 })
 
-// Windows / Linux: the file path is passed as a CLI argument
-if (process.platform !== 'darwin') {
-  const argFile = process.argv.slice(1).find((a) => a.endsWith('.tb'))
-  if (argFile) fileToOpen = argFile
-}
+if (process.platform !== 'darwin')
+  pendingOpenFiles.push(...presentationPathsFromArgv(process.argv.slice(1)))
+
+app.on('second-instance', (_event, argv, workingDirectory) => {
+  const paths = presentationPathsFromArgv(argv, workingDirectory)
+  for (const filePath of paths) routeExternalOpen(filePath)
+  if (paths.length === 0) showOrCreateEditorWindow()
+})
 
 // ============================================================================
 // Application Menu
@@ -707,6 +735,24 @@ function setupAppMenu(): void {
   const fileMenu: Electron.MenuItemConstructorOptions = {
     label: 'File',
     submenu: [
+      {
+        label: 'New Presentation',
+        accelerator: 'CmdOrCtrl+N',
+        click: () => {
+          const window = getActiveEditorWindow()
+          if (window) sendToEditor(window, 'menu:new-presentation')
+          else createWindow()
+        }
+      },
+      {
+        label: 'Open Presentation…',
+        accelerator: 'CmdOrCtrl+O',
+        click: () => {
+          const window = getActiveEditorWindow() ?? createWindow()
+          sendToEditor(window, 'menu:open-presentation')
+        }
+      },
+      { type: 'separator' as const },
       ...(process.platform === 'darwin'
         ? []
         : [
@@ -781,7 +827,9 @@ function setupAppMenu(): void {
           click: () => {
             const next = !getPref('snapToGuides')
             setPref('snapToGuides', next)
-            getMainWindow()?.webContents.send('snap:changed', next)
+            for (const record of editorWindows.getEditors()) {
+              sendToEditor(record.window, 'snap:changed', next)
+            }
             setupAppMenu()
           }
         },
@@ -790,23 +838,9 @@ function setupAppMenu(): void {
         { role: 'toggleDevTools' as const }
       ]
     },
-    {
-      label: 'Window',
-      role: 'window',
-      submenu: [
-        {
-          label: 'Show Main Window',
-          click: () => {
-            showOrCreateMainWindow()
-          }
-        },
-        { type: 'separator' },
-        { role: 'minimize' },
-        { role: 'zoom' },
-        { type: 'separator' },
-        { role: 'front' }
-      ]
-    }
+    createWindowMenu(() => {
+      showOrCreateEditorWindow()
+    })
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
@@ -817,6 +851,7 @@ function setupAppMenu(): void {
 // ============================================================================
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return
   // Ensure the temp directory exists and clean up stale temp files from previous sessions.
   ensureTempDir()
 
@@ -879,8 +914,9 @@ app.whenReady().then(() => {
       }
     } else if (key === 'snapToGuides' && typeof value === 'boolean') {
       setPref('snapToGuides', value)
-      // Only the main editor window owns the interactive canvas
-      getMainWindow()?.webContents.send('snap:changed', value)
+      for (const record of editorWindows.getEditors()) {
+        sendToEditor(record.window, 'snap:changed', value)
+      }
       // Rebuild the menu so the checkbox state stays in sync
       setupAppMenu()
     }
@@ -1120,9 +1156,10 @@ app.whenReady().then(() => {
   /**
    * Retrieves all slide IDs from a presentation file.
    */
-  ipcMain.handle('db:get-slide-ids', (_event, filePath: string): string[] => {
+  ipcMain.handle('db:get-slide-ids', (event, filePath: string): string[] => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return withDbConnection(filePath, (db) => dbService.getSlideIds(db))
     } catch (error) {
       console.error('Error in db:get-slide-ids:', error)
@@ -1133,9 +1170,10 @@ app.whenReady().then(() => {
   /**
    * Loads a specific slide with all its elements from the database.
    */
-  ipcMain.handle('db:get-slide', (_event, filePath: string, slideId: string): Slide | null => {
+  ipcMain.handle('db:get-slide', (event, filePath: string, slideId: string): Slide | null => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       validateSlideId(slideId)
       return withDbConnection(filePath, (db) => dbService.getSlide(db, slideId))
     } catch (error) {
@@ -1147,9 +1185,10 @@ app.whenReady().then(() => {
   /**
    * Creates a new blank slide in the database.
    */
-  ipcMain.handle('db:create-slide', (_event, filePath: string): Slide => {
+  ipcMain.handle('db:create-slide', (event, filePath: string): Slide => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return withDbConnection(filePath, (db) => dbService.createSlide(db), {
         syncShadowBack: true,
         write: true
@@ -1163,9 +1202,10 @@ app.whenReady().then(() => {
   /**
    * Duplicates a slide and inserts the copy immediately after the source.
    */
-  ipcMain.handle('db:duplicate-slide', (_event, filePath: string, slideId: string): Slide => {
+  ipcMain.handle('db:duplicate-slide', (event, filePath: string, slideId: string): Slide => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       validateSlideId(slideId)
       return withDbConnection(filePath, (db) => dbService.duplicateSlide(db, slideId), {
         syncShadowBack: true,
@@ -1180,9 +1220,10 @@ app.whenReady().then(() => {
   /**
    * Saves a slide and all its elements to the database.
    */
-  ipcMain.handle('db:save-slide', (_event, filePath: string, slide: Slide): void => {
+  ipcMain.handle('db:save-slide', (event, filePath: string, slide: Slide): void => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       validateSlideId(slide.id)
       withDbConnection(filePath, (db) => dbService.saveSlide(db, slide), {
         syncShadowBack: true,
@@ -1199,9 +1240,10 @@ app.whenReady().then(() => {
    */
   ipcMain.handle(
     'db:save-thumbnail',
-    (_event, filePath: string, slideId: string, thumbnail: string): void => {
+    (event, filePath: string, slideId: string, thumbnail: string): void => {
       try {
         validateFilePath(filePath)
+        assertSenderOwnsDocument(event.sender.id, filePath)
         validateSlideId(slideId)
         withDbConnection(filePath, (db) => dbService.saveThumbnail(db, slideId, thumbnail), {
           syncShadowBack: true,
@@ -1217,9 +1259,10 @@ app.whenReady().then(() => {
   /**
    * Retrieves all stored thumbnails for a presentation.
    */
-  ipcMain.handle('db:get-thumbnails', (_event, filePath: string): Record<string, string> => {
+  ipcMain.handle('db:get-thumbnails', (event, filePath: string): Record<string, string> => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return withDbConnection(filePath, (db) => dbService.getThumbnails(db))
     } catch (error) {
       console.error('Error in db:get-thumbnails:', error)
@@ -1227,9 +1270,10 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('db:get-setting', (_event, filePath: string, key: string): string | null => {
+  ipcMain.handle('db:get-setting', (event, filePath: string, key: string): string | null => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return withDbConnection(filePath, (db) => dbService.getSetting(db, key))
     } catch (error) {
       console.error('Error in db:get-setting:', error)
@@ -1239,9 +1283,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'db:set-setting',
-    (_event, filePath: string, key: string, value: string | null): void => {
+    (event, filePath: string, key: string, value: string | null): void => {
       try {
         validateFilePath(filePath)
+        assertSenderOwnsDocument(event.sender.id, filePath)
         withDbConnection(filePath, (db) => dbService.setSetting(db, key, value), {
           syncShadowBack: true,
           write: true
@@ -1255,9 +1300,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'db:apply-background-to-all',
-    (_event, filePath: string, background: dbService.SlideBackground | null): void => {
+    (event, filePath: string, background: dbService.SlideBackground | null): void => {
       try {
         validateFilePath(filePath)
+        assertSenderOwnsDocument(event.sender.id, filePath)
         withDbConnection(filePath, (db) => dbService.applyBackgroundToAllSlides(db, background), {
           syncShadowBack: true,
           write: true
@@ -1269,9 +1315,10 @@ app.whenReady().then(() => {
     }
   )
 
-  ipcMain.handle('db:delete-slide', (_event, filePath: string, slideId: string): void => {
+  ipcMain.handle('db:delete-slide', (event, filePath: string, slideId: string): void => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       validateSlideId(slideId)
       withDbConnection(filePath, (db) => dbService.deleteSlide(db, slideId), {
         syncShadowBack: true,
@@ -1283,9 +1330,10 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('db:reorder-slides', (_event, filePath: string, orderedIds: string[]): void => {
+  ipcMain.handle('db:reorder-slides', (event, filePath: string, orderedIds: string[]): void => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       for (const id of orderedIds) validateSlideId(id)
       withDbConnection(filePath, (db) => dbService.reorderSlides(db, orderedIds), {
         syncShadowBack: true,
@@ -1302,8 +1350,12 @@ app.whenReady().then(() => {
    * Used before overwriting or deleting a file.
    * Uses PASSIVE checkpoint mode for non-blocking WAL flush.
    */
-  ipcMain.handle('db:close-connection', (_event, filePath: string): void => {
+  ipcMain.handle('db:close-connection', (event, filePath: string): void => {
     validateFilePath(filePath)
+    const window = getEditorForSender(event.sender.id)
+    if (!window || !editorWindows.ownsDocument(window, filePath)) {
+      throw new Error('Cannot close a presentation owned by another editor window')
+    }
     closeDbConnection(filePath, 'passive', { forgetReadOnly: true })
   })
 
@@ -1312,9 +1364,10 @@ app.whenReady().then(() => {
    * caching a connection. Used by the renderer's open flow to distinguish
    * fresh/legacy/current/tooNew/notTwig before committing to an open mode.
    */
-  ipcMain.handle('db:probe-format', (_event, filePath: string): dbService.FormatProbeResult => {
+  ipcMain.handle('db:probe-format', (event, filePath: string): dbService.FormatProbeResult => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return probeDatabaseFormat(filePath)
     } catch (error) {
       console.error('Error in db:probe-format:', error)
@@ -1330,9 +1383,13 @@ app.whenReady().then(() => {
    */
   ipcMain.handle(
     'db:open-for-edit',
-    (_event, filePath: string, options?: { readOnly?: boolean }): string[] => {
+    (event, filePath: string, options?: { readOnly?: boolean }): string[] => {
       try {
         validateFilePath(filePath)
+        const window = getEditorForSender(event.sender.id)
+        if (!window || !editorWindows.ownsDocument(window, filePath)) {
+          throw new Error('Presentation must be reserved by this editor before opening')
+        }
         const readOnly = options?.readOnly === true
         if (readOnly) {
           // getReadOnlyConnection validates format via detectFormat and only
@@ -1354,7 +1411,7 @@ app.whenReady().then(() => {
    * Creates a new temporary database for an unsaved presentation.
    * Returns the path to the temp database file.
    */
-  ipcMain.handle('db:create-temp', (): string => {
+  ipcMain.handle('db:create-temp', (event): string => {
     try {
       ensureTempDir()
       const tempPath = createTempDbPath()
@@ -1364,6 +1421,10 @@ app.whenReady().then(() => {
 
       // Track this as a temp file for cleanup — only after successful init.
       registerTempFile(tempPath)
+
+      const window = getEditorForSender(event.sender.id)
+      if (!window) throw new Error('Temporary presentations require an editor window')
+      editorWindows.bindCreatedDocument(window, tempPath)
 
       safeLog(`Created temp database: ${tempPath}`)
       return tempPath
@@ -1379,9 +1440,10 @@ app.whenReady().then(() => {
    * so recovered temp files from crashes are still recognized as temporary.
    * Resolves symlinks to prevent path traversal attacks.
    */
-  ipcMain.handle('db:is-temp-file', (_event, filePath: string): boolean => {
+  ipcMain.handle('db:is-temp-file', (event, filePath: string): boolean => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
 
       // Resolve symlinks and normalize paths
       const realPath = fs.realpathSync(filePath)
@@ -1398,9 +1460,10 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('db:is-bootstrap-presentation', (_event, filePath: string): boolean => {
+  ipcMain.handle('db:is-bootstrap-presentation', (event, filePath: string): boolean => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return withDbConnection(filePath, (db) => dbService.isBootstrapPresentation(db))
     } catch (error) {
       console.error('Error in db:is-bootstrap-presentation:', error)
@@ -1412,8 +1475,14 @@ app.whenReady().then(() => {
    * Deletes a temporary database file.
    * Used for cleanup when temp file creation succeeds but initialization fails.
    */
-  ipcMain.handle('db:delete-temp', (_event, filePath: string): void => {
+  ipcMain.handle('db:delete-temp', (event, filePath: string): void => {
     try {
+      const window = getEditorForSender(event.sender.id)
+      if (!window) throw new Error('Only editor windows can delete temporary presentations')
+      const owner = editorWindows.findDocumentOwner(filePath)
+      if (owner && owner.window.id !== window.id) {
+        throw new Error('Cannot delete a temporary presentation owned by another editor window')
+      }
       // Validate that this is actually a tracked temp file to prevent arbitrary deletion
       if (!isTempFile(filePath)) {
         throw new Error('Cannot delete: path is not a tracked temporary file')
@@ -1436,6 +1505,7 @@ app.whenReady().then(() => {
 
       // Remove from temp files tracking
       unregisterTempFile(filePath)
+      editorWindows.releaseDocument(window, filePath)
     } catch (error) {
       console.error('Error deleting temp file:', error)
       throw error
@@ -1448,11 +1518,15 @@ app.whenReady().then(() => {
    */
   ipcMain.handle(
     'db:save-to-location',
-    async (_event, sourcePath: string, destPath: string): Promise<string> => {
+    async (event, sourcePath: string, destPath: string): Promise<SaveLocationResult> => {
       let stagingPath: string | null = null
+      const window = getEditorForSender(event.sender.id)
       try {
         validateFilePath(sourcePath)
         validateFilePath(destPath)
+        if (!window || !editorWindows.ownsDocument(window, sourcePath, false)) {
+          throw new Error('Cannot save a presentation owned by another editor window')
+        }
         ensureMasFileAccess(sourcePath)
         ensureMasFileAccess(destPath)
 
@@ -1462,6 +1536,8 @@ app.whenReady().then(() => {
         if (pathsReferToSameFile(sourcePath, destPath)) {
           throw new Error('Cannot save a temporary presentation onto itself')
         }
+        const reservation = editorWindows.reserveDocument(window, destPath)
+        if (reservation === 'focused-existing') return { status: 'focused-existing' }
         if (isOpenedReadOnly(sourcePath)) {
           throw new Error(
             'Cannot save a file that was opened read-only. Close and reopen it after upgrading twig, or save a copy through your file manager.'
@@ -1495,8 +1571,10 @@ app.whenReady().then(() => {
         }
 
         safeLog(`Saved temp database from ${sourcePath} to ${destPath}`)
-        return destPath
+        editorWindows.commitDocument(window, destPath)
+        return { status: 'saved', filePath: destPath }
       } catch (error) {
+        if (window) editorWindows.cancelDocument(window, destPath)
         console.error('Error in db:save-to-location:', error)
         throw error
       } finally {
@@ -1516,11 +1594,15 @@ app.whenReady().then(() => {
    */
   ipcMain.handle(
     'db:copy-to-location',
-    async (_event, sourcePath: string, destPath: string): Promise<string> => {
+    async (event, sourcePath: string, destPath: string): Promise<SaveLocationResult> => {
       let stagingPath: string | null = null
+      const window = getEditorForSender(event.sender.id)
       try {
         validateFilePath(sourcePath)
         validateFilePath(destPath)
+        if (!window || !editorWindows.ownsDocument(window, sourcePath, false)) {
+          throw new Error('Cannot copy a presentation owned by another editor window')
+        }
         ensureMasFileAccess(sourcePath)
         ensureMasFileAccess(destPath)
 
@@ -1529,6 +1611,8 @@ app.whenReady().then(() => {
             'Cannot save to the same file. Please choose a different filename or location.'
           )
         }
+        const reservation = editorWindows.reserveDocument(window, destPath)
+        if (reservation === 'focused-existing') return { status: 'focused-existing' }
 
         if (!fs.existsSync(sourcePath)) {
           throw new Error(`Source file does not exist: ${sourcePath}`)
@@ -1548,8 +1632,10 @@ app.whenReady().then(() => {
         getWritableConnection(destPath)
 
         safeLog(`Copied database from ${sourcePath} to ${destPath}`)
-        return destPath
+        editorWindows.commitDocument(window, destPath)
+        return { status: 'saved', filePath: destPath }
       } catch (error) {
+        if (window) editorWindows.cancelDocument(window, destPath)
         console.error('Error in db:copy-to-location:', error)
         throw error
       } finally {
@@ -1596,7 +1682,7 @@ app.whenReady().then(() => {
   ipcMain.handle(
     'fonts:embed-font',
     (
-      _event,
+      event,
       filePath: string,
       fontPath: string,
       fontFamily: string,
@@ -1604,6 +1690,7 @@ app.whenReady().then(() => {
     ): void => {
       try {
         validateFilePath(filePath)
+        assertSenderOwnsDocument(event.sender.id, filePath)
 
         const allowedFontPath = assertAllowedSystemFontPath(fontPath)
         if (typeof fontFamily !== 'string' || fontFamily.length === 0 || fontFamily.length > 256) {
@@ -1652,9 +1739,10 @@ app.whenReady().then(() => {
   /**
    * Retrieves all embedded fonts from the database.
    */
-  ipcMain.handle('fonts:get-embedded-fonts', (_event, filePath: string): FontData[] => {
+  ipcMain.handle('fonts:get-embedded-fonts', (event, filePath: string): FontData[] => {
     try {
       validateFilePath(filePath)
+      assertSenderOwnsDocument(event.sender.id, filePath)
       return withDbConnection(filePath, (db) => dbService.getFonts(db))
     } catch (error) {
       console.error('Error in fonts:get-embedded-fonts:', error)
@@ -1668,13 +1756,14 @@ app.whenReady().then(() => {
   ipcMain.handle(
     'fonts:get-font-data',
     (
-      _event,
+      event,
       filePath: string,
       fontFamily: string,
       variant: string = 'normal-normal'
     ): FontData | null => {
       try {
         validateFilePath(filePath)
+        assertSenderOwnsDocument(event.sender.id, filePath)
         return withDbConnection(filePath, (db) => dbService.getFontData(db, fontFamily, variant))
       } catch (error) {
         console.error('Error in fonts:get-font-data:', error)
@@ -1696,12 +1785,16 @@ app.whenReady().then(() => {
     }
   })
 
-  // Create the main window
-  createWindow()
+  if (pendingOpenFiles.length > 0) {
+    const launchFiles = pendingOpenFiles.splice(0)
+    for (const filePath of launchFiles) createWindow(filePath)
+  } else {
+    createWindow()
+  }
 
   // On macOS, restore the primary editor window when the dock icon is clicked.
   app.on('activate', () => {
-    showOrCreateMainWindow()
+    showOrCreateEditorWindow()
   })
 
   // --------------------------------------------------------------------------
@@ -1712,10 +1805,76 @@ app.whenReady().then(() => {
    * Returns the file path to open on launch (from OS file association or argv).
    * Clears the pending value after returning it so it is consumed only once.
    */
-  ipcMain.handle('app:get-file-to-open', (): string | null => {
-    const path = fileToOpen
-    fileToOpen = null
-    return path
+  ipcMain.handle('app:get-file-to-open', (event): string | null => {
+    const window = getEditorForSender(event.sender.id)
+    return window ? editorWindows.consumeLaunchFile(window) : null
+  })
+
+  ipcMain.handle('windows:create-editor', () => {
+    createWindow()
+  })
+
+  ipcMain.on('windows:ready', (event) => {
+    const window = getEditorForSender(event.sender.id)
+    if (!window) return
+    readyEditorIds.add(window.id)
+    const queued = queuedEditorOpenFiles.get(window.id) ?? []
+    queuedEditorOpenFiles.delete(window.id)
+    for (const filePath of queued) sendToEditor(window, 'app:open-file', filePath)
+  })
+
+  ipcMain.handle('windows:close-if-empty', (event): boolean => {
+    const window = getEditorForSender(event.sender.id)
+    const record = window ? editorWindows.getEditor(window) : null
+    if (
+      !window ||
+      !record ||
+      record.currentPath ||
+      record.pendingPath ||
+      editorWindows.getEditors().length <= 1
+    ) {
+      return false
+    }
+    setImmediate(() => {
+      if (!window.isDestroyed()) window.destroy()
+    })
+    return true
+  })
+
+  ipcMain.handle('windows:open-file', (event, filePath: string): 'created' | 'focused-existing' => {
+    validateFilePath(filePath)
+    const existingOwner = editorWindows.findDocumentOwner(filePath)
+    if (existingOwner) {
+      editorWindows.focus(existingOwner.window)
+      return 'focused-existing'
+    }
+    const sourceWindow = getEditorForSender(event.sender.id)
+    if (!sourceWindow) throw new Error('Only editor windows can open presentations')
+    createWindow(filePath)
+    return 'created'
+  })
+
+  ipcMain.handle(
+    'documents:reserve',
+    (event, filePath: string): 'reserved' | 'already-current' | 'focused-existing' => {
+      validateFilePath(filePath)
+      const window = getEditorForSender(event.sender.id)
+      if (!window) throw new Error('Only editor windows can reserve presentations')
+      return editorWindows.reserveDocument(window, filePath)
+    }
+  )
+
+  ipcMain.handle('documents:commit', (event, filePath: string): void => {
+    validateFilePath(filePath)
+    const window = getEditorForSender(event.sender.id)
+    if (!window) throw new Error('Only editor windows can commit presentations')
+    editorWindows.commitDocument(window, filePath)
+  })
+
+  ipcMain.handle('documents:cancel', (event, filePath: string): void => {
+    validateFilePath(filePath)
+    const window = getEditorForSender(event.sender.id)
+    if (window) editorWindows.cancelDocument(window, filePath)
   })
 
   /**
@@ -1733,15 +1892,19 @@ app.whenReady().then(() => {
    * Opens the debug window.
    * If already open, focuses it instead of creating a new one.
    */
-  ipcMain.handle('debug:open-window', () => {
-    createDebugWindow()
+  ipcMain.handle('debug:open-window', (event) => {
+    const owner = getEditorForSender(event.sender.id)
+    if (!owner) throw new Error('Debug windows require an editor owner')
+    createDebugWindow(owner)
   })
 
   /**
    * Broadcasts state updates to the debug window (if open).
    * Called from the main renderer window whenever state changes.
    */
-  ipcMain.on('debug:state-update', (_event, state) => {
+  ipcMain.on('debug:state-update', (event, state) => {
+    const owner = getEditorForSender(event.sender.id)
+    const debugWindow = owner ? editorWindows.getAuxiliary(owner, 'debug') : null
     if (debugWindow && !debugWindow.isDestroyed()) {
       debugWindow.webContents.send('debug:state-changed', state)
     }
@@ -1751,12 +1914,19 @@ app.whenReady().then(() => {
    * Handles request from debug window to get initial state.
    * Forwards the request to the main window.
    */
-  ipcMain.on('debug:request-state', () => {
-    const window = getMainWindow()
-    if (window) {
-      // Ask main window to send its state
-      window.webContents.send('debug:request-state-from-main')
+  ipcMain.on('debug:request-state', (event) => {
+    const owner = getOwnerForSender(event.sender.id)
+    if (owner) sendToEditor(owner, 'debug:request-state-from-main')
+  })
+
+  ipcMain.handle('debug:copy-text', (event, text: unknown) => {
+    const owner = getOwnerForSender(event.sender.id)
+    const debugWindow = owner ? editorWindows.getAuxiliary(owner, 'debug') : null
+    if (!debugWindow || debugWindow.webContents.id !== event.sender.id) {
+      throw new Error('Clipboard writes require an owned debug window')
     }
+    if (typeof text !== 'string') throw new Error('Clipboard text must be a string')
+    clipboard.writeText(text)
   })
 
   // --------------------------------------------------------------------------
@@ -1764,38 +1934,47 @@ app.whenReady().then(() => {
   // --------------------------------------------------------------------------
 
   // Fire-and-forget: renderer does not await this, so we use ipcMain.on
-  ipcMain.on('presentation:open-window', () => {
-    createPresentationWindow()
+  ipcMain.on('presentation:open-window', (event) => {
+    const owner = getEditorForSender(event.sender.id)
+    if (owner) createPresentationWindow(owner)
   })
 
-  ipcMain.handle('presentation:close-window', () => {
+  ipcMain.handle('presentation:close-window', (event) => {
+    const owner = getEditorForSender(event.sender.id)
+    const presentationWindow = owner ? editorWindows.getAuxiliary(owner, 'presentation') : null
     if (presentationWindow && !presentationWindow.isDestroyed()) {
       presentationWindow.close()
     }
   })
 
   /** Forward slide state from main window to presentation window. */
-  ipcMain.on('presentation:state-update', (_event, state) => {
+  ipcMain.on('presentation:state-update', (event, state) => {
+    const owner = getEditorForSender(event.sender.id)
+    const presentationWindow = owner ? editorWindows.getAuxiliary(owner, 'presentation') : null
     if (presentationWindow && !presentationWindow.isDestroyed()) {
       presentationWindow.webContents.send('presentation:state-changed', state)
     }
   })
 
   /** Forward navigation requests from presentation window to main window. */
-  ipcMain.on('presentation:navigate', (_event, direction: string) => {
-    getMainWindow()?.webContents.send('presentation:navigate-request', direction)
+  ipcMain.on('presentation:navigate', (event, direction: string) => {
+    const owner = getOwnerForSender(event.sender.id)
+    if (owner) sendToEditor(owner, 'presentation:navigate-request', direction)
   })
 
   /** Forward exit request from presentation window to main window. */
-  ipcMain.on('presentation:exit', () => {
+  ipcMain.on('presentation:exit', (event) => {
+    const owner = getOwnerForSender(event.sender.id)
+    const presentationWindow = owner ? editorWindows.getAuxiliary(owner, 'presentation') : null
     if (presentationWindow && !presentationWindow.isDestroyed()) {
       presentationWindow.close()
     }
   })
 
   /** Presentation window signals it's ready — forward to main window so it sends initial state. */
-  ipcMain.on('presentation:ready', () => {
-    getMainWindow()?.webContents.send('presentation:window-ready')
+  ipcMain.on('presentation:ready', (event) => {
+    const owner = getOwnerForSender(event.sender.id)
+    if (owner) sendToEditor(owner, 'presentation:window-ready')
   })
 
   // --------------------------------------------------------------------------
@@ -1818,7 +1997,9 @@ app.whenReady().then(() => {
 
     /** Notify the main window that a new version is downloaded and ready. */
     function notifyUpdateReady(version: string): void {
-      getMainWindow()?.webContents.send('app:update-downloaded', version)
+      for (const record of editorWindows.getEditors()) {
+        sendToEditor(record.window, 'app:update-downloaded', version)
+      }
     }
 
     autoUpdater.on('update-downloaded', (info) => {
@@ -1905,6 +2086,8 @@ let cleanupCompleted = false
  * This helps distinguish between "close all windows" and "quit app" on macOS.
  */
 let isQuitting = false
+let allowNativeQuit = false
+let quitSequence: Promise<void> | null = null
 
 /**
  * Cleans up all database connections and temp files during app shutdown.
@@ -1955,8 +2138,30 @@ async function cleanupResources(): Promise<void> {
  * Track when the user explicitly tries to quit the app.
  * This fires before windows start closing.
  */
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (allowNativeQuit) return
+  event.preventDefault()
+  if (quitSequence) return
+
   isQuitting = true
+  quitSequence = (async () => {
+    const controllers = editorWindows
+      .getEditors()
+      .map((record) => editorCloseControllers.get(record.window.id))
+      .filter((controller): controller is ReturnType<typeof createWindowCloseController> =>
+        Boolean(controller)
+      )
+    if (!(await closeWindowsSequentially(controllers))) {
+      isQuitting = false
+      return
+    }
+
+    await cleanupResources()
+    allowNativeQuit = true
+    app.quit()
+  })().finally(() => {
+    quitSequence = null
+  })
 })
 
 /**

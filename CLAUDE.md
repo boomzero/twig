@@ -64,6 +64,13 @@ twig follows Electron's standard architecture:
 2. **Preload Script** (`src/preload/index.ts`): Bridge layer that safely exposes IPC handlers to the renderer via `contextBridge`
 3. **Renderer Process** (`src/renderer/`): Svelte application running in the browser context
 
+### Multi-Window Ownership (`src/main/editorWindowManager.ts`)
+
+- Every editor renderer owns exactly one committed presentation and may temporarily reserve one replacement path while opening or saving.
+- Canonical path identities prevent the same `.tb` file from being owned by multiple editor windows.
+- Presentation and debug windows are scoped to an owning editor; their IPC must always route through that owner.
+- Each editor runs in a separate renderer process, so the module-level Svelte state remains isolated per window.
+
 ### Database Layer (`src/main/db.ts`)
 
 - Uses better-sqlite3 for synchronous SQLite operations

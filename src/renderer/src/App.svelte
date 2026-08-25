@@ -278,6 +278,7 @@
   let tooNewModalCompatNotesRaw = $state('')
   let tooNewModalResolver: ((choice: 'readonly' | 'cancel') => void) | null = null
   let activePresentationTransitionPromise: Promise<void> | null = null
+  let activeOpenRoutingPromise: Promise<void> | null = null
 
   // Active side panel — only one can be open at a time
   type SidePanel = 'properties' | 'layers' | 'animate'
@@ -1809,6 +1810,8 @@
   let unsubscribeUpdateDownloaded: (() => void) | undefined
   let unsubscribeOpenSettings: (() => void) | undefined
   let unsubscribeMenuExportImages: (() => void) | undefined
+  let unsubscribeMenuNewPresentation: (() => void) | undefined
+  let unsubscribeMenuOpenPresentation: (() => void) | undefined
   let unsubscribeSnapChanged: (() => void) | undefined
 
   // Reset background and transition checkpoint gates on pointer release so the next drag
@@ -1838,7 +1841,17 @@
 
     // Check if the app was launched by double-clicking a .tb file
     const launchFile = await window.api?.app?.getFileToOpen()
-    const opened = launchFile ? await openPresentationAtPath(launchFile) : false
+    let opened = false
+    if (launchFile) {
+      try {
+        opened = await openPresentationAtPath(launchFile)
+      } catch (error) {
+        console.error('Failed to open launch presentation:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        alert(`Failed to open presentation: ${errorMessage}`)
+      }
+      if (!opened && (await window.api.windows.closeIfEmpty())) return
+    }
     if (!opened) {
       await createNewPresentationInternal()
     }
@@ -1847,10 +1860,7 @@
     // Handle .tb files opened while the app is already running
     unsubscribeOpenFile = window.api?.app?.onOpenFile(async (filePath) => {
       try {
-        await runGuardedPresentationTransition(async () => {
-          const opened = await openPresentationAtPath(filePath)
-          return { completed: opened, mutatedState: opened }
-        })
+        await openPresentationInAppropriateWindow(filePath)
       } catch (error) {
         console.error('Failed to open presentation from OS event:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -1912,6 +1922,12 @@
     unsubscribeMenuExportImages = window.api?.app?.onMenuExportImages(() => {
       exportModalOpen = true
     })
+    unsubscribeMenuNewPresentation = window.api?.app?.onMenuNewPresentation(() => {
+      void handleNewPresentation()
+    })
+    unsubscribeMenuOpenPresentation = window.api?.app?.onMenuOpenPresentation(() => {
+      void handleOpen()
+    })
 
     // Initialize alignment-guide snap toggle from the main-owned pref and
     // subscribe to changes pushed from the View menu.
@@ -1931,6 +1947,7 @@
       window.api?.lifecycle?.respondToCloseRequest(requestId, decision)
     })
     window.api?.lifecycle?.signalCloseReady()
+    window.api?.windows?.signalReady()
   })
 
   /**
@@ -1966,6 +1983,8 @@
     unsubscribeUpdateDownloaded?.()
     unsubscribeOpenSettings?.()
     unsubscribeMenuExportImages?.()
+    unsubscribeMenuNewPresentation?.()
+    unsubscribeMenuOpenPresentation?.()
     unsubscribeSnapChanged?.()
 
     // Unregister flush save callback
@@ -3512,11 +3531,16 @@
   }
 
   async function openPresentationAtPath(filePath: string): Promise<boolean> {
+    const reservation = await window.api.documents.reserve(filePath)
+    if (reservation === 'focused-existing') return false
+    if (reservation === 'already-current') return true
+
     loadingScreenPhase = 'opening'
     const previousFilePath = appState.currentFilePath
     try {
       await loadPresentation(filePath, { onTooNewFile: handleTooNewFile })
     } catch (error) {
+      await window.api.documents.cancel(filePath)
       if (isReadOnlyOpenAbort(error)) {
         return false
       }
@@ -3531,6 +3555,7 @@
         console.warn('Failed to close previous presentation connection:', error)
       }
     }
+    await window.api.documents.commit(filePath)
     // Clear history only after a replacement file actually loads; canceling a
     // too-new read-only open keeps the current presentation and undo stack.
     clearAllHistory()
@@ -3622,8 +3647,8 @@
   }
 
   async function handleCloseRequest(): Promise<boolean> {
-    return withPresentationTransitionLock(() =>
-      closePresentationWithTempGuard({
+    return withPresentationTransitionLock(async () => {
+      const approved = await closePresentationWithTempGuard({
         currentFilePath: appState.currentFilePath,
         isTempFile: appState.isTempFile,
         flushPendingSave,
@@ -3640,7 +3665,21 @@
           console.error(`Failed to delete temp file during close for ${filePath}:`, error)
         }
       })
-    )
+      if (!approved) return false
+
+      if (appState.currentFilePath && !appState.isTempFile) {
+        try {
+          await window.api.db.closeConnection(appState.currentFilePath)
+        } catch (error) {
+          console.error('Failed to close presentation database:', error)
+          const shouldForceClose = await promptToForceCloseAfterFailure(error)
+          if (!shouldForceClose) return false
+          cancelPendingPersistence()
+        }
+      }
+
+      return true
+    })
   }
 
   /**
@@ -3751,12 +3790,40 @@
    * Creates a new, unsaved presentation with one blank slide in a temp database.
    * Checks for temp presentation destruction before proceeding.
    */
+  async function canReuseCurrentWindow(): Promise<boolean> {
+    if (!appState.currentFilePath || !appState.isTempFile) return false
+    await flushPendingSave()
+    return window.api.db.isBootstrapPresentation(appState.currentFilePath)
+  }
+
+  async function openPresentationInAppropriateWindow(filePath: string): Promise<boolean> {
+    const previous = activeOpenRoutingPromise
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    activeOpenRoutingPromise = current
+
+    try {
+      if (previous) await previous
+      if (!(await canReuseCurrentWindow())) {
+        return (await window.api.windows.openFile(filePath)) === 'created'
+      }
+
+      return runGuardedPresentationTransition(async () => {
+        const opened = await openPresentationAtPath(filePath)
+        return { completed: opened, mutatedState: opened }
+      })
+    } finally {
+      release()
+      if (activeOpenRoutingPromise === current) activeOpenRoutingPromise = null
+    }
+  }
+
   async function handleNewPresentation(): Promise<void> {
     try {
-      await runGuardedPresentationTransition(async () => ({
-        completed: await createNewPresentationInternal(),
-        mutatedState: true
-      }))
+      if (await canReuseCurrentWindow()) return
+      await window.api.windows.createEditor()
     } catch (error) {
       console.error('Failed to create new presentation:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -3770,15 +3837,9 @@
    */
   async function handleOpen(): Promise<void> {
     try {
-      await runGuardedPresentationTransition(async () => {
-        const filePath = await window.api.dialog.showOpenDialog()
-        if (!filePath) {
-          return { completed: false, mutatedState: false }
-        }
-
-        const opened = await openPresentationAtPath(filePath)
-        return { completed: opened, mutatedState: opened }
-      })
+      const filePath = await window.api.dialog.showOpenDialog()
+      if (!filePath) return
+      await openPresentationInAppropriateWindow(filePath)
     } catch (error) {
       console.error('Failed to open presentation:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -3835,14 +3896,19 @@
       const currentSlideId = appState.currentSlide?.id
 
       // Move or copy the database depending on whether it's a temp file
-      let resultPath: string
+      let saveResult: Awaited<ReturnType<typeof window.api.db.saveToLocation>>
       if (appState.isTempFile) {
         // For temp files, move the database to the new location
-        resultPath = await window.api.db.saveToLocation(appState.currentFilePath, newPath)
+        saveResult = await window.api.db.saveToLocation(appState.currentFilePath, newPath)
       } else {
         // For saved files, copy the database to the new location
-        resultPath = await window.api.db.copyToLocation(appState.currentFilePath, newPath)
+        saveResult = await window.api.db.copyToLocation(appState.currentFilePath, newPath)
       }
+      if (saveResult.status === 'focused-existing') {
+        alert($_('open.already_open'))
+        return false
+      }
+      const resultPath = saveResult.filePath
 
       // Update state
       appState.currentFilePath = resultPath

@@ -12,6 +12,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
+import { selectWindowRoleApi } from './roleApi'
 
 const isStoreBuild =
   process.mas === true ||
@@ -26,6 +27,19 @@ const isStoreBuild =
  * These wrap IPC calls to the main process for file dialogs and database operations.
  */
 const api = {
+  windows: {
+    createEditor: () => ipcRenderer.invoke('windows:create-editor'),
+    openFile: (filePath: string) => ipcRenderer.invoke('windows:open-file', filePath),
+    closeIfEmpty: () => ipcRenderer.invoke('windows:close-if-empty'),
+    signalReady: () => ipcRenderer.send('windows:ready')
+  },
+
+  documents: {
+    reserve: (filePath: string) => ipcRenderer.invoke('documents:reserve', filePath),
+    commit: (filePath: string) => ipcRenderer.invoke('documents:commit', filePath),
+    cancel: (filePath: string) => ipcRenderer.invoke('documents:cancel', filePath)
+  },
+
   // File dialog operations
   dialog: {
     /** Show a file open dialog and return the selected path */
@@ -166,6 +180,21 @@ const api = {
     /** Request current state (for debug window) */
     requestState: () => ipcRenderer.send('debug:request-state'),
 
+    /** Copy debug output through Electron's trusted clipboard implementation. */
+    copyText: (text: string) => ipcRenderer.invoke('debug:copy-text', text),
+
+    /** Read the locale without exposing the complete preferences API. */
+    getLocale: () => ipcRenderer.invoke('prefs:get', 'locale'),
+
+    /** Keep translated debug UI in sync with global locale changes. */
+    onLocaleChanged: (callback: (locale: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, locale: string): void => callback(locale)
+      ipcRenderer.on('locale:changed', handler)
+      return (): void => {
+        ipcRenderer.removeListener('locale:changed', handler)
+      }
+    },
+
     /** Listen for state requests from debug window (for main window) */
     onStateRequest: (callback) => {
       const handler = (): void => callback()
@@ -268,6 +297,22 @@ const api = {
       }
     },
 
+    onMenuNewPresentation: (callback: () => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('menu:new-presentation', handler)
+      return (): void => {
+        ipcRenderer.removeListener('menu:new-presentation', handler)
+      }
+    },
+
+    onMenuOpenPresentation: (callback: () => void) => {
+      const handler = (): void => callback()
+      ipcRenderer.on('menu:open-presentation', handler)
+      return (): void => {
+        ipcRenderer.removeListener('menu:open-presentation', handler)
+      }
+    },
+
     /** Trigger a manual update check. Returns 'checking' | 'up-to-date' | 'error'. */
     checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
 
@@ -361,28 +406,7 @@ const api = {
 const windowRole = process.argv
   .find((argument) => argument.startsWith('--twig-window-role='))
   ?.slice('--twig-window-role='.length)
-const exposedApi =
-  windowRole === 'presentation'
-    ? {
-        db: { getSlide: api.db.getSlide },
-        fonts: { getEmbeddedFonts: api.fonts.getEmbeddedFonts },
-        presentation: {
-          navigate: api.presentation.navigate,
-          exit: api.presentation.exit,
-          onStateChanged: api.presentation.onStateChanged,
-          signalReady: api.presentation.signalReady
-        }
-      }
-    : windowRole === 'debug'
-      ? {
-          debug: {
-            onStateUpdate: api.debug.onStateUpdate,
-            requestState: api.debug.requestState
-          }
-        }
-      : windowRole === 'editor'
-        ? api
-        : {}
+const exposedApi = selectWindowRoleApi(api, windowRole)
 
 if (process.contextIsolated) {
   try {
