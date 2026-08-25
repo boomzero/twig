@@ -45,7 +45,7 @@ export function validateFilePath(filePath: unknown): asserts filePath is string 
   if (!isAbsolute(filePath)) {
     throw new Error('File path must be absolute')
   }
-  if (!filePath.endsWith('.tb')) {
+  if (!filePath.toLowerCase().endsWith('.tb')) {
     throw new Error('Invalid file extension. Expected .tb file')
   }
   const normalized = normalize(filePath)
