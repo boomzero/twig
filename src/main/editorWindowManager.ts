@@ -21,6 +21,7 @@ export type AuxiliaryWindowRole = 'debug' | 'presentation'
 
 export interface EditorWindowRecord<W extends ManagedWindow = ManagedWindow> {
   window: W
+  webContentsId: number
   launchFile: string | null
   currentPath: string | null
   currentIdentity: string | null
@@ -158,10 +159,15 @@ export function canonicalPathIdentity(
 
 export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
   private readonly editors = new Map<number, EditorWindowRecord<W>>()
+  private readonly editorIdByWindow = new Map<W, number>()
   private readonly editorByWebContentsId = new Map<number, number>()
   private readonly auxiliaryOwnerByWebContentsId = new Map<
     number,
     { editorId: number; role: AuxiliaryWindowRole }
+  >()
+  private readonly auxiliaryOwnerByWindow = new Map<
+    W,
+    { editorId: number; role: AuxiliaryWindowRole; webContentsId: number }
   >()
   private focusSequence = 0
 
@@ -189,8 +195,11 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
   }
 
   registerEditor(window: W, launchFile: string | null = null): EditorWindowRecord<W> {
+    const windowId = window.id
+    const webContentsId = window.webContents.id
     const record: EditorWindowRecord<W> = {
       window,
+      webContentsId,
       launchFile,
       currentPath: null,
       currentIdentity: null,
@@ -200,19 +209,26 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
       presentationWindow: null,
       lastFocusedAt: ++this.focusSequence
     }
-    this.editors.set(window.id, record)
-    this.editorByWebContentsId.set(window.webContents.id, window.id)
+    this.editors.set(windowId, record)
+    this.editorIdByWindow.set(window, windowId)
+    this.editorByWebContentsId.set(webContentsId, windowId)
     return record
   }
 
   unregisterEditor(window: W): EditorWindowRecord<W> | null {
-    const record = this.editors.get(window.id) ?? null
+    const windowId = this.editorIdByWindow.get(window)
+    if (windowId === undefined) return null
+    const record = this.editors.get(windowId) ?? null
     if (!record) return null
 
-    this.editors.delete(window.id)
-    this.editorByWebContentsId.delete(window.webContents.id)
-    for (const auxiliary of [record.debugWindow, record.presentationWindow]) {
-      if (auxiliary) this.auxiliaryOwnerByWebContentsId.delete(auxiliary.webContents.id)
+    this.editors.delete(windowId)
+    this.editorIdByWindow.delete(window)
+    this.editorByWebContentsId.delete(record.webContentsId)
+    for (const [auxiliary, owner] of this.auxiliaryOwnerByWindow) {
+      if (owner.editorId === windowId) {
+        this.auxiliaryOwnerByWindow.delete(auxiliary)
+        this.auxiliaryOwnerByWebContentsId.delete(owner.webContentsId)
+      }
     }
     return record
   }
@@ -222,7 +238,9 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
   }
 
   getEditor(window: W | null): EditorWindowRecord<W> | null {
-    return window ? (this.editors.get(window.id) ?? null) : null
+    if (!window) return null
+    const editorId = this.editorIdByWindow.get(window)
+    return editorId === undefined ? null : (this.editors.get(editorId) ?? null)
   }
 
   getEditorByWebContentsId(webContentsId: number): EditorWindowRecord<W> | null {
@@ -363,16 +381,20 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
   attachAuxiliary(owner: W, role: AuxiliaryWindowRole, auxiliary: W): void {
     const record = this.getEditor(owner)
     if (!record) throw new Error('Auxiliary windows require an editor owner')
+    const editorId = this.editorIdByWindow.get(owner)
+    if (editorId === undefined) throw new Error('Auxiliary windows require an editor owner')
+    const webContentsId = auxiliary.webContents.id
     if (role === 'debug') record.debugWindow = auxiliary
     else record.presentationWindow = auxiliary
-    this.auxiliaryOwnerByWebContentsId.set(auxiliary.webContents.id, {
-      editorId: owner.id,
+    this.auxiliaryOwnerByWebContentsId.set(webContentsId, {
+      editorId,
       role
     })
+    this.auxiliaryOwnerByWindow.set(auxiliary, { editorId, role, webContentsId })
   }
 
   detachAuxiliary(auxiliary: W): void {
-    const owner = this.auxiliaryOwnerByWebContentsId.get(auxiliary.webContents.id)
+    const owner = this.auxiliaryOwnerByWindow.get(auxiliary)
     if (!owner) return
     const record = this.editors.get(owner.editorId)
     if (record) {
@@ -381,7 +403,8 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
         record.presentationWindow = null
       }
     }
-    this.auxiliaryOwnerByWebContentsId.delete(auxiliary.webContents.id)
+    this.auxiliaryOwnerByWindow.delete(auxiliary)
+    this.auxiliaryOwnerByWebContentsId.delete(owner.webContentsId)
   }
 
   getAuxiliary(owner: W, role: AuxiliaryWindowRole): W | null {

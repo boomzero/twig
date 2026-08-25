@@ -29,6 +29,7 @@ import * as bookmarksService from './bookmarks'
 import { closeWindowsSequentially, createWindowCloseController } from './windowCloseController'
 import { EditorWindowManager } from './editorWindowManager'
 import { presentationPathsFromArgv } from './launchPaths'
+import { createWindowMenu } from './windowMenu'
 import { safeLog, formatError } from './logging'
 import {
   getTempDir,
@@ -505,6 +506,7 @@ function createWindow(launchFile: string | null = null): BrowserWindow {
       additionalArguments: ['--twig-window-role=editor']
     }
   })
+  const windowId = window.id
   editorWindows.registerEditor(window, launchFile)
   window.on('focus', () => editorWindows.noteFocused(window))
 
@@ -540,7 +542,7 @@ function createWindow(launchFile: string | null = null): BrowserWindow {
     setIsQuitting: () => {},
     quitApp: () => {}
   })
-  editorCloseControllers.set(window.id, closeController)
+  editorCloseControllers.set(windowId, closeController)
 
   window.on('close', (event) => {
     closeController.handleClose(event)
@@ -567,15 +569,15 @@ function createWindow(launchFile: string | null = null): BrowserWindow {
   }
 
   window.on('closed', () => {
-    const queuedOpenFiles = queuedEditorOpenFiles.get(window.id) ?? []
+    const queuedOpenFiles = queuedEditorOpenFiles.get(windowId) ?? []
     const record = editorWindows.getEditor(window)
     for (const auxiliary of [record?.debugWindow, record?.presentationWindow]) {
       if (auxiliary && !auxiliary.isDestroyed()) auxiliary.destroy()
     }
     editorWindows.unregisterEditor(window)
-    editorCloseControllers.delete(window.id)
-    readyEditorIds.delete(window.id)
-    queuedEditorOpenFiles.delete(window.id)
+    editorCloseControllers.delete(windowId)
+    readyEditorIds.delete(windowId)
+    queuedEditorOpenFiles.delete(windowId)
     setupAppMenu()
     if (!isQuitting) {
       for (const filePath of queuedOpenFiles) setImmediate(() => routeExternalOpen(filePath))
@@ -835,23 +837,9 @@ function setupAppMenu(): void {
         { role: 'toggleDevTools' as const }
       ]
     },
-    {
-      label: 'Window',
-      role: 'window',
-      submenu: [
-        {
-          label: 'Show Editor Window',
-          click: () => {
-            showOrCreateEditorWindow()
-          }
-        },
-        { type: 'separator' },
-        { role: 'minimize' },
-        { role: 'zoom' },
-        { type: 'separator' },
-        { role: 'front' }
-      ]
-    }
+    createWindowMenu(() => {
+      showOrCreateEditorWindow()
+    })
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))

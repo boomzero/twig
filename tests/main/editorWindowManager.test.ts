@@ -7,7 +7,8 @@ import { canonicalPathIdentity, EditorWindowManager } from '../../src/main/edito
 class FakeWindow {
   static nextId = 1
   id = FakeWindow.nextId++
-  webContents = { id: this.id * 10 }
+  private readonly managedWebContents = { id: this.id * 10 }
+  throwOnWebContentsAccess = false
   destroyed = false
   minimized = false
   restore = vi.fn(() => {
@@ -15,6 +16,11 @@ class FakeWindow {
   })
   show = vi.fn()
   focus = vi.fn()
+
+  get webContents(): { id: number } {
+    if (this.throwOnWebContentsAccess) throw new Error('Object has been destroyed')
+    return this.managedWebContents
+  }
 
   isDestroyed(): boolean {
     return this.destroyed
@@ -211,5 +217,31 @@ describe('EditorWindowManager', () => {
     expect(manager.getOwnerByWebContentsId(presentation.webContents.id)?.window).toBe(editor)
     manager.detachAuxiliary(debug)
     expect(manager.getOwnerByWebContentsId(debug.webContents.id)).toBeNull()
+  })
+
+  it('unregisters destroyed editor and auxiliary windows without reading webContents', () => {
+    const manager = new EditorWindowManager<FakeWindow>((path) => path)
+    const editor = new FakeWindow()
+    const debug = new FakeWindow()
+    const presentation = new FakeWindow()
+    const editorWebContentsId = editor.webContents.id
+    const debugWebContentsId = debug.webContents.id
+    const presentationWebContentsId = presentation.webContents.id
+    manager.registerEditor(editor)
+    manager.attachAuxiliary(editor, 'debug', debug)
+    manager.attachAuxiliary(editor, 'presentation', presentation)
+
+    editor.destroyed = true
+    debug.destroyed = true
+    presentation.destroyed = true
+    editor.throwOnWebContentsAccess = true
+    debug.throwOnWebContentsAccess = true
+    presentation.throwOnWebContentsAccess = true
+
+    expect(() => manager.detachAuxiliary(debug)).not.toThrow()
+    expect(() => manager.unregisterEditor(editor)).not.toThrow()
+    expect(manager.getEditorByWebContentsId(editorWebContentsId)).toBeNull()
+    expect(manager.getOwnerByWebContentsId(debugWebContentsId)).toBeNull()
+    expect(manager.getOwnerByWebContentsId(presentationWebContentsId)).toBeNull()
   })
 })
