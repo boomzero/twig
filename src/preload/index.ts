@@ -180,6 +180,9 @@ const api = {
     /** Request current state (for debug window) */
     requestState: () => ipcRenderer.send('debug:request-state'),
 
+    /** Copy debug output through Electron's trusted clipboard implementation. */
+    copyText: (text: string) => ipcRenderer.invoke('debug:copy-text', text),
+
     /** Read the locale without exposing the complete preferences API. */
     getLocale: () => ipcRenderer.invoke('prefs:get', 'locale'),
 

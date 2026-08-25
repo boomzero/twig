@@ -16,7 +16,8 @@ import {
   dialog,
   powerMonitor,
   webContents,
-  Menu
+  Menu,
+  clipboard
 } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join, basename, extname, sep, resolve, relative, isAbsolute } from 'path'
@@ -1916,6 +1917,16 @@ app.whenReady().then(() => {
   ipcMain.on('debug:request-state', (event) => {
     const owner = getOwnerForSender(event.sender.id)
     if (owner) sendToEditor(owner, 'debug:request-state-from-main')
+  })
+
+  ipcMain.handle('debug:copy-text', (event, text: unknown) => {
+    const owner = getOwnerForSender(event.sender.id)
+    const debugWindow = owner ? editorWindows.getAuxiliary(owner, 'debug') : null
+    if (!debugWindow || debugWindow.webContents.id !== event.sender.id) {
+      throw new Error('Clipboard writes require an owned debug window')
+    }
+    if (typeof text !== 'string') throw new Error('Clipboard text must be a string')
+    clipboard.writeText(text)
   })
 
   // --------------------------------------------------------------------------

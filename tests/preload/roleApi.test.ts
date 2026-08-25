@@ -14,6 +14,7 @@ function createApi(): Parameters<typeof selectWindowRoleApi>[0] {
     debug: {
       onStateUpdate: vi.fn(),
       requestState: vi.fn(),
+      copyText: vi.fn(),
       getLocale: vi.fn(),
       onLocaleChanged: vi.fn()
     }
@@ -28,6 +29,7 @@ describe('selectWindowRoleApi', () => {
       debug: {
         onStateUpdate: expect.any(Function),
         requestState: expect.any(Function),
+        copyText: expect.any(Function),
         getLocale: expect.any(Function),
         onLocaleChanged: expect.any(Function)
       }

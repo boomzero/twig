@@ -10,6 +10,7 @@ interface RoleApiSource {
   debug: {
     onStateUpdate: unknown
     requestState: unknown
+    copyText: unknown
     getLocale: unknown
     onLocaleChanged: unknown
   }
@@ -37,6 +38,7 @@ export function selectWindowRoleApi<T extends RoleApiSource>(
       debug: {
         onStateUpdate: api.debug.onStateUpdate,
         requestState: api.debug.requestState,
+        copyText: api.debug.copyText,
         getLocale: api.debug.getLocale,
         onLocaleChanged: api.debug.onLocaleChanged
       }

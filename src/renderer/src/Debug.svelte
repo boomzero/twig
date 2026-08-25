@@ -7,6 +7,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import type { TwigElement } from './lib/state.svelte'
+  import { renderDebugStateWindow } from './lib/debugStateWindow'
   import { _ } from 'svelte-i18n'
 
   interface AppState {
@@ -64,7 +65,7 @@
   // Copy state to clipboard
   async function copyStateToClipboard(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(debugState, null, 2))
+      await window.api.debug.copyText(JSON.stringify(debugState, null, 2))
       alert('State copied to clipboard!')
     } catch (error) {
       console.error('Failed to copy state:', error)
@@ -88,56 +89,7 @@
     const json = JSON.stringify(debugState, null, 2)
     const win = window.open('', 'State JSON', 'width=800,height=600')
     if (win) {
-      win.document.write(`
-        <html>
-          <head>
-            <title>twig State JSON</title>
-            <style>
-              body {
-                margin: 0;
-                padding: 20px;
-                font-family: 'Courier New', monospace;
-                background: #1e1e1e;
-                color: #d4d4d4;
-              }
-              pre {
-                margin: 0;
-                white-space: pre-wrap;
-                word-wrap: break-word;
-              }
-              .toolbar {
-                position: sticky;
-                top: 0;
-                background: #2d2d30;
-                padding: 10px;
-                border-bottom: 1px solid #3e3e42;
-                margin-bottom: 10px;
-              }
-              button {
-                background: #0e639c;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                cursor: pointer;
-                border-radius: 3px;
-                font-size: 14px;
-              }
-              button:hover {
-                background: #1177bb;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="toolbar">
-              <button onclick="navigator.clipboard.writeText(document.querySelector('pre').textContent).then(() => alert('Copied to clipboard!'))">
-                Copy to Clipboard
-              </button>
-            </div>
-            <pre>${json}</pre>
-          </body>
-        </html>
-      `)
-      win.document.close()
+      renderDebugStateWindow(win, json, window.api.debug.copyText)
     }
   }
 
