@@ -39,6 +39,68 @@ describe('EditorWindowManager', () => {
     }
   })
 
+  it('normalizes pending paths on a case-insensitive filesystem', () => {
+    const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
+    try {
+      const upperCasePath = join(directory, 'Deck.tb')
+      const lowerCasePath = join(directory, 'deck.tb')
+      const identifyPath = (filePath: string): string =>
+        canonicalPathIdentity(filePath, () => false)
+
+      expect(identifyPath(upperCasePath)).toBe(identifyPath(lowerCasePath))
+
+      const manager = new EditorWindowManager<FakeWindow>(identifyPath)
+      const first = new FakeWindow()
+      const second = new FakeWindow()
+      manager.registerEditor(first)
+      manager.registerEditor(second)
+
+      expect(manager.reserveDocument(first, upperCasePath)).toBe('reserved')
+      expect(manager.reserveDocument(second, lowerCasePath)).toBe('focused-existing')
+      expect(first.focus).toHaveBeenCalledOnce()
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves distinct pending paths on a case-sensitive filesystem', () => {
+    const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
+    try {
+      const upperCasePath = join(directory, 'Deck.tb')
+      const lowerCasePath = join(directory, 'deck.tb')
+      expect(canonicalPathIdentity(upperCasePath, () => true)).not.toBe(
+        canonicalPathIdentity(lowerCasePath, () => true)
+      )
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('detects the case behavior of the destination filesystem', () => {
+    const directory = fs.mkdtempSync(join(os.tmpdir(), 'twig-window-manager-'))
+    try {
+      const probePath = join(directory, 'CaseProbe')
+      const alternateProbePath = join(directory, 'caseProbe')
+      fs.writeFileSync(probePath, '')
+      const probe = fs.lstatSync(probePath)
+      let caseInsensitive = false
+      try {
+        const alternateProbe = fs.lstatSync(alternateProbePath)
+        caseInsensitive = probe.dev === alternateProbe.dev && probe.ino === alternateProbe.ino
+      } catch {
+        // The alternate spelling does not exist on a case-sensitive filesystem.
+      }
+      fs.unlinkSync(probePath)
+
+      const identitiesMatch =
+        canonicalPathIdentity(join(directory, 'Deck.tb')) ===
+        canonicalPathIdentity(join(directory, 'deck.tb'))
+      expect(identitiesMatch).toBe(caseInsensitive)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
   it('tracks independent documents and focuses an existing duplicate owner', () => {
     const manager = new EditorWindowManager<FakeWindow>((path) => path.toLowerCase())
     const first = new FakeWindow()

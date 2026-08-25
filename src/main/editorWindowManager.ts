@@ -1,4 +1,5 @@
 import fs from 'fs'
+import { randomUUID } from 'node:crypto'
 import { dirname, join, normalize, resolve } from 'path'
 
 export interface ManagedWebContents {
@@ -30,14 +31,122 @@ export interface EditorWindowRecord<W extends ManagedWindow = ManagedWindow> {
   lastFocusedAt: number
 }
 
-function canonicalPathIdentity(filePath: string): string {
-  const absolutePath = normalize(resolve(filePath))
-  try {
-    return fs.realpathSync.native(absolutePath)
-  } catch {
-    const parentPath = fs.realpathSync.native(dirname(absolutePath))
-    return join(parentPath, absolutePath.slice(dirname(absolutePath).length + 1))
+const directoryCaseSensitivity = new Map<string, boolean>()
+
+function toggledAsciiCase(value: string): string | null {
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]
+    if (character >= 'a' && character <= 'z') {
+      return `${value.slice(0, index)}${character.toUpperCase()}${value.slice(index + 1)}`
+    }
+    if (character >= 'A' && character <= 'Z') {
+      return `${value.slice(0, index)}${character.toLowerCase()}${value.slice(index + 1)}`
+    }
   }
+  return null
+}
+
+function existingEntryIsCaseSensitive(directoryPath: string, entryName: string): boolean | null {
+  const alternateName = toggledAsciiCase(entryName)
+  if (!alternateName) return null
+
+  const entryPath = join(directoryPath, entryName)
+  const alternatePath = join(directoryPath, alternateName)
+  let entry: fs.Stats
+  try {
+    entry = fs.lstatSync(entryPath)
+  } catch {
+    return null
+  }
+
+  try {
+    const alternate = fs.lstatSync(alternatePath)
+    return entry.dev !== alternate.dev || entry.ino !== alternate.ino
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    return code === 'ENOENT' ? true : null
+  }
+}
+
+function detectDirectoryCaseSensitivity(directoryPath: string): boolean {
+  const cached = directoryCaseSensitivity.get(directoryPath)
+  if (cached !== undefined) return cached
+
+  try {
+    const entryNames = fs.readdirSync(directoryPath)
+    const entryNameSet = new Set(entryNames)
+    for (const entryName of entryNames) {
+      const alternateName = toggledAsciiCase(entryName)
+      if (alternateName && entryNameSet.has(alternateName)) {
+        directoryCaseSensitivity.set(directoryPath, true)
+        return true
+      }
+      const result = existingEntryIsCaseSensitive(directoryPath, entryName)
+      if (result !== null) {
+        directoryCaseSensitivity.set(directoryPath, result)
+        return result
+      }
+    }
+  } catch {
+    // A Save As will report inaccessible destinations separately.
+  }
+
+  const probeName = `.twig-path-case-${randomUUID()}-Aa`
+  const probePath = join(directoryPath, probeName)
+  let descriptor: number | null = null
+  let probeCreated = false
+  try {
+    descriptor = fs.openSync(probePath, 'wx', 0o600)
+    probeCreated = true
+    fs.closeSync(descriptor)
+    descriptor = null
+    const result = existingEntryIsCaseSensitive(directoryPath, probeName)
+    if (result !== null) {
+      directoryCaseSensitivity.set(directoryPath, result)
+      return result
+    }
+  } catch {
+    // Fall back when the directory cannot be probed, such as a read-only location.
+  } finally {
+    if (descriptor !== null) {
+      try {
+        fs.closeSync(descriptor)
+      } catch {
+        // Continue with probe cleanup.
+      }
+    }
+    if (probeCreated) {
+      try {
+        fs.unlinkSync(probePath)
+      } catch {
+        // The zero-byte probe is best-effort cleanup only.
+      }
+    }
+  }
+
+  // macOS and Windows filesystems are case-insensitive by default; other supported
+  // Unix filesystems are case-sensitive by default. Writable destinations are
+  // detected above, including case-sensitive volumes and directories on either OS.
+  const fallback = process.platform !== 'darwin' && process.platform !== 'win32'
+  directoryCaseSensitivity.set(directoryPath, fallback)
+  return fallback
+}
+
+export function canonicalPathIdentity(
+  filePath: string,
+  isCaseSensitive: (directoryPath: string) => boolean = detectDirectoryCaseSensitivity
+): string {
+  const absolutePath = normalize(resolve(filePath))
+  let identity: string
+  let parentPath: string
+  try {
+    identity = fs.realpathSync.native(absolutePath)
+    parentPath = dirname(identity)
+  } catch {
+    parentPath = fs.realpathSync.native(dirname(absolutePath))
+    identity = join(parentPath, absolutePath.slice(dirname(absolutePath).length + 1))
+  }
+  return isCaseSensitive(parentPath) ? identity : identity.toLowerCase()
 }
 
 export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
@@ -252,5 +361,3 @@ export class EditorWindowManager<W extends ManagedWindow = ManagedWindow> {
     this.noteFocused(window)
   }
 }
-
-export { canonicalPathIdentity }
