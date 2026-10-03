@@ -12,7 +12,8 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 electronLanguages:
   - en-US
-  - zh-CN
+  - zh-CN # Windows/Linux locales/*.pak
+  - zh_CN # macOS *.lproj (matched literally; without it zh_CN.lproj is stripped)
 asarUnpack:
   - resources/**
 fileAssociations:
